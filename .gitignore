@@ -1,0 +1,46 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies (matches functions/node_modules too — bare name matches at any depth)
+node_modules
+
+# Build output
+dist
+dist-ssr
+dev-dist
+
+# Secrets & local env — *.local covers .env.local, .env.*.local, etc.
+*.local
+.env
+.env.*
+!.env.example
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Deploy tooling
+.vercel
+.firebase
+
+# Claude Code — personal per-machine overrides only; .claude/settings.json IS shared
+.claude/settings.local.json
+
+# Raw dance render sources (58 MB of MP4). The pipeline that produces them
+# (source-media/pipeline/*.py) and the shipped output (public/animations/**)
+# are both versioned — these intermediate H.264 masters are not worth the
+# git history and are kept on the maintainer's machine / original delivery.
+source-media/**/*.mp4

@@ -1,0 +1,161 @@
+import { useState } from 'react';
+import ExerciseLogCard from './ExerciseLogCard';
+import ExercisePicker from './ExercisePicker';
+import WorkoutTimer from './WorkoutTimer';
+import RestTimer from './RestTimer';
+import WorkoutSummaryModal from './WorkoutSummaryModal';
+import ConfirmDialog from '../shared/ConfirmDialog';
+import { useRestTimer } from '../../hooks/useRestTimer';
+import { lastPerformance } from '../../utils/lastPerformance';
+
+export default function ActiveWorkoutLogger({
+  workout,
+  exercises,
+  screenLockActive,
+  onAddExercise,
+  onRemoveExercise,
+  onAddSet,
+  onUpdateSet,
+  onRemoveSet,
+  onFinish,
+  personalRecords = [],
+  history = [],
+  onDiscard,
+  onSaveTemplate,
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const rest = useRestTimer();
+
+  const completedSets = workout.exercises.reduce(
+    (sum, e) => sum + e.sets.filter((s) => s.completed).length,
+    0,
+  );
+  const canFinish = completedSets > 0;
+
+  // Picking an exercise no longer closes the sheet — you stay inside it to
+  // keep adding more, same as picking several muscle groups in a row. It
+  // only closes via the explicit ✕ or a tap on the backdrop (onClose).
+  const handleAdd = (exercise) => {
+    onAddExercise(exercise);
+  };
+
+  // Checking a set off pops the rest timer; un-checking it or editing
+  // weight/reps leaves any running rest alone.
+  const handleUpdateSet = (exerciseId, setId, patch) => {
+    onUpdateSet(exerciseId, setId, patch);
+    if (patch.completed === true) {
+      rest.start();
+    }
+  };
+
+  return (
+    <div className={`flex flex-col gap-4 pt-6 ${rest.isVisible ? 'pb-40' : 'pb-28'}`}>
+      <header className="flex items-center justify-between">
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-2xl font-bold text-neutral-50">Workout</h1>
+          <WorkoutTimer startedAt={workout.startedAt} />
+          {screenLockActive && (
+            <span className="text-sm" title="Screen will stay on for the workout" aria-label="Screen lock active">
+              🔒
+            </span>
+          )}
+        </div>
+        <button type="button" onClick={() => setConfirmCancel(true)} className="text-sm text-neutral-500 px-2 py-1">
+          Cancel
+        </button>
+      </header>
+
+      {workout.exercises.length === 0 ? (
+        <div className="card p-8 text-center flex flex-col items-center gap-4">
+          <p className="text-base text-neutral-400">No exercises yet</p>
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="bg-[var(--ember)] text-white font-semibold text-base px-6 py-3.5 rounded-2xl active:scale-[0.97] transition"
+          >
+            Pick First Exercise
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {workout.exercises.map((exercise) => (
+            <ExerciseLogCard
+              key={exercise.exerciseId}
+              exercise={exercise}
+              lastTime={lastPerformance(exercise.exerciseId, history)}
+              onAddSet={() => onAddSet(exercise.exerciseId)}
+              onUpdateSet={(setId, patch) => handleUpdateSet(exercise.exerciseId, setId, patch)}
+              onRemoveSet={(setId) => onRemoveSet(exercise.exerciseId, setId)}
+              onRemoveExercise={() => onRemoveExercise(exercise.exerciseId)}
+            />
+          ))}
+
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="w-full py-4 text-base font-medium text-neutral-300 bg-neutral-900 rounded-2xl"
+          >
+            + Add Another Exercise
+          </button>
+        </div>
+      )}
+
+      <div className="fixed bottom-0 inset-x-0 z-30 bg-neutral-950/92 border-t border-white/10 p-4">
+        <div className="max-w-md mx-auto flex flex-col gap-3">
+          {rest.isVisible && (
+            <RestTimer
+              secondsLeft={rest.secondsLeft}
+              isDone={rest.isDone}
+              isOverdue={rest.isOverdue}
+              overdueMessage={rest.overdueMessage}
+              step={rest.step}
+              onAddTime={rest.addTime}
+              onDismiss={rest.dismiss}
+            />
+          )}
+          <button
+            type="button"
+            disabled={!canFinish}
+            onClick={() => setShowSummary(true)}
+            className={`w-full font-semibold text-lg py-4 rounded-2xl transition active:scale-[0.98] ${
+              canFinish ? 'bg-[var(--success)] text-white' : 'bg-neutral-800 text-neutral-600'
+            }`}
+          >
+            {canFinish ? `Finish Workout · ${completedSets} sets` : 'Complete a set to finish'}
+          </button>
+        </div>
+      </div>
+
+      {showSummary && (
+        <WorkoutSummaryModal
+          workout={workout}
+          onSaveTemplate={onSaveTemplate}
+          personalRecords={personalRecords}
+          onDone={onFinish}
+          onBack={() => setShowSummary(false)}
+        />
+      )}
+
+      {pickerOpen && (
+        <ExercisePicker
+          exercises={exercises}
+          addedExerciseIds={workout.exercises.map((e) => e.exerciseId)}
+          onAdd={handleAdd}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {confirmCancel && (
+        <ConfirmDialog
+          title="Cancel this workout?"
+          message="Everything logged will be lost."
+          confirmLabel="Discard Workout"
+          onConfirm={onDiscard}
+          onCancel={() => setConfirmCancel(false)}
+        />
+      )}
+    </div>
+  );
+}

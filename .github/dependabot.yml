@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # Frontend dependencies
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for all non-major bumps — keeps the noise down; majors still
+      # come through individually so they get a real look.
+      frontend-minor:
+        update-types: [minor, patch]
+
+  # Cloud Functions dependencies
+  - package-ecosystem: npm
+    directory: /functions
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      functions-minor:
+        update-types: [minor, patch]
+
+  # The GitHub Actions used by CI itself
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

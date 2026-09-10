@@ -1,0 +1,52 @@
+name: CI
+
+# Lint + build gate for every push and pull request. Deploys stay manual
+# (Vercel for the frontend, `firebase deploy` for functions/rules) — this
+# only proves the tree is in a shippable state, it doesn't ship anything.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# A new push to the same branch cancels an in-progress run for it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Matches the Cloud Functions runtime (functions/package.json
+          # engines.node) so the same version lints both halves.
+          node-version: '22'
+          cache: npm
+
+      # ---- Frontend ----
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Lint (frontend + functions)
+        # oxlint is a root devDependency; point it at both source trees.
+        run: npx oxlint src functions
+
+      - name: Build
+        run: npm run build
+
+      # ---- Cloud Functions ----
+      - name: Install functions deps
+        run: npm ci
+        working-directory: functions
+
+      - name: Syntax-check functions
+        run: find . -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check
+        working-directory: functions
+
+      - name: Audit functions deps (fail only on high/critical)
+        run: npm audit --audit-level=high
+        working-directory: functions

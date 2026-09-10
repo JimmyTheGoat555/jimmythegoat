@@ -1,0 +1,360 @@
+@import 'tailwindcss';
+
+:root {
+  /* Legacy name, new palette: repointed to the "Fortnite/Arcade" neon set
+     so every screen/component still referencing var(--ember) for a small
+     accent (links, focus rings, icons) picks up the new identity for
+     free, without a per-file rewrite. */
+  --ember: #ff8c1a;
+  --success: #39ff14;
+  --danger: #ff1744;
+
+  /* The app-wide "Evolution" theme: any screen showing a user's own
+     progress sets these to that user's current tier (see utils/tierTheme.js
+     + App.jsx), so buttons/borders/active-tab color match how far they've
+     evolved — drawn from the neon rarity-style palette (energetic orange →
+     electric cyan → neon purple → mythic magenta). Defaults here are the
+     "goat" tier's orange — the new floor tier since "kid" was removed —
+     for screens rendered before a user's tier is known (e.g. AuthScreen,
+     pre-login). */
+  --tier-from: #ff8c1a;
+  --tier-to: #ff5e00;
+  --tier-accent: #ff8c1a;
+  --tier-glow: rgba(255, 140, 26, 0.55);
+
+  /* Heavy, condensed, all-caps display font for headers/callouts/primary
+     buttons — Anton has one weight and no italic face on purpose; the
+     slant everywhere it's used comes from `font-style: italic` triggering
+     browser-synthesized oblique, which is fine for a display face like
+     this. Never used for body copy — that stays the readable system font
+     below, this is strictly for HUD-style shouting. */
+  --font-arcade: 'Anton', 'Arial Narrow', sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, 'SF Pro Text', system-ui, 'Segoe UI', Roboto, sans-serif;
+  background: #06021c;
+}
+
+/* Locked, non-resizable feel (explicit request): no pinch-zoom, no
+   double-tap-to-zoom. The viewport meta tag (index.html) already sets
+   user-scalable=no/maximum-scale=1, this is the CSS-level backstop for
+   browsers (mainly iOS Safari) that partially ignore that for
+   accessibility reasons. */
+html,
+body {
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+}
+
+/* Portrait-only guard for a plain (non-installed) browser tab — see the
+   comment on #rotate-overlay in index.html for why this can't just be a
+   JS orientation lock. Hidden by default; only takes over on phone-width
+   landscape so a desktop window someone widens is never affected. */
+#rotate-overlay {
+  display: none;
+}
+@media (orientation: landscape) and (max-width: 900px) {
+  #rotate-overlay {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    background: #06021c;
+    color: #fff;
+    text-align: center;
+    padding: 2rem;
+  }
+  #rotate-overlay p:first-child {
+    font-size: 3.5rem;
+    transform: rotate(90deg);
+  }
+}
+
+/* Number inputs without native spinners across the whole app */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  appearance: textfield;
+}
+
+/* Fortnite-style shouting typography (guideline 1) — every h1/h2 in the
+   app picks this up automatically, no per-file className hunting needed.
+   Heavy, uppercase, slanted, with a hard black drop-shadow for that
+   chunky "HUD lettering" look. h3 stays a lighter touch (section labels
+   inside cards) so not every scrap of text on screen is shouting. */
+h1,
+h2 {
+  font-family: var(--font-arcade);
+  text-transform: uppercase;
+  font-style: italic;
+  letter-spacing: 0.01em;
+  text-shadow:
+    2px 2px 0 rgba(0, 0, 0, 0.85),
+    4px 4px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* A fixed, full-viewport arcade backdrop (guideline 5): a deep navy/purple
+   base, a Tron-style cyan grid, scattered particle dots, and a diagonal
+   speed-line sweep — layered as separate background-images on one fixed
+   div so it's a single paint layer, not several stacked elements. The
+   grid drifts slowly for a "moving floor" feel; kept slow/subtle since
+   this sits behind every screen permanently. z-index is explicit, not
+   implied by DOM order — this app already hit a real bug once from
+   trusting fixed-element paint order (see App.jsx's `isolate` + the
+   negative z-index here, which is only safe because of that isolation). */
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-color: #06021c;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.28) 1px, transparent 1.6px),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 229, 255, 0.14) 0px,
+      rgba(0, 229, 255, 0.14) 1px,
+      transparent 1px,
+      transparent 56px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 229, 255, 0.14) 0px,
+      rgba(0, 229, 255, 0.14) 1px,
+      transparent 1px,
+      transparent 56px
+    ),
+    repeating-linear-gradient(
+      115deg,
+      rgba(255, 255, 255, 0.06) 0px,
+      rgba(255, 255, 255, 0.06) 3px,
+      transparent 3px,
+      transparent 160px
+    ),
+    radial-gradient(ellipse at 18% 12%, rgba(176, 38, 255, 0.4), transparent 55%),
+    radial-gradient(ellipse at 85% 90%, rgba(0, 229, 255, 0.32), transparent 55%),
+    linear-gradient(160deg, #0a0322 0%, #170a3f 50%, #240f57 100%);
+  background-size:
+    28px 28px,
+    56px 56px,
+    56px 56px,
+    auto,
+    auto,
+    auto,
+    auto;
+  animation: arcade-grid-drift 22s linear infinite;
+}
+
+@keyframes arcade-grid-drift {
+  from {
+    background-position:
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0;
+  }
+  to {
+    background-position:
+      0 0,
+      56px 0,
+      0 56px,
+      0 0,
+      0 0,
+      0 0,
+      0 0;
+  }
+}
+
+.ambient-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(4, 1, 14, 0.5), rgba(4, 1, 14, 0.28) 45%, rgba(4, 1, 14, 0.6));
+}
+
+/* Arcade card aesthetic (guideline 2): angled cut corners via clip-path
+   instead of rounded ones, a dark blue/purple gradient fill, and a neon
+   border in the current tier color. box-shadow doesn't survive a
+   clip-path (it gets clipped along with the box), so the glow uses
+   `filter: drop-shadow` instead — that's the one thing to remember if
+   this ever needs tweaking. No backdrop-filter here on purpose (see the
+   comment history in git/memory — stacked blur on fixed/animated layers
+   was a real rendering bug on iOS); the gradient fill is opaque enough on
+   its own. */
+.card {
+  --card-cut: 14px;
+  background: linear-gradient(160deg, rgba(36, 15, 87, 0.94), rgba(10, 3, 34, 0.96));
+  border: 2px solid var(--tier-accent);
+  border-radius: 0;
+  clip-path: polygon(
+    var(--card-cut) 0,
+    100% 0,
+    100% calc(100% - var(--card-cut)),
+    calc(100% - var(--card-cut)) 100%,
+    0 100%,
+    0 var(--card-cut)
+  );
+  filter: drop-shadow(0 0 10px var(--tier-glow)) drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55));
+  transition:
+    transform 0.15s ease,
+    filter 0.15s ease;
+}
+a.card:hover,
+button.card:hover {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 0 16px var(--tier-glow)) drop-shadow(0 8px 16px rgba(0, 0, 0, 0.6));
+}
+
+/* Chunky arcade button (guideline 4) — thick bright border, a top-half
+   highlight layered over the tier gradient, a slanted clip-path, and a
+   hard offset "3D lip" shadow that collapses on press for real depth
+   feedback instead of just a scale tween. Reserved for primary CTAs
+   (Enter the Arena, sign in/up) — every button on every screen wearing
+   this would be visual noise, Fortnite's own UI saves the chunky
+   treatment for the handful of actions that matter most per screen too. */
+.btn-arcade {
+  position: relative;
+  font-family: var(--font-arcade);
+  text-transform: uppercase;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  color: #fff;
+  border: 3px solid rgba(255, 255, 255, 0.92);
+  clip-path: polygon(16px 0, 100% 0, calc(100% - 16px) 100%, 0 100%);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 45%);
+  background-color: color-mix(in srgb, var(--tier-from) 55%, var(--tier-to) 45%);
+  box-shadow:
+    0 6px 0 rgba(0, 0, 0, 0.55),
+    0 0 26px var(--tier-glow);
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.08s ease;
+}
+.btn-arcade:active {
+  transform: translateY(6px);
+  box-shadow:
+    0 0 0 rgba(0, 0, 0, 0.55),
+    0 0 14px var(--tier-glow);
+}
+.btn-arcade:disabled {
+  filter: grayscale(0.6) brightness(0.7);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.55);
+}
+
+/* The "lobby pedestal" Jimmy stands on (guideline 3) — a flattened glowing
+   ellipse with a neon ring, breathing gently. Purely decorative, sits
+   behind the mascot sprite. */
+.pedestal {
+  border-radius: 50%;
+  border: 3px solid var(--tier-accent);
+  background: radial-gradient(ellipse at center, var(--tier-glow), transparent 72%);
+  filter: drop-shadow(0 0 22px var(--tier-glow));
+  animation: pedestal-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes pedestal-pulse {
+  0%,
+  100% {
+    opacity: 0.65;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+/* Swiping (or tapping) between bottom-nav tabs — see hooks/useTabSwipe.js
+   and App.jsx's Layout. A quick directional slide+fade on the INCOMING
+   screen only (the outgoing one just unmounts, same as any other route
+   change) — a lightweight stand-in for a true finger-tracked carousel,
+   which would need every tab mounted at once side-by-side. "forward"
+   plays when moving to a tab further right in the bar (swipe-left or tap
+   a tab to the right of the current one); "backward" is the mirror. */
+@keyframes tab-slide-in-forward {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes tab-slide-in-backward {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.tab-enter-forward {
+  animation: tab-slide-in-forward 0.22s ease-out;
+}
+.tab-enter-backward {
+  animation: tab-slide-in-backward 0.22s ease-out;
+}
+
+/* Crossfade used when Jimmy's evolution sprite advances a tier. */
+@keyframes goat-evolve {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* AuthScreen's showcase glow, before a user's own tier is known — pulses
+   between two fixed neon stops (electric cyan / mythic magenta) rather
+   than var(--tier-glow), since there's no signed-in tier yet on that
+   screen. Reused app-wide (see GradientBorder) once a tier IS known, at
+   which point other components layer var(--tier-glow) on top via
+   filter/box-shadow instead of relying on this keyframe's fixed colors. */
+@keyframes rainbow-glow-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.55));
+  }
+  50% {
+    filter: drop-shadow(0 0 16px rgba(255, 47, 176, 0.6));
+  }
+}
+
+/* A quick white flash that blooms and fades on press — the "high-impact
+   feedback" the hero button gives instead of a slower hold-to-charge
+   mechanic (this app's whole ethos is logging a set as fast as possible,
+   so the punch is instant, not gated behind a hold timer). */
+@keyframes button-burst {
+  from {
+    opacity: 1;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.2);
+  }
+}

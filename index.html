@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- maximum-scale=1 + user-scalable=no locks out pinch/double-tap zoom
+         (Safari on iOS 10+ ignores user-scalable for accessibility, so
+         touch-action: manipulation in index.css backs this up there). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Jimmy Goat" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+    <!-- Fortnite/arcade-style display font for headers and primary CTAs —
+         a single heavy weight, no italic face (see the CSS-synthesized
+         slant in index.css), used sparingly on purpose: body copy stays
+         the readable system font. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet" />
+    <title>Jimmy the Goat | Strength Tracker</title>
+  </head>
+  <body class="bg-neutral-950 text-neutral-100">
+    <div id="root"></div>
+    <!-- Portrait-only guard for when the app is running in a plain browser
+         tab (not installed) — the manifest's orientation:'portrait' locks
+         rotation for the installed/standalone PWA, but a regular browser
+         tab can't be orientation-locked from JS without the Fullscreen API,
+         so this CSS-only overlay blocks interaction and asks the player to
+         rotate back instead. Lives outside the React root so it works even
+         before the app has hydrated. Scoped to narrow/phone widths only —
+         never blocks a desktop browser window someone happens to widen. -->
+    <div id="rotate-overlay">
+      <p>🐐</p>
+      <p>Rotate back to portrait to keep training.</p>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

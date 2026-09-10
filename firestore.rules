@@ -1,0 +1,333 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // True if the caller is the trainer connected to trainee `uid`.
+    // One extra read per request — fine at this scale, worth denormalizing
+    // if a trainer's roster ever gets large (see useTrainerTrainees.js).
+    function isTrainerOf(uid) {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(uid)).data.trainerId == request.auth.uid;
+    }
+
+    // The mirror of isTrainerOf — true if the caller is a trainee currently
+    // connected to trainer `uid` (i.e. the caller's OWN trainerId points at
+    // this trainer). Used only for the one-directional trainee→trainer
+    // notification channel below; nothing else needs this direction.
+    function isConnectedTraineeOf(trainerUid) {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.trainerId == trainerUid;
+    }
+
+    // Fields on users/{uid} that are entirely server-managed — never
+    // touchable by a direct client write, only by the Cloud Functions that
+    // own them (which run with the Admin SDK and so never go through these
+    // rules at all):
+    //   - coins/unlockedDances/unlockedAccessories: economy.js's
+    //     logWorkout()/purchaseItem(). Blocks self-granting coins or
+    //     forging an unlock.
+    //   - friends: social.js's respondToFriendRequest()/removeFriend().
+    //     Blocks skipping the approval step by just arrayUnion-ing
+    //     yourself into someone's friends list directly — see
+    //     users/{uid}/friendRequests below for the request/accept flow
+    //     this now requires.
+    //   - sharePRs: publicProfile.js's setSharePRs(). This one isn't about
+    //     stopping self-dealing (nobody profits from lying about their own
+    //     flag) — it's that flipping it has a real, immediate privacy
+    //     consequence (hiding/revealing users/{uid}/public/summary's
+    //     personalRecords) that has to happen atomically WITH the flag
+    //     change. A plain client write here would leave the two out of
+    //     sync until the owner's next logged workout — a real exposure
+    //     window if someone thought turning sharing off had made their
+    //     old PRs private again immediately.
+    function serverManagedFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['coins', 'unlockedDances', 'unlockedAccessories', 'friends', 'sharePRs']);
+    }
+
+    // Signup is allowed to CREATE these fields, just only ever at their
+    // untouched starting value — otherwise someone could hand themselves a
+    // balance (or a friend, unapproved) on the very first write, before
+    // serverManagedFieldsUnchanged() (an update-only check, since there's
+    // no prior doc to diff against on create) ever gets a chance to apply.
+    function serverManagedFieldsAtDefault() {
+      return request.resource.data.get('coins', 0) == 0 &&
+        request.resource.data.get('unlockedDances', []).size() == 0 &&
+        request.resource.data.get('unlockedAccessories', []).size() == 0 &&
+        request.resource.data.get('friends', []).size() == 0 &&
+        request.resource.data.get('sharePRs', false) == false;
+    }
+
+    // You can only ever equip a dance/accessory you actually own. Always
+    // checked against the INCOMING request.resource.data's own unlocked
+    // arrays rather than branching on create vs update: on create those
+    // arrays must be empty (serverManagedFieldsAtDefault() above), which
+    // forces equipped* to null anyway; on update,
+    // serverManagedFieldsUnchanged() already guarantees the incoming
+    // unlocked arrays match the existing ones, so reading them off
+    // request.resource.data is equivalent to reading the current,
+    // authoritative ownership list either way.
+    function equippedFieldsValid() {
+      return (request.resource.data.get('equippedDance', null) == null ||
+          request.resource.data.get('unlockedDances', []).hasAny([request.resource.data.equippedDance])) &&
+        (request.resource.data.get('equippedAccessory', null) == null ||
+          request.resource.data.get('unlockedAccessories', []).hasAny([request.resource.data.equippedAccessory]));
+    }
+
+    // The Settings panel's "you can only change your username once" is
+    // enforced here, not just by disabling the input client-side — a
+    // client-only limit is just a suggestion the moment someone opens
+    // devtools. Only ever an UPDATE-time check (a fresh signUp() setting
+    // displayName for the first time isn't a "change"): if this write
+    // touches displayName at all, the flag must currently be false AND
+    // the SAME write must flip it to true — so using the one allowed
+    // change and forgetting to set the flag isn't a way to get a second
+    // one, and the flag can never go true→false→true again.
+    function usernameChangeValid() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName']) ||
+        (resource.data.get('usernameChangedOnce', false) == false &&
+          request.resource.data.get('usernameChangedOnce', false) == true);
+    }
+
+    // A tiny public lookup table: trainer code → trainerId, so a brand-new
+    // trainee (at signup, or later from their profile) can resolve a code
+    // to a uid with a plain get()-by-id. This does NOT live as a query
+    // against `users` itself — `where('trainerCode', '==', code)` against
+    // `users` can never be authorized there: Firestore rejects an entire
+    // collection query outright unless its security rule can be proven
+    // from the query's own filters alone, and there's no way to tie
+    // "resource.data.role == 'trainer'" to a filter on trainerCode (tried
+    // exactly that — confirmed still 403s via a direct REST call even with
+    // that rule deployed). A single get() by document id has no such
+    // restriction, which is the whole reason this table exists. Contains
+    // nothing sensitive: a random 6-character code and the trainerId it
+    // already exists to hand out.
+    match /trainerCodes/{code} {
+      allow read: if signedIn();
+      // Only the trainer who owns this code may create the one mapping to
+      // their own uid; it's immutable after that (a trainer's code never
+      // changes today, so there's no update/delete path to allow).
+      allow create: if isOwner(request.resource.data.trainerId);
+      allow update, delete: if false;
+    }
+
+    // The same trick as trainerCodes, one level more general: EVERY user
+    // (not just trainers) gets one of these so anyone can be found and sent
+    // a friend request by code — see social.js's sendFriendRequest().
+    // Denormalizes `displayName` alongside `uid` (both already meant to be
+    // shared the instant you hand someone this code) so a "my friends"
+    // list can resolve names via a where('uid', 'in', [...]) query without
+    // needing read access to strangers' full users/{uid} docs — that query
+    // is safe to authorize with a bare signedIn() check because, unlike
+    // the trainerCode lookup, it doesn't depend on resource.data at all,
+    // so Firestore can prove it holds for every possible match without
+    // inspecting any of them.
+    match /friendCodes/{code} {
+      allow read: if signedIn();
+      allow create: if isOwner(request.resource.data.uid);
+      allow update, delete: if false;
+    }
+
+    // A verified workout's public feed post — see logWorkout() in
+    // economy.js, the ONLY writer (Admin SDK, bypasses these rules
+    // entirely). Deliberately readable by any signed-in user rather than
+    // gated to "only this poster's followers": the same lesson from
+    // trainerCodes applies here even harder, since the feed's own query
+    // (where('userId', 'in', myFriends)) is a `list`, and a resource.data-
+    // dependent rule (e.g. "reader must appear in poster's followers")
+    // would make Firestore reject that ENTIRE query up front, the exact
+    // failure this project already hit twice. A feed post has nothing more
+    // sensitive in it than a Strava activity — exercise names, volume,
+    // coins earned, and whatever cosmetics were equipped at the time.
+    match /feedPosts/{postId} {
+      allow read: if signedIn();
+      allow create, update, delete: if false;
+
+      // A "cheer" is just your own tiny doc in here — no counter field
+      // anywhere to tamper with; the UI derives the count by reading this
+      // subcollection's size. One doc per liker (the doc id IS their uid),
+      // so double-cheering isn't a write concern (arrayUnion-style, though
+      // there isn't even an array here) and un-cheering is just deleting
+      // your own doc back out.
+      match /likes/{likerUid} {
+        allow read: if signedIn();
+        allow create, delete: if isOwner(likerUid);
+        allow update: if false;
+      }
+    }
+
+    // Per-user abuse counters for the outbound social callables — hourly
+    // friend-request cap, per-friend nudge cooldown (see functions/guards.js).
+    // Written ONLY by the Admin SDK inside those functions; the client can
+    // neither read it (there's no "requests remaining" UI) nor, crucially,
+    // reset it — the whole point is that it survives a devtools session.
+    match /rateLimits/{uid} {
+      allow read, write: if false;
+    }
+
+    match /users/{uid} {
+      // A trainee's own doc is also readable by their connected trainer
+      // (Trainer Dashboard roster query relies on this).
+      allow read: if isOwner(uid) || resource.data.trainerId == request.auth.uid;
+      // Only ever written by its own owner: signup (create) and later
+      // self-service edits — connecting to a trainer, updating displayName
+      // (subject to usernameChangeValid()'s one-time limit — see Settings),
+      // equipping an owned dance/accessory. NOT friending, despite being
+      // "your own doc": `friends` requires the OTHER person's consent too
+      // (see users/{uid}/friendRequests below and social.js), so it's
+      // deliberately excluded from what "owner" alone can change — that's
+      // what serverManagedFieldsUnchanged() blocks.
+      allow create: if isOwner(uid) && serverManagedFieldsAtDefault() && equippedFieldsValid();
+      allow update: if isOwner(uid) && serverManagedFieldsUnchanged() && equippedFieldsValid() && usernameChangeValid();
+      allow delete: if false;
+
+      match /friendRequests/{fromUid} {
+        // An incoming friend request — see social.js. Entirely
+        // server-managed: sendFriendRequest() creates it,
+        // respondToFriendRequest() deletes it either way (accepted or
+        // declined). The recipient can read their own inbox to show an
+        // Accept/Decline list; nothing here is ever client-writable,
+        // which is the actual approval gate — a client can't accept its
+        // own request by editing status, because it can't write this
+        // document at all.
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      match /workouts/{workoutId} {
+        // Owner sees/edits their own logged workouts; their trainer can
+        // view (never edit — a coach doesn't get to rewrite your lifts).
+        // Direct client writes stay allowed for personal history
+        // corrections (fixing a typo'd weight after the fact, deleting an
+        // entry) — but a directly-written workout can never carry
+        // `verified: true` or `coinsEarned` (those, like a doc it never
+        // wrote, only come from logWorkout()'s Admin SDK path), so
+        // self-tampering here earns nothing and never re-enters the
+        // economy. Realistic weight/rep BOUNDS on the nested sets array
+        // aren't enforceable here at all — Firestore rules can't loop over
+        // an arbitrary-length nested array — which is exactly why anything
+        // with a reward attached is funneled through logWorkout() instead
+        // of trusted here.
+        allow read: if isOwner(uid) || isTrainerOf(uid);
+        allow create, update: if isOwner(uid) &&
+          request.resource.data.get('verified', false) == false &&
+          !('coinsEarned' in request.resource.data);
+        allow delete: if isOwner(uid);
+      }
+
+      match /meta/economy {
+        // Anti-abuse cooldown/daily-count state for logWorkout() — written
+        // ONLY by the Admin SDK, which bypasses these rules entirely.
+        // Readable by its owner so the UI can show e.g. "next workout
+        // available in Xs", but never client-writable: resetting your own
+        // cooldown/daily-count is the whole anti-spam mechanism.
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      match /meta/{docId} {
+        // Body weight + name/height details (single doc, id 'profile').
+        // Same read pattern as workouts: owner sees/edits their own, their
+        // trainer can view but never edit.
+        //
+        // docId != 'economy' on the write is not a style choice — it is the
+        // actual security boundary. Firestore evaluates EVERY match block
+        // whose path pattern fits a given document, and allows the request
+        // if ANY of them says yes — a literal segment match does not
+        // override a sibling wildcard the way a router's "most specific
+        // wins" would. Without this exclusion, meta/economy matches BOTH
+        // this wildcard (which would grant isOwner(uid) write access) and
+        // the dedicated `match /meta/economy` block above (which correctly
+        // denies all writes) — and the wildcard's yes wins the OR.
+        // Confirmed exploitable live: an account could PATCH its own
+        // workoutsToday/lastWorkoutLoggedAt straight through this rule,
+        // bypassing logWorkout()'s cooldown and daily cap entirely and
+        // farming coins by looping reset -> log -> reset -> log.
+        allow read: if isOwner(uid) || isTrainerOf(uid);
+        allow write: if isOwner(uid) && docId != 'economy';
+      }
+
+      match /templates/{templateId} {
+        // A personal saved-routine library — owner only. Not shared with a
+        // trainer (this is a quick-start convenience, not an assignable
+        // program library like assignedWorkouts below).
+        allow read, write: if isOwner(uid);
+      }
+
+      match /notifications/{notificationId} {
+        // Your own inbox — only you ever read, mark-read, or dismiss your
+        // own notifications. This is a one-directional trainee→trainer
+        // channel, not shared visibility: a trainer can WRITE into it
+        // (only their own connected trainee's client actually does this,
+        // via pushNotification()) but can never READ a trainee's inbox,
+        // and vice versa. The scheduled reminder Cloud Function writes via
+        // the Admin SDK, which bypasses these rules entirely.
+        allow read, update, delete: if isOwner(uid);
+        allow create: if isOwner(uid) || isConnectedTraineeOf(uid);
+      }
+
+      match /fcmTokens/{tokenId} {
+        // Push registration tokens — owner only, both ways. The Cloud
+        // Function that actually sends pushes uses the Admin SDK, which
+        // bypasses these rules entirely; this only ever needs to stop
+        // OTHER signed-in clients from reading/writing someone else's
+        // device tokens.
+        allow read, write: if isOwner(uid);
+      }
+
+      match /assignedWorkouts/{assignedId} {
+        // Trainee reads their own assignments; the trainer who created one
+        // can also read it back.
+        allow read: if isOwner(uid) || request.auth.uid == resource.data.assignedBy;
+        // Only the trainee's *connected* trainer may push a new assignment,
+        // and only under their own name.
+        allow create: if isTrainerOf(uid) && request.resource.data.assignedBy == request.auth.uid;
+        // Trainee flips status to 'completed' when they finish it; the
+        // assigning trainer may also update/cancel it.
+        allow update: if isOwner(uid) || request.auth.uid == resource.data.assignedBy;
+        allow delete: if request.auth.uid == resource.data.assignedBy;
+      }
+
+      match /public/summary {
+        // A small, deliberately-public mirror of exactly what a friend's
+        // profile view needs — displayName, lifetimeVolume (drives their
+        // shown evolution stage), sharePRs, personalRecords when sharePRs
+        // is true, and equippedDance/equippedAccessory. Nothing else about
+        // this account lives here. Readable by anyone signed in, matching
+        // this app's existing precedent: feedPosts already carries similar
+        // cosmetic/stat data under the same bare signedIn() rule (see
+        // above) — visibility is enforced by what the server chooses to
+        // publish here, never by gating the read to "is this reader
+        // actually a friend."
+        //
+        // Creation and every field except the two equipped ones stay
+        // server-only (see publicProfile.js's setSharePRs() and
+        // economy.js's logWorkout(), the only writers of those) — a client
+        // writing its own lifetimeVolume/personalRecords here directly
+        // would let anyone fabricate a friend-visible record they never
+        // actually set. equippedDance/equippedAccessory get a narrow
+        // owner-update exception (mirroring useEconomy.js's equipItem, the
+        // exact same plain-client-write model already used for the
+        // authoritative copy on users/{uid} itself): unlike coins or a
+        // fabricated PR, claiming to wear an accessory you don't own is
+        // harmless vanity, not a security or economy bypass, so this
+        // doesn't need the ownership cross-check equippedFieldsValid() does
+        // for the real doc.
+        allow read: if signedIn();
+        allow create, delete: if false;
+        allow update: if isOwner(uid) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['equippedDance', 'equippedAccessory']);
+      }
+    }
+  }
+}
