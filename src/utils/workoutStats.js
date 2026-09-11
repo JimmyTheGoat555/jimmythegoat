@@ -8,18 +8,31 @@ import { MUSCLE_GROUPS } from '../data/exercises';
 export const OPTIMAL_WEEKLY_SETS_MIN = 12;
 export const OPTIMAL_WEEKLY_SETS_MAX = 18;
 
-export function setVolume(set) {
-  const weight = Number(set.weight) || 0;
+// `effectiveWeightKg` overrides the stored `set.weight` — used for an
+// in-progress bodyweight set, whose weight is still blank on the client
+// (logWorkout folds in the lifter's body weight server-side). A finished
+// workout's bodyweight sets already store their computed weight, so they
+// need no override.
+export function setVolume(set, effectiveWeightKg) {
+  const weight = effectiveWeightKg != null ? Number(effectiveWeightKg) : Number(set.weight) || 0;
   const reps = Number(set.reps) || 0;
   return weight * reps;
 }
 
-export function workoutVolume(workout) {
-  return workout.exercises.reduce(
-    (total, exercise) =>
-      total + exercise.sets.filter((s) => s.completed).reduce((sum, s) => sum + setVolume(s), 0),
-    0,
-  );
+export function workoutVolume(workout, bodyWeightKg = 0) {
+  return workout.exercises.reduce((total, exercise) => {
+    const bw = exercise.isBodyweight === true;
+    return (
+      total +
+      exercise.sets
+        .filter((s) => s.completed)
+        .reduce((sum, s) => {
+          const inProgressBw = bw && !(Number(s.weight) > 0);
+          const eff = inProgressBw ? (Number(bodyWeightKg) || 0) + (Number(s.addedWeight) || 0) : undefined;
+          return sum + setVolume(s, eff);
+        }, 0)
+    );
+  }, 0);
 }
 
 export function workoutSetCount(workout) {
@@ -105,10 +118,71 @@ export function exerciseProgress(workouts, exerciseId) {
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 }
 
-// Total kilograms ever lifted across every finished workout — the number
-// behind the LifetimeVolumeCard's "idle game" tonnage display.
+// Divisor for workouts logged BEFORE relative scoring existed (no stored
+// `score` / per-set `relativeVolume`) — kept in sync with
+// functions/storeCatalog.js's LEGACY_BODYWEIGHT_KG so the owner's number
+// matches the server-published one.
+const LEGACY_BODYWEIGHT_KG = 75;
+
+// Relative Strength Volume for one workout: the stored `score` if it has
+// one (new workouts), else the sum of per-set `relativeVolume`, else raw
+// kg mapped onto the new scale against an average lifter (legacy).
+export function workoutScore(workout) {
+  if (typeof workout.score === 'number' && Number.isFinite(workout.score)) return workout.score;
+  let relative = 0;
+  let legacy = 0;
+  let sawRelative = false;
+  for (const exercise of workout.exercises ?? []) {
+    for (const s of exercise.sets ?? []) {
+      if (!s.completed) continue;
+      const reps = Number(s.reps) || 0;
+      const weight = Number(s.weight) || 0;
+      if (Number.isFinite(Number(s.relativeVolume))) {
+        sawRelative = true;
+        relative += Number(s.relativeVolume);
+      }
+      legacy += (weight / LEGACY_BODYWEIGHT_KG) * reps;
+    }
+  }
+  return sawRelative ? relative : legacy;
+}
+
+// Cumulative Relative Strength Volume across every finished workout — the
+// number behind the evolution tier AND the "strength score" card.
+// Recovery workouts (logged after a long layoff — see functions/economy.js)
+// are excluded; the server's lifetimeVolumeOf in functions/records.js
+// applies the same filter so the two numbers agree.
 export function lifetimeVolume(workouts) {
-  return workouts.filter((w) => w.finishedAt).reduce((sum, w) => sum + workoutVolume(w), 0);
+  return workouts
+    .filter((w) => w.finishedAt && !w.recoveryWorkout)
+    .reduce((sum, w) => sum + workoutScore(w), 0);
+}
+
+// This week's cumulative Relative Strength Volume — the number the weekly
+// leaderboard ranks on now (its strength-relative counterpart to
+// weeklySummary().totalVolume, which stays raw kg for the "tonnage this
+// week" displays). Recovery workouts earn nothing, so they're excluded
+// here exactly as in lifetimeVolume(). Same week boundary as
+// weeklySummary via startOfWeek().
+export function weeklyScore(workouts) {
+  const weekStart = startOfWeek(new Date());
+  return (workouts ?? [])
+    .filter((w) => w.finishedAt && !w.recoveryWorkout && new Date(w.finishedAt) >= weekStart)
+    .reduce((sum, w) => sum + workoutScore(w), 0);
+}
+
+// ISO timestamp of the most recent finished workout, or null if there are
+// none. Recovery workouts ARE counted here — the whole point of one is to
+// refresh this clock and lift the neglect penalty (see
+// utils/evolutionTiers.js's isTierNeglected). ISO strings sort
+// lexicographically in timestamp order, so a plain string compare is safe.
+export function lastWorkoutAt(workouts) {
+  let latest = null;
+  for (const w of workouts ?? []) {
+    if (!w.finishedAt) continue;
+    if (latest === null || w.finishedAt > latest) latest = w.finishedAt;
+  }
+  return latest;
 }
 
 // Completed sets per muscle group so far this week — the basis for the

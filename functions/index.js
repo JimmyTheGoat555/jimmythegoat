@@ -155,3 +155,54 @@ exports.weeklyWeighInReminders = onSchedule('every day 08:00', async () => {
     }),
   );
 });
+
+// Re-engagement tease. Once a day, finds every account whose last workout
+// was 3-4 days ago and drops Jimmy's "lazy goat" callout in their inbox —
+// which sendPushOnNotificationCreate above then turns into a real push,
+// same as every other notification type. Deliberately NOT a direct
+// getMessaging() call here: that function is the app's single FCM caller
+// on purpose (it owns dead-token pruning and the inbox write in one
+// place), and a second hand-rolled sender would be exactly the "new
+// notification type needs new server code" this file's header rules out.
+//
+// The 72h..96h window is what makes it fire EXACTLY ONCE per dry spell:
+// the job runs daily, the window is 24h wide, so a given account crosses
+// it on precisely one run — day 3. Day 2 is too soon, day 5 is already
+// past it. (If Cloud Scheduler ever skips a day, that run's cohort ages
+// out un-teased rather than getting double-hit later — an acceptable miss
+// for a tease.) `lastWorkoutAt` is the ISO string economy.js mirrors onto
+// the user doc; ISO 8601 UTC sorts lexicographically in time order, so
+// string bounds are a valid range. A plain single-field range query =
+// Firestore's automatic index, no firestore.indexes.json entry needed.
+//
+// Existing accounts that last trained before this field started being
+// written simply won't match until their next logged workout — no
+// deploy-day blast of every dormant user, which is the safer default.
+const LAZY_WINDOW_START_MS = 96 * 60 * 60 * 1000; // 4 days ago
+const LAZY_WINDOW_END_MS = 72 * 60 * 60 * 1000; // 3 days ago
+
+exports.teaseLazyGoats = onSchedule('every day 10:00', async () => {
+  const now = Date.now();
+  const startIso = new Date(now - LAZY_WINDOW_START_MS).toISOString();
+  const endIso = new Date(now - LAZY_WINDOW_END_MS).toISOString();
+
+  const lazySnap = await db
+    .collection('users')
+    .where('lastWorkoutAt', '>=', startIso)
+    .where('lastWorkoutAt', '<', endIso)
+    .get();
+
+  if (lazySnap.empty) return;
+
+  await Promise.all(
+    lazySnap.docs.map((userDoc) =>
+      db.collection('users').doc(userDoc.id).collection('notifications').add({
+        type: 'lazy_goat_tease',
+        title: 'Jimmy is judging you. 🐐',
+        body: '3 days without lifting? You are officially a lazy goat. Get off the couch and go train!',
+        read: false,
+        createdAt: new Date().toISOString(),
+      }),
+    ),
+  );
+});

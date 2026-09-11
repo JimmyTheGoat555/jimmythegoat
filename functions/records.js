@@ -10,6 +10,8 @@
 // what actually gets published, recomputed from stored history, so a client
 // cannot claim a record it did not set.
 
+const { LEGACY_BODYWEIGHT_KG } = require('./storeCatalog');
+
 function bestSetOf(exercise) {
   let best = null;
   for (const set of exercise?.sets ?? []) {
@@ -26,6 +28,10 @@ function bestSetOf(exercise) {
 function bestWeightPerExercise(workouts) {
   const best = new Map();
   for (const workout of workouts ?? []) {
+    // A recovery workout (logged after >= NEGLECT_RECOVERY_DAYS away — see
+    // economy.js) is un-rewarded: it can't set a record and its lifts
+    // don't raise the bar for future ones either.
+    if (workout?.recoveryWorkout) continue;
     for (const exercise of workout?.exercises ?? []) {
       const top = bestSetOf(exercise);
       if (!top || !exercise.exerciseId) continue;
@@ -43,22 +49,43 @@ function bestWeightPerExercise(workouts) {
   return best;
 }
 
-// Summed here rather than trusted from anywhere else: this is the ONLY
-// server-computed lifetime total (used to publish an evolution stage to
-// friends — see publicProfile.js), and it has to agree with what the owner
-// sees in their own app, which derives the same number the same way
-// (utils/workoutStats.js's lifetimeVolume) from the same per-set data.
+// Relative Strength Volume for one workout. Prefers the stored `score`
+// (new workouts), falls back to summing per-set `relativeVolume` (an
+// edited new workout), and last-resorts to mapping raw kg onto the new
+// scale against an average lifter (workouts logged before relative
+// scoring existed).
+function workoutRelativeScore(workout) {
+  if (typeof workout?.score === 'number' && Number.isFinite(workout.score)) return workout.score;
+  let total = 0;
+  let sawRelative = false;
+  let legacy = 0;
+  for (const exercise of workout?.exercises ?? []) {
+    for (const set of exercise?.sets ?? []) {
+      if (set.completed === false) continue;
+      const reps = Number(set.reps);
+      const weight = Number(set.weight);
+      if (!Number.isFinite(reps) || !Number.isFinite(weight)) continue;
+      if (Number.isFinite(Number(set.relativeVolume))) {
+        sawRelative = true;
+        total += Number(set.relativeVolume);
+      }
+      legacy += (weight / LEGACY_BODYWEIGHT_KG) * reps;
+    }
+  }
+  return sawRelative ? total : legacy;
+}
+
+// The ONLY server-computed lifetime total (published to friends — see
+// publicProfile.js). Must agree with the owner's own app, which derives
+// the same number the same way (utils/workoutStats.js's lifetimeVolume).
+// This is now the cumulative Relative Strength Volume, not raw kg.
 function lifetimeVolumeOf(workouts) {
   let total = 0;
   for (const workout of workouts ?? []) {
-    for (const exercise of workout?.exercises ?? []) {
-      for (const set of exercise?.sets ?? []) {
-        if (set.completed === false) continue;
-        const weight = Number(set.weight);
-        const reps = Number(set.reps);
-        if (Number.isFinite(weight) && Number.isFinite(reps)) total += weight * reps;
-      }
-    }
+    // Recovery workouts refresh the training clock but never count toward
+    // the lifetime total — see economy.js and src/utils/workoutStats.js.
+    if (workout?.recoveryWorkout) continue;
+    total += workoutRelativeScore(workout);
   }
   return total;
 }

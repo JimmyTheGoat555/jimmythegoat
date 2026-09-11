@@ -3,7 +3,7 @@ import MissionCard from './MissionCard';
 import HypeSpeechBubble from './HypeSpeechBubble';
 import JimmyAnimation from '../evolution/JimmyAnimation';
 import { lifetimeVolume } from '../../utils/workoutStats';
-import { getEvolutionProgress } from '../../utils/evolutionTiers';
+import { getEvolutionProgress, formatTierGoalKg } from '../../utils/evolutionTiers';
 import { tierGradientCss } from '../../utils/tierTheme';
 import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAnimations';
 
@@ -13,12 +13,20 @@ import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAn
 const ARCADE_BUTTON_CLIP = 'polygon(16px 0, 100% 0, calc(100% - 16px) 100%, 0 100%)';
 const TAB_CLIP = 'polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%)';
 
-function buildHypeMessages({ next, remaining, isMaxTier, friends }) {
+function buildHypeMessages({ next, remaining, isMaxTier, neglected, baseTier, friends, bodyWeightKg }) {
   const messages = [];
+  if (neglected) {
+    // Leads the rotation while the penalty is active — the demotion is the
+    // thing that needs saying first.
+    messages.push(`Jimmy's gone soft — 5 days off cost you a tier. One workout brings ${baseTier.label} back.`);
+  }
   if (isMaxTier) {
     messages.push('Legendary status reached. Nothing left to prove — except to yourself.');
   } else if (next) {
-    messages.push(`${remaining.toLocaleString('en-US')} kg left until ${next.label}!`);
+    // Shown as a personalised absolute-kg goal (relative points × body
+    // weight) — see utils/evolutionTiers.js. The bar itself is still
+    // driven by the relative percent.
+    messages.push(`${formatTierGoalKg(remaining, bodyWeightKg)} to ${next.label}!`);
   }
   const activeFriend = friends.find((f) => f.weeklyTonnage > 0);
   if (activeFriend) {
@@ -58,6 +66,17 @@ export default function WorkoutHome({
   workouts = [],
   friends = [],
   equippedDance = null,
+  // During a tier-up celebration (see hooks/useTierUpCelebration.js) this
+  // is briefly 100, then null again — the XP bar rushes to full, holds,
+  // and snaps back to the real percentage of the newly-reached tier.
+  barOverride = null,
+  // ISO timestamp of the user's last workout (utils/workoutStats.js) —
+  // drives the 1-tier neglect penalty inside getEvolutionProgress.
+  lastWorkoutAt = null,
+  // Latest logged body weight (0 = none). Only used to render the relative
+  // tier goals as big absolute-kg numbers; 0 falls back to 75 kg inside
+  // formatTierGoalKg.
+  bodyWeightKg = 0,
 }) {
   const [activeTab, setActiveTab] = useState(null);
   const [assignedIdx, setAssignedIdx] = useState(0);
@@ -66,7 +85,9 @@ export default function WorkoutHome({
   const [mascotBroken, setMascotBroken] = useState(false);
 
   const totalVolume = lifetimeVolume(workouts);
-  const { current, next, percent, isMaxTier } = getEvolutionProgress(totalVolume);
+  const { current, next, percent, isMaxTier, neglected, baseTier } = getEvolutionProgress(totalVolume, {
+    lastWorkoutAt,
+  });
   const remaining = next ? Math.max(0, next.threshold - totalVolume) : 0;
   // null (no dance owned/equipped) is the common case and JimmyAnimation
   // already falls back to the plain static sprite for it — see there.
@@ -95,8 +116,8 @@ export default function WorkoutHome({
   }
 
   const messages = useMemo(
-    () => buildHypeMessages({ next, remaining, isMaxTier, friends }),
-    [next, remaining, isMaxTier, friends],
+    () => buildHypeMessages({ next, remaining, isMaxTier, neglected, baseTier, friends, bodyWeightKg }),
+    [next, remaining, isMaxTier, neglected, baseTier, friends, bodyWeightKg],
   );
 
   const handleStart = () => {
@@ -156,6 +177,17 @@ export default function WorkoutHome({
 
       <p className="text-2xl text-neutral-50 -mt-2">{current.label}</p>
 
+      {neglected && (
+        <div className="w-full -mt-2 rounded-xl bg-[var(--danger)]/15 border border-[var(--danger)]/30 px-3 py-2 text-center">
+          <p className="text-xs font-semibold text-[var(--danger)]">
+            😴 5 days off — Jimmy slipped to {current.label}
+          </p>
+          <p className="text-[11px] text-neutral-400 mt-0.5">
+            Log any workout to restore {baseTier.label}.
+          </p>
+        </div>
+      )}
+
       <div className="w-full">
         {isMaxTier ? (
           <p className="text-center text-sm font-bold" style={{ color: 'var(--tier-accent)' }}>
@@ -165,16 +197,19 @@ export default function WorkoutHome({
           <>
             <div className="flex items-baseline justify-between mb-1.5 px-0.5">
               <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-                Next: {next.label}
+                {neglected ? `Restore: ${baseTier.label}` : `Next: ${next.label}`}
               </span>
               <span className="text-xs font-extrabold" style={{ color: 'var(--tier-accent)' }}>
-                {remaining.toLocaleString('en-US')} kg to go
+                {neglected ? 'train to recover' : `${formatTierGoalKg(remaining, bodyWeightKg)} to go`}
               </span>
             </div>
             <div className="h-3.5 w-full rounded-full bg-black/40 overflow-hidden border border-white/10">
               <div
                 className="h-full rounded-full transition-all duration-700"
-                style={{ width: `${Math.max(percent, 3)}%`, background: tierGradientCss(current.id) }}
+                style={{
+                  width: `${barOverride ?? Math.max(percent, 3)}%`,
+                  background: tierGradientCss(current.id),
+                }}
               />
             </div>
           </>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTrainerTrainees } from '../../hooks/useTrainerTrainees';
-import { lifetimeVolume } from '../../utils/workoutStats';
+import { lifetimeVolume, lastWorkoutAt } from '../../utils/workoutStats';
 import { getEvolutionProgress } from '../../utils/evolutionTiers';
 import GradientBorder from '../shared/GradientBorder';
 
@@ -12,7 +12,11 @@ import GradientBorder from '../shared/GradientBorder';
 // sign-out control here.
 export default function TrainerDashboard({ profile, workouts }) {
   const { roster } = useTrainerTrainees(profile.id);
-  const { current: yourTier } = getEvolutionProgress(lifetimeVolume(workouts));
+  // Your OWN tier reflects your own neglect the same as it does on the
+  // Workout/Progress tabs — a trainer who stops training slips a tier too.
+  const { current: yourTier } = getEvolutionProgress(lifetimeVolume(workouts), {
+    lastWorkoutAt: lastWorkoutAt(workouts),
+  });
   const [mascotBroken, setMascotBroken] = useState(false);
 
   return (

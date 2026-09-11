@@ -49,9 +49,19 @@ service cloud.firestore {
     //     sync until the owner's next logged workout — a real exposure
     //     window if someone thought turning sharing off had made their
     //     old PRs private again immediately.
+    //   - lastWorkoutAt: economy.js's logWorkout() mirrors it here from
+    //     meta/economy so the daily re-engagement job (index.js's
+    //     teaseLazyGoats) can range-query `users` for idle accounts. No
+    //     self-dealing angle — spoofing it only dodges a "you're lazy"
+    //     push — but a server-written field has no business being
+    //     client-writable.
+    //   - badges: achievement badges, awarded only by logWorkout()'s Admin
+    //     SDK path (functions/badges.js re-derives them from stored
+    //     history). A client handing itself '100kg Bench Club' without the
+    //     lift is exactly what this blocks.
     function serverManagedFieldsUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys()
-        .hasAny(['coins', 'unlockedDances', 'unlockedAccessories', 'friends', 'sharePRs']);
+        .hasAny(['coins', 'unlockedDances', 'unlockedAccessories', 'friends', 'sharePRs', 'lastWorkoutAt', 'badges']);
     }
 
     // Signup is allowed to CREATE these fields, just only ever at their
@@ -64,7 +74,8 @@ service cloud.firestore {
         request.resource.data.get('unlockedDances', []).size() == 0 &&
         request.resource.data.get('unlockedAccessories', []).size() == 0 &&
         request.resource.data.get('friends', []).size() == 0 &&
-        request.resource.data.get('sharePRs', false) == false;
+        request.resource.data.get('sharePRs', false) == false &&
+        request.resource.data.get('badges', []).size() == 0;
     }
 
     // You can only ever equip a dance/accessory you actually own. Always
@@ -209,18 +220,20 @@ service cloud.firestore {
         // Direct client writes stay allowed for personal history
         // corrections (fixing a typo'd weight after the fact, deleting an
         // entry) — but a directly-written workout can never carry
-        // `verified: true` or `coinsEarned` (those, like a doc it never
-        // wrote, only come from logWorkout()'s Admin SDK path), so
-        // self-tampering here earns nothing and never re-enters the
-        // economy. Realistic weight/rep BOUNDS on the nested sets array
-        // aren't enforceable here at all — Firestore rules can't loop over
-        // an arbitrary-length nested array — which is exactly why anything
+        // `verified: true`, `coinsEarned`, or `score` (those only come
+        // from logWorkout()'s Admin SDK path), so self-tampering here
+        // earns nothing, never re-enters the economy, and can't fake a
+        // relative-strength score into the lifetime total. Realistic
+        // weight/rep BOUNDS on the nested sets array aren't enforceable
+        // here at all — Firestore rules can't loop over an
+        // arbitrary-length nested array — which is exactly why anything
         // with a reward attached is funneled through logWorkout() instead
         // of trusted here.
         allow read: if isOwner(uid) || isTrainerOf(uid);
         allow create, update: if isOwner(uid) &&
           request.resource.data.get('verified', false) == false &&
-          !('coinsEarned' in request.resource.data);
+          !('coinsEarned' in request.resource.data) &&
+          !('score' in request.resource.data);
         allow delete: if isOwner(uid);
       }
 

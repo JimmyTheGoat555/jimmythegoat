@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { lifetimeVolume } from '../../utils/workoutStats';
-import { EVOLUTION_TIERS, getEvolutionProgress } from '../../utils/evolutionTiers';
+import { lifetimeVolume, lastWorkoutAt } from '../../utils/workoutStats';
+import { EVOLUTION_TIERS, getEvolutionProgress, formatTierGoalKg } from '../../utils/evolutionTiers';
 import { loadJSON, saveJSON } from '../../lib/storage';
 import { tierGradientCss } from '../../utils/tierTheme';
 import GradientBorder from '../shared/GradientBorder';
@@ -11,6 +11,9 @@ type Workout = Record<string, unknown>;
 
 interface JimmyEvolutionProps {
   workouts: Workout[];
+  // Latest logged body weight (0 = none yet) — only scales how the
+  // relative tier goal is shown in kg. See utils/evolutionTiers.js.
+  bodyWeightKg?: number;
 }
 
 const LAST_SEEN_KEY = 'last-evolution-tier';
@@ -29,9 +32,11 @@ const LAST_SEEN_KEY = 'last-evolution-tier';
 // sprite to the new one once, then record the new tier as seen. If a
 // sprite file is missing, each layer falls back to the tier's emoji
 // instead of a broken-image icon.
-export default function JimmyEvolution({ workouts }: JimmyEvolutionProps) {
+export default function JimmyEvolution({ workouts, bodyWeightKg = 0 }: JimmyEvolutionProps) {
   const totalVolume = lifetimeVolume(workouts);
-  const { current, next, percent, isMaxTier } = getEvolutionProgress(totalVolume);
+  const { current, next, percent, isMaxTier, neglected, baseTier } = getEvolutionProgress(totalVolume, {
+    lastWorkoutAt: lastWorkoutAt(workouts),
+  });
 
   // Was a `useRef` written and read during render (`if (ref.current ===
   // null) { ref.current = ... }`) — worked by accident, but mutating a ref
@@ -41,10 +46,16 @@ export default function JimmyEvolution({ workouts }: JimmyEvolutionProps) {
   // the correct tool for "compute once, on mount, no re-render needed
   // when it changes" — React guarantees it runs exactly once per mount,
   // with no render-time mutation at all.
+  // Only a genuine climb crossfades. A demotion from the neglect penalty
+  // (current.stage BELOW the last seen tier) must not play the "Jimmy
+  // evolved!" animation — and the tier that gets recorded as "seen" is
+  // the one the volume actually earns (baseTier), not the penalised one,
+  // so recovering the penalty later is a silent return to normal rather
+  // than a fake level-up.
   const [justEvolved] = useState(() => {
-    const lastSeenId = loadJSON(LAST_SEEN_KEY, current.id);
-    const lastSeenTier = EVOLUTION_TIERS.find((t) => t.id === lastSeenId) ?? current;
-    return lastSeenTier.id !== current.id ? lastSeenTier : false;
+    const lastSeenId = loadJSON(LAST_SEEN_KEY, baseTier.id);
+    const lastSeenTier = EVOLUTION_TIERS.find((t) => t.id === lastSeenId) ?? baseTier;
+    return lastSeenTier.stage < current.stage ? lastSeenTier : false;
   });
 
   const [baseImage, setBaseImage] = useState(justEvolved ? justEvolved.image : current.image);
@@ -52,8 +63,8 @@ export default function JimmyEvolution({ workouts }: JimmyEvolutionProps) {
   const [brokenImages, setBrokenImages] = useState(new Set());
 
   useEffect(() => {
-    saveJSON(LAST_SEEN_KEY, current.id);
-  }, [current.id]);
+    saveJSON(LAST_SEEN_KEY, baseTier.id);
+  }, [baseTier.id]);
 
   const promoteIncoming = () => {
     setBaseImage((prev) => incomingImage ?? prev);
@@ -102,7 +113,13 @@ export default function JimmyEvolution({ workouts }: JimmyEvolutionProps) {
         </p>
       )}
       <p className="text-xl font-bold text-neutral-50">{current.label}</p>
-      <p className="text-sm text-neutral-500 max-w-xs">{current.description}</p>
+      {neglected ? (
+        <p className="text-sm text-[var(--danger)] max-w-xs">
+          😴 5 days without training dropped Jimmy a tier. Log a workout to restore {baseTier.label}.
+        </p>
+      ) : (
+        <p className="text-sm text-neutral-500 max-w-xs">{current.description}</p>
+      )}
 
       <div className="w-full mt-3">
         {isMaxTier ? (
@@ -116,7 +133,9 @@ export default function JimmyEvolution({ workouts }: JimmyEvolutionProps) {
               />
             </div>
             <p className="mt-2 text-xs text-neutral-500">
-              {percent.toFixed(0)}% to {next!.label}
+              {neglected
+                ? `Restore ${baseTier.label} — train to recover`
+                : `${percent.toFixed(0)}% to ${next!.label} · ${formatTierGoalKg(next!.threshold, bodyWeightKg)}`}
             </p>
           </>
         )}

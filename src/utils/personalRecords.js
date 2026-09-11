@@ -31,6 +31,11 @@ function bestSetOf(exercise) {
 export function bestWeightPerExercise(workouts) {
   const best = new Map();
   for (const workout of workouts ?? []) {
+    // Recovery workouts (see functions/economy.js) are un-rewarded — they
+    // can't set a PR and don't raise the bar for later ones. Matches the
+    // server's records.js so the client's "share this PR?" prompt only
+    // ever offers a record the server would actually publish.
+    if (workout?.recoveryWorkout) continue;
     for (const exercise of workout?.exercises ?? []) {
       const top = bestSetOf(exercise);
       if (!top || !exercise.exerciseId) continue;
