@@ -16,8 +16,31 @@ import ErrorBoundary from './components/shared/ErrorBoundary.jsx'
 // longer has the old build's hashed asset files — the leading suspect for
 // reports of the app going blank on iPhone, and directly reproduced once
 // as a stale build still showing the long-removed "Kid Goat" tier.
+// How often an already-open app asks whether a new build exists. `autoUpdate`
+// only CHECKS on page load, which is fine in a browser tab and useless in an
+// installed PWA: iOS keeps those suspended for days rather than reloading
+// them, so a deploy can land and the user carries on looking at the old
+// bundle with no way to know. Reported live — a removed shop item still
+// showing after it had been deleted and deployed.
+const UPDATE_CHECK_MS = 60 * 60 * 1000
+
 if ('serviceWorker' in navigator) {
-  registerSW({ immediate: true })
+  registerSW({
+    immediate: true,
+    onRegisteredSW(_url, registration) {
+      if (!registration) return
+      const check = () => {
+        // Only when the app is actually on screen; polling a backgrounded
+        // PWA wakes the radio for nothing.
+        if (document.visibilityState === 'visible') registration.update().catch(() => {})
+      }
+      setInterval(check, UPDATE_CHECK_MS)
+      // The important one on mobile: coming back to a suspended app is the
+      // moment it has been away longest and is most likely to be stale.
+      document.addEventListener('visibilitychange', check)
+      window.addEventListener('online', check)
+    },
+  })
 }
 
 createRoot(document.getElementById('root')).render(
