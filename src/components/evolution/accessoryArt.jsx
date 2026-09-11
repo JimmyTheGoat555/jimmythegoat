@@ -101,29 +101,25 @@ function Chain({ id }) {
 // business knowing which goat it is being drawn on.
 export const ACCESSORY_ART = {
   // --- real artwork ---
+  //
+  // cap, headphones, tank and hoodie were extracted from the user's Canva
+  // composites (six JPEGs of stage-1 Jimmy, one per accessory, sharing a
+  // base render). The bare goat was rebuilt as the per-pixel median of all
+  // six — at any pixel at most two of them carry an accessory — and each
+  // garment is what differs from it. See the commit message for the two
+  // things that made that hard: the exports bake their transparency
+  // checkerboard into the JPEG, and a grey hoodie on brown fur barely
+  // differs at all.
+  //
+  // None of these carry `behind`. They don't need it: the source goat's
+  // neck was standing in the collar when the composite was made, so the
+  // hole it left is genuinely transparent and his neck shows through it.
   'accessory-shades': { slot: 'eyes', src: '/assets/accessories/shades.png', aspect: 2.632 },
   'accessory-headband': { slot: 'head', src: '/assets/accessories/sweatband.png', aspect: 2.609 },
-  // Widened from the source art: as drawn, the earcups left a gap of only
-  // 15% of the image width, so at any size that put a cup over each of
-  // Jimmy's eyes — it is a product shot, with no head between the cups.
-  // A 250px 9-slice stretch through the headband's apex (the one column
-  // that is solid band all the way down) moves the cups apart without
-  // touching either cup or rescaling anything.
-  'accessory-headphones': { slot: 'head', src: '/assets/accessories/headphones.png', aspect: 1.348 },
-  // Drawn three-quarter-on: the dome sits left of the image's centre and
-  // the peak juts out to the right. ACCESSORY_LAYOUT's `left` shifts it so
-  // the DOME lands on Jimmy's midline rather than the PNG's.
-  'accessory-cap': { slot: 'head', src: '/assets/accessories/cap.png', aspect: 1.765 },
-  // `behind` is the fraction of the image's HEIGHT that belongs BEHIND the
-  // wearer — the back of the collar, and the hood. Without it a garment is
-  // a sticker: the collar band paints across Jimmy's throat and his neck
-  // looks pasted on top of the shirt rather than coming out of it.
-  // AccessoryLayer draws that strip under the sprite and the rest over it,
-  // so his neck occludes the back of the collar exactly the way a real one
-  // would. For the hoodie the strip is the whole hood, which is why it now
-  // reads as hanging down his back.
-  'accessory-tank': { slot: 'body', src: '/assets/accessories/tank.png', aspect: 0.624, behind: 0.085 },
-  'accessory-hoodie': { slot: 'body', src: '/assets/accessories/hoodie.png', aspect: 0.583, behind: 0.21 },
+  'accessory-headphones': { slot: 'head', src: '/assets/accessories/headphones.png', aspect: 1.280 },
+  'accessory-cap': { slot: 'head', src: '/assets/accessories/cap.png', aspect: 1.389 },
+  'accessory-tank': { slot: 'body', src: '/assets/accessories/tank.png', aspect: 0.732 },
+  'accessory-hoodie': { slot: 'body', src: '/assets/accessories/hoodie.png', aspect: 0.757 },
   // --- still vector, awaiting art ---
   'accessory-crown': { slot: 'head', viewBox: '0 0 100 62', Art: Crown },
   'accessory-chain': { slot: 'neck', viewBox: '0 0 100 46', Art: Chain },

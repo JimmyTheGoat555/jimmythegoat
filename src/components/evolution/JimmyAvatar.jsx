@@ -95,10 +95,10 @@ const ACCESSORY_LAYOUT = {
   'accessory-headphones': {
     z: 30,
     stages: {
-      1: { top: '14.0%', left: '49.7%', width: '62.0%' },
-      2: { top: '15.2%', left: '48.3%', width: '71.0%' },
-      3: { top: '12.2%', left: '49.6%', width: '63.1%' },
-      4: { top: '13.0%', left: '49.3%', width: '56.0%' },
+      1: { top: '14.4%', left: '49.7%', width: '53.6%' },
+      2: { top: '15.6%', left: '48.3%', width: '61.3%' },
+      3: { top: '12.6%', left: '49.6%', width: '54.6%' },
+      4: { top: '13.4%', left: '49.3%', width: '48.4%' },
     },
   },
   'accessory-headband': {
@@ -130,10 +130,10 @@ const ACCESSORY_LAYOUT = {
   'accessory-cap': {
     z: 30,
     stages: {
-      1: { top: '7.2%', left: '53.8%', width: '44.0%' },
-      2: { top: '8.8%', left: '52.9%', width: '50.4%' },
-      3: { top: '5.0%', left: '53.7%', width: '44.8%' },
-      4: { top: '5.1%', left: '53.0%', width: '39.8%' },
+      1: { top: '11.2%', left: '49.7%', width: '32.5%' },
+      2: { top: '12.6%', left: '48.3%', width: '37.2%' },
+      3: { top: '9.2%', left: '49.6%', width: '33.1%' },
+      4: { top: '9.7%', left: '49.3%', width: '29.4%' },
     },
   },
   'accessory-chain': {
@@ -169,19 +169,19 @@ const ACCESSORY_LAYOUT = {
   'accessory-tank': {
     z: 10,
     stages: {
-      1: { top: '38.5%', left: '50.5%', width: '43%' },
-      2: { top: '38.2%', left: '48.4%', width: '47%' },
-      3: { top: '39.7%', left: '50.0%', width: '49%' },
-      4: { top: '42.6%', left: '49.2%', width: '52%' },
+      1: { top: '39.2%', left: '50.5%', width: '54.7%' },
+      2: { top: '39.0%', left: '48.4%', width: '60.7%' },
+      3: { top: '40.8%', left: '50.0%', width: '63.5%' },
+      4: { top: '43.5%', left: '49.2%', width: '65.6%' },
     },
   },
   'accessory-hoodie': {
     z: 10,
     stages: {
-      1: { top: '36.0%', left: '50.5%', width: '45%' },
-      2: { top: '36.1%', left: '48.4%', width: '50%' },
-      3: { top: '36.9%', left: '50.0%', width: '52%' },
-      4: { top: '38.6%', left: '49.2%', width: '54%' },
+      1: { top: '38.1%', left: '50.5%', width: '65.9%' },
+      2: { top: '37.3%', left: '48.4%', width: '69.2%' },
+      3: { top: '38.4%', left: '50.0%', width: '71.2%' },
+      4: { top: '40.1%', left: '49.2%', width: '72.5%' },
     },
   },
 };
