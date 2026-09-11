@@ -17,7 +17,6 @@ import {
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, firebaseConfigured, functions } from '../lib/firebase';
-import { roundToTenth } from '../utils/units';
 
 // Short, human-typeable code — used for both a trainer's trainerCode (a
 // trainee enters it once at signup) and now every account's friendCode
@@ -241,42 +240,47 @@ export function useAuth() {
         hasUnreadNudgePush: false,
         ...onboardingPrefs,
       });
-      // A trainer's/friend's code must be resolvable the moment the
-      // account exists — not just once the self-heal effect above happens
-      // to run — so someone connecting seconds later doesn't hit a window
-      // where it's not in the lookup table yet.
-      if (ownTrainerCode) {
-        await setDoc(doc(db, 'trainerCodes', ownTrainerCode), { trainerId: cred.user.uid });
-      }
-      await setDoc(doc(db, 'friendCodes', ownFriendCode), { uid: cred.user.uid, displayName });
 
-      // Onboarding's body stats -> meta/profile (same owner/trainer-only
-      // read rule as everything else in there — private the instant it's
-      // written, no extra rules). The initial bodyWeightLog entry is the
-      // important one: logWorkout scores every set by strength-to-body-
-      // weight, so without a weight on file the very first workout can't
-      // be scored. `fitnessGoal`/`weeklyTarget` are mirrored here under
-      // their older names too, so Profile and the trainer's Trainee view
-      // (which already read them from meta/profile) need no changes —
-      // users/{uid} keeps the canonical `primaryGoal`/`targetDaysPerWeek`.
-      if (onboarding) {
-        const { weightKg, heightCm, primaryGoal, targetDaysPerWeek } = onboarding;
-        const profileDoc = { name: displayName };
-        if (heightCm) profileDoc.heightCm = Number(heightCm);
-        if (primaryGoal) profileDoc.fitnessGoal = primaryGoal;
-        if (targetDaysPerWeek) profileDoc.weeklyTarget = Number(targetDaysPerWeek);
-        if (weightKg) {
-          profileDoc.bodyWeightLog = [
-            {
-              id: crypto.randomUUID(),
-              date: new Date().toISOString(),
-              weight: roundToTenth(Number(weightKg)),
-              visibility: 'private',
-            },
-          ];
-        }
-        await setDoc(doc(db, 'users', cred.user.uid, 'meta', 'profile'), profileDoc, { merge: true });
+      // Onboarding's body stats -> meta/profile, FIRST of the post-account
+      // writes and the only fatal one: logWorkout scores every set by
+      // strength-to-bodyweight, so an account without it can log a whole
+      // workout and have it rejected at the very end with nothing saved.
+      //
+      // A Cloud Function (functions/onboarding.js), not a client setDoc,
+      // for the same reason every other must-actually-happen write in this
+      // app (coins, PRs, referral credit) is one: the Admin SDK bypasses
+      // firestore.rules and the offline cache, so this can't be lost to a
+      // rules edge case or a sync race the way the client-side version was
+      // — see the friendCodes note below for the race that actually broke
+      // this, and firestore.rules' friendCodes block for the other half of
+      // the fix.
+      await httpsCallable(functions, 'completeOnboardingProfile')({
+        displayName,
+        weightKg: onboarding?.weightKg,
+        heightCm: onboarding?.heightCm,
+        primaryGoal: onboarding?.primaryGoal,
+        targetDaysPerWeek: onboarding?.targetDaysPerWeek,
+      });
+
+      // Lookup-table entries, so a code is resolvable the moment the
+      // account exists rather than whenever the self-heal effect above
+      // next happens to run. Deliberately AFTER the profile call and
+      // deliberately non-fatal: these are conveniences that the self-heal
+      // effect already backfills on the very next profile load, whereas
+      // the body weight above is load-bearing (logWorkout can't score a
+      // single set without it). Running them first, fatally, is exactly
+      // what broke signup — signUp()'s own friendCodes write raced the
+      // self-heal effect, lost, landed as a rules-denied UPDATE, and took
+      // the body-weight write down with it while the already-unmounted
+      // sign-up form swallowed the error. Order and `.catch` here, plus
+      // the matching friendCodes update rule in firestore.rules, mean
+      // neither half of that race can break the other again.
+      if (ownTrainerCode) {
+        setDoc(doc(db, 'trainerCodes', ownTrainerCode), { trainerId: cred.user.uid }).catch(() => {});
       }
+      setDoc(doc(db, 'friendCodes', ownFriendCode), { uid: cred.user.uid, displayName }, { merge: true }).catch(
+        () => {},
+      );
 
       // Referral bonus — credits the REFERRER, not this account, so it's
       // best-effort exactly like the trainer-code lookup above: a bad,

@@ -1,6 +1,8 @@
 // Static exercise database, grouped by muscle group. This is the seed list;
 // custom exercises added by the user merge on top of this array by id.
 
+import { DEFAULT_WEIGHT_KG } from '../utils/units';
+
 export const MUSCLE_GROUPS = [
   { id: 'chest', label: 'Chest', color: '#f97316' },
   { id: 'back', label: 'Back', color: '#22c55e' },
@@ -16,55 +18,72 @@ export const MUSCLE_GROUPS = [
 // scores these as (bodyWeight + addedWeight) * reps — see
 // functions/economy.js, which keeps its own copy of the id list
 // (functions/exercises.js) since it can't import this ESM module.
+//
+// `defaultWeightKg` is where the set sheet's wheel opens the FIRST time
+// this exercise is logged, before there's a "last time" to copy. It used
+// to be a flat 20 kg for everything, which is absurd in both directions
+// at once — nobody benches 20, and nobody does lateral raises with it —
+// so every first set started with a long spin in one direction or the
+// other. Each number is a typical working weight for that movement, so
+// the wheel opens near where most people land and one flick covers the
+// rest. Dumbbell entries are PER DUMBBELL, the way a rack is labelled.
+// Bodyweight exercises have none on purpose — their wheel is added belt
+// weight, which correctly starts at 0.
+//
+// Only ever a first-set guess: the moment you have logged an exercise
+// once, SetEntrySheet seeds from YOUR last set instead and never consults
+// this again.
 export const EXERCISES = [
   // Chest
-  { id: 'bench-press', name: 'Barbell Bench Press', muscleGroup: 'chest' },
-  { id: 'incline-db-press', name: 'Incline Dumbbell Press', muscleGroup: 'chest' },
-  { id: 'chest-fly', name: 'Chest Fly', muscleGroup: 'chest' },
+  { id: 'bench-press', name: 'Barbell Bench Press', muscleGroup: 'chest', defaultWeightKg: 80 },
+  { id: 'incline-db-press', name: 'Incline Dumbbell Press', muscleGroup: 'chest', defaultWeightKg: 14 },
+  { id: 'chest-fly', name: 'Chest Fly', muscleGroup: 'chest', defaultWeightKg: 12 },
   { id: 'push-up', name: 'Push-Up', muscleGroup: 'chest', isBodyweight: true },
   { id: 'dips', name: 'Dips', muscleGroup: 'chest', isBodyweight: true },
-  { id: 'cable-crossover', name: 'Cable Crossover', muscleGroup: 'chest' },
+  { id: 'cable-crossover', name: 'Cable Crossover', muscleGroup: 'chest', defaultWeightKg: 12 },
 
   // Back
-  { id: 'deadlift', name: 'Deadlift', muscleGroup: 'back' },
+  { id: 'deadlift', name: 'Deadlift', muscleGroup: 'back', defaultWeightKg: 60 },
   { id: 'pull-up', name: 'Pull-Up', muscleGroup: 'back', isBodyweight: true },
   { id: 'chin-up', name: 'Chin-Up', muscleGroup: 'back', isBodyweight: true },
-  { id: 'barbell-row', name: 'Barbell Row', muscleGroup: 'back' },
-  { id: 'lat-pulldown', name: 'Lat Pulldown', muscleGroup: 'back' },
-  { id: 'seated-cable-row', name: 'Seated Cable Row', muscleGroup: 'back' },
+  { id: 'barbell-row', name: 'Barbell Row', muscleGroup: 'back', defaultWeightKg: 40 },
+  { id: 'lat-pulldown', name: 'Lat Pulldown', muscleGroup: 'back', defaultWeightKg: 40 },
+  { id: 'seated-cable-row', name: 'Seated Cable Row', muscleGroup: 'back', defaultWeightKg: 40 },
 
   // Legs
-  { id: 'squat', name: 'Squat', muscleGroup: 'legs' },
-  { id: 'leg-press', name: 'Leg Press', muscleGroup: 'legs' },
-  { id: 'romanian-deadlift', name: 'Romanian Deadlift', muscleGroup: 'legs' },
-  { id: 'leg-extension', name: 'Leg Extension', muscleGroup: 'legs' },
-  { id: 'leg-curl', name: 'Leg Curl', muscleGroup: 'legs' },
-  { id: 'calf-raise', name: 'Calf Raise', muscleGroup: 'legs' },
+  { id: 'squat', name: 'Squat', muscleGroup: 'legs', defaultWeightKg: 50 },
+  { id: 'leg-press', name: 'Leg Press', muscleGroup: 'legs', defaultWeightKg: 80 },
+  { id: 'romanian-deadlift', name: 'Romanian Deadlift', muscleGroup: 'legs', defaultWeightKg: 40 },
+  { id: 'leg-extension', name: 'Leg Extension', muscleGroup: 'legs', defaultWeightKg: 30 },
+  { id: 'leg-curl', name: 'Leg Curl', muscleGroup: 'legs', defaultWeightKg: 25 },
+  { id: 'calf-raise', name: 'Calf Raise', muscleGroup: 'legs', defaultWeightKg: 40 },
 
   // Shoulders
-  { id: 'overhead-press', name: 'Overhead Press', muscleGroup: 'shoulders' },
-  { id: 'lateral-raise', name: 'Lateral Raise', muscleGroup: 'shoulders' },
-  { id: 'front-raise', name: 'Front Raise', muscleGroup: 'shoulders' },
-  { id: 'rear-delt-fly', name: 'Rear Delt Fly', muscleGroup: 'shoulders' },
-  { id: 'shrug', name: 'Shrug', muscleGroup: 'shoulders' },
+  { id: 'overhead-press', name: 'Overhead Press', muscleGroup: 'shoulders', defaultWeightKg: 25 },
+  { id: 'lateral-raise', name: 'Lateral Raise', muscleGroup: 'shoulders', defaultWeightKg: 7.5 },
+  { id: 'front-raise', name: 'Front Raise', muscleGroup: 'shoulders', defaultWeightKg: 7.5 },
+  { id: 'rear-delt-fly', name: 'Rear Delt Fly', muscleGroup: 'shoulders', defaultWeightKg: 7.5 },
+  { id: 'shrug', name: 'Shrug', muscleGroup: 'shoulders', defaultWeightKg: 40 },
 
   // Biceps
-  { id: 'barbell-curl', name: 'Barbell Curl', muscleGroup: 'biceps' },
-  { id: 'db-curl', name: 'Dumbbell Curl', muscleGroup: 'biceps' },
-  { id: 'hammer-curl', name: 'Hammer Curl', muscleGroup: 'biceps' },
-  { id: 'preacher-curl', name: 'Preacher Curl', muscleGroup: 'biceps' },
+  { id: 'barbell-curl', name: 'Barbell Curl', muscleGroup: 'biceps', defaultWeightKg: 20 },
+  { id: 'db-curl', name: 'Dumbbell Curl', muscleGroup: 'biceps', defaultWeightKg: 10 },
+  { id: 'hammer-curl', name: 'Hammer Curl', muscleGroup: 'biceps', defaultWeightKg: 10 },
+  { id: 'preacher-curl', name: 'Preacher Curl', muscleGroup: 'biceps', defaultWeightKg: 15 },
 
   // Triceps
-  { id: 'triceps-pushdown', name: 'Triceps Pushdown', muscleGroup: 'triceps' },
-  { id: 'skull-crusher', name: 'Skull Crusher', muscleGroup: 'triceps' },
-  { id: 'close-grip-bench', name: 'Close-Grip Bench Press', muscleGroup: 'triceps' },
+  { id: 'triceps-pushdown', name: 'Triceps Pushdown', muscleGroup: 'triceps', defaultWeightKg: 20 },
+  { id: 'skull-crusher', name: 'Skull Crusher', muscleGroup: 'triceps', defaultWeightKg: 20 },
+  { id: 'close-grip-bench', name: 'Close-Grip Bench Press', muscleGroup: 'triceps', defaultWeightKg: 30 },
   { id: 'triceps-dip', name: 'Triceps Dip', muscleGroup: 'triceps', isBodyweight: true },
 
   // Core
-  { id: 'plank', name: 'Plank', muscleGroup: 'core' },
+  // Plank is a timed hold, which this log can't express — it still wants a
+  // number, so it gets the lightest one rather than a fictional load.
+  { id: 'plank', name: 'Plank', muscleGroup: 'core', defaultWeightKg: 1 },
   { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscleGroup: 'core', isBodyweight: true },
-  { id: 'cable-crunch', name: 'Cable Crunch', muscleGroup: 'core' },
-  { id: 'russian-twist', name: 'Russian Twist', muscleGroup: 'core' },
+  { id: 'cable-crunch', name: 'Cable Crunch', muscleGroup: 'core', defaultWeightKg: 20 },
+  { id: 'russian-twist', name: 'Russian Twist', muscleGroup: 'core', defaultWeightKg: 5 },
 ];
 
 export function exercisesByGroup(groupId) {
@@ -79,6 +98,14 @@ export function getExercise(id) {
 // yet, so it's logged with an entered weight like any other.
 export function isBodyweightExercise(id) {
   return getExercise(id)?.isBodyweight === true;
+}
+
+// Where the set sheet's weight wheel opens for an exercise nobody has
+// logged before (see SetEntrySheet's seedLoad, which prefers YOUR last set
+// over this whenever there is one). A custom exercise has no entry here
+// and falls back to the flat default.
+export function defaultWeightForExercise(id) {
+  return getExercise(id)?.defaultWeightKg ?? DEFAULT_WEIGHT_KG;
 }
 
 export function getMuscleGroup(id) {

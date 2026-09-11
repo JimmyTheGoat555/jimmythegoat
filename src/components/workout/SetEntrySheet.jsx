@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import WheelPicker from '../shared/WheelPicker';
+import { defaultWeightForExercise } from '../../data/exercises';
 import {
   DEFAULT_REPS,
-  DEFAULT_WEIGHT_KG,
   formatWorkingWeight,
   nearestWorkingWeight,
   REPS_MAX,
@@ -51,6 +51,9 @@ function Stepper({ onDown, onUp, children }) {
 // logWorkout. Changes are live, so "Done" just dismisses.
 export default function SetEntrySheet({
   index,
+  // Catalog id of the exercise this set belongs to — picks the wheel's
+  // opening weight for a first-ever set (see seedLoad below).
+  exerciseId,
   isBodyweight = false,
   weight,
   addedWeight,
@@ -78,7 +81,12 @@ export default function SetEntrySheet({
     const n = Number(weight);
     if (Number.isFinite(n) && n > 0) return nearestWorkingWeight(n);
     const last = Number(lastSet?.weight);
-    return nearestWorkingWeight(Number.isFinite(last) && last > 0 ? last : DEFAULT_WEIGHT_KG);
+    // Your own last set always wins — it's the most accurate guess there
+    // is. The per-exercise default only fills the gap for an exercise you
+    // have never logged before.
+    return nearestWorkingWeight(
+      Number.isFinite(last) && last > 0 ? last : defaultWeightForExercise(exerciseId),
+    );
   };
   const seedR = () => {
     const n = Number(reps);

@@ -20,8 +20,14 @@ export const REPS_MAX = 30;
 
 // Sensible starting points when a set has nothing entered yet and there's
 // no "last time" to copy from.
+//
+// DEFAULT_WEIGHT_KG is only the last-resort fallback now — for anything in
+// the seed catalog the wheel opens on that exercise's own
+// `defaultWeightKg` instead (see data/exercises.js), since one flat number
+// can't be right for both a bench press and a lateral raise. This value
+// still covers a user's own custom exercises, which have no entry there.
 export const DEFAULT_WEIGHT_KG = 20;
-export const DEFAULT_REPS = 8;
+export const DEFAULT_REPS = 10;
 
 // The wheel's weight values: every whole kg from 1 to 250, with the
 // half-kg rack combos (7.5 / 12.5 / 17.5 / 22.5 / 27.5) inserted where

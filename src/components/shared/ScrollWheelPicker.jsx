@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import WheelPicker from './WheelPicker';
 
 // A presentation layer over the battle-tested WheelPicker (that component
-// owns the scroll-snap physics, keyboard control, and the "read back the
-// snapped value once momentum stops" logic — see there). ScrollWheelPicker
-// adds what the gamer-grade onboarding needs on top:
+// owns the scroll-snap physics, keyboard control, vertical-only touch
+// handling, per-notch haptic tick, and the "read back the snapped value
+// once momentum stops" logic — see there). ScrollWheelPicker adds what the
+// gamer-grade onboarding needs on top:
 //
 //   • a big current-value readout with a unit suffix
 //   • integer OR 0.1-precision float ranges via `precision`
-//   • a light haptic tick (navigator.vibrate) on every value change
 //   • top/bottom fade masks so the column reads as a physical dial
 //
 //   <ScrollWheelPicker label="Body weight" value={w} onChange={setW}
@@ -30,17 +30,6 @@ export default function ScrollWheelPicker({
   className = '',
 }) {
   const resolvedStep = step ?? (precision >= 1 ? 0.1 : 1);
-
-  // Haptics: skip the first render and any programmatic echo where the
-  // value didn't actually move, so the phone only buzzes on a real turn
-  // of the dial.
-  const lastHapticValue = useRef(value);
-  useEffect(() => {
-    if (value !== lastHapticValue.current) {
-      lastHapticValue.current = value;
-      navigator.vibrate?.(8);
-    }
-  }, [value]);
 
   const formatValue = useMemo(
     () => (n) => {

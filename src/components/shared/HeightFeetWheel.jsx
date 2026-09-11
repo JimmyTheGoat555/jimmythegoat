@@ -43,15 +43,6 @@ export default function HeightFeetWheel({ value, onChange, label = 'Height' }) {
     onChange(next.ft * 12 + next.in);
   };
 
-  // Haptic tick on any real change (skip the mount echo).
-  const lastTotal = useRef(total);
-  useEffect(() => {
-    if (total !== lastTotal.current) {
-      lastTotal.current = total;
-      navigator.vibrate?.(8);
-    }
-  }, [total]);
-
   const ftFormat = useMemo(() => (n) => `${n} ft`, []);
   const inFormat = useMemo(() => (n) => `${n} in`, []);
 

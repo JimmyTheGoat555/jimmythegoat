@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import WheelPicker from './WheelPicker';
 import { roundToTenth } from '../../utils/units';
 
@@ -8,8 +8,9 @@ import { roundToTenth } from '../../utils/units';
 // tenth, the way a real scale reads.
 //
 // Built on the same WheelPicker primitive ScrollWheelPicker uses (it owns
-// the scroll-snap physics); this just wires two of them to one kg value
-// and adds the readout, fade masks, and a haptic tick.
+// the scroll-snap physics, vertical-only touch handling, and the per-notch
+// haptic tick); this just wires two of them to one kg value and adds the
+// readout and fade masks.
 //
 //   <BodyWeightWheel value={kg} onChange={setKg} min={35} max={200} />
 export default function BodyWeightWheel({ value, onChange, min = 35, max = 200, label = 'Body weight' }) {
@@ -20,15 +21,6 @@ export default function BodyWeightWheel({ value, onChange, min = 35, max = 200, 
   const emit = (nextWhole, nextTenth) => {
     onChange(roundToTenth(nextWhole + nextTenth / 10));
   };
-
-  // Haptic tick on any real change (skip the mount echo).
-  const lastValue = useRef(safe);
-  useEffect(() => {
-    if (safe !== lastValue.current) {
-      lastValue.current = safe;
-      navigator.vibrate?.(8);
-    }
-  }, [safe]);
 
   const tenthFormat = useMemo(() => (n) => `.${n}`, []);
 

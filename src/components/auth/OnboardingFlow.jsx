@@ -201,12 +201,16 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
   const showErr = (k) => (triedSubmit || touched[k]) && accountErrors[k];
   const markTouched = (k) => setTouched((t) => (t[k] ? t : { ...t, [k]: true }));
 
-  // Choice/entry steps gate Next; the wheels always hold a value; the
-  // account step never disables its button (a tap reveals all errors).
+  // Choice/entry steps gate Next; the wheels always hold a value (the
+  // weight check is therefore just belt-and-suspenders — see submit()'s
+  // comment for why it's still required, not optional, all the way to the
+  // database); the account step never disables its button (a tap reveals
+  // all errors).
   const canAdvance = () => {
     if (stepKey === 'role') return Boolean(role);
     if (stepKey === 'experience') return Boolean(experienceLevel);
     if (stepKey === 'gender') return Boolean(gender);
+    if (stepKey === 'weight') return weightKg > 0;
     if (stepKey === 'email') return emailValid;
     return true;
   };
