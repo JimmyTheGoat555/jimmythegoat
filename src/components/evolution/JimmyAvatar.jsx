@@ -24,7 +24,7 @@ import { ACCESSORY_ART, artFor } from './accessoryArt';
 // Accessory artwork is inline SVG (see accessoryArt.jsx), not emoji and
 // not PNGs: it stays sharp from a 36px leaderboard row to a full-screen
 // hero, costs a couple of KB, and each piece carries its own viewBox and
-// placement so a sweatband and a crown can have honestly different
+// placement, so a pair of shades and a hoodie can have honestly different
 // proportions instead of being forced through one box.
 // A leaderboard row or feed post shows a ~40px round avatar, and a
 // full-body goat at that size is mostly legs. `crop="head"` zooms to the
@@ -81,10 +81,10 @@ const ACCESSORY_LAYOUT = {
   'accessory-shades': {
     z: 40,
     stages: {
-      1: { top: '17.3%', left: '49.7%', width: '34.9%' },
-      2: { top: '18.4%', left: '48.3%', width: '39.9%' },
-      3: { top: '15.7%', left: '49.6%', width: '35.5%' },
-      4: { top: '16.8%', left: '49.3%', width: '31.5%' },
+      1: { top: '16.9%', left: '49.7%', width: '38.0%' },
+      2: { top: '18.0%', left: '48.3%', width: '43.5%' },
+      3: { top: '15.3%', left: '49.6%', width: '38.7%' },
+      4: { top: '16.4%', left: '49.3%', width: '34.3%' },
     },
   },
   // Headphones are the one piece whose art is not centred on what it has
@@ -101,28 +101,6 @@ const ACCESSORY_LAYOUT = {
       4: { top: '13.4%', left: '49.3%', width: '48.4%' },
     },
   },
-  'accessory-headband': {
-    z: 30,
-    stages: {
-      1: { top: '12.5%', left: '49.7%', width: '42.0%' },
-      2: { top: '13.8%', left: '48.3%', width: '48.1%' },
-      // Titan and Legend are hand-corrected off the derived value (10.6 and
-      // 11.2): a band's real landmark is the brow ridge, and on those two
-      // it sits lower relative to the eyes than the derivation assumes, so
-      // the derived number floated the band clear of the forehead.
-      3: { top: '12.4%', left: '49.6%', width: '42.8%' },
-      4: { top: '13.0%', left: '49.3%', width: '38.0%' },
-    },
-  },
-  'accessory-crown': {
-    z: 30,
-    stages: {
-      1: { top: '7.5%', left: '49.7%', width: '44.0%' },
-      2: { top: '9.1%', left: '48.3%', width: '50.4%' },
-      3: { top: '5.3%', left: '49.6%', width: '44.8%' },
-      4: { top: '5.5%', left: '49.3%', width: '39.8%' },
-    },
-  },
   // `left` is NOT the face midline here: the cap is drawn three-quarter-on
   // with its dome 9.2% of the image width left of the image's centre, so
   // each of these is the midline pushed right by that much of its own
@@ -134,15 +112,6 @@ const ACCESSORY_LAYOUT = {
       2: { top: '12.6%', left: '48.3%', width: '37.2%' },
       3: { top: '9.2%', left: '49.6%', width: '33.1%' },
       4: { top: '9.7%', left: '49.3%', width: '29.4%' },
-    },
-  },
-  'accessory-chain': {
-    z: 20,
-    stages: {
-      1: { top: '28.0%', left: '49.7%', width: '48.0%' },
-      2: { top: '28.5%', left: '48.3%', width: '54.9%' },
-      3: { top: '27.1%', left: '49.6%', width: '48.9%' },
-      4: { top: '29.1%', left: '49.3%', width: '43.4%' },
     },
   },
   // The torso does NOT follow the head's numbers — it is the part of Jimmy
@@ -166,6 +135,18 @@ const ACCESSORY_LAYOUT = {
   //
   // See accessoryArt.jsx's `behind` for the other half of looking worn:
   // the strip of each garment that is drawn UNDER the sprite.
+  // Legs. The hip and the sole sit at the same share of canvas height on
+  // all four sprites (45.0% and 84.0%), so only the width changes — scaled
+  // by the leg span at 62% height, where the hands are clear of the thighs.
+  'accessory-jeans': {
+    z: 5,
+    stages: {
+      1: { top: '65.4%', left: '50.6%', width: '58.6%' },
+      2: { top: '65.4%', left: '48.3%', width: '54.7%' },
+      3: { top: '65.4%', left: '50.0%', width: '50.0%' },
+      4: { top: '65.4%', left: '49.1%', width: '46.9%' },
+    },
+  },
   'accessory-tank': {
     z: 10,
     stages: {
@@ -180,7 +161,7 @@ const ACCESSORY_LAYOUT = {
     z: 10,
     stages: {
       1: { top: '38.1%', left: '50.5%', width: '65.9%' },
-      2: { top: '33.0%', left: '48.4%', width: '52.0%' },
+      2: { top: '32.0%', left: '48.4%', width: '50.0%' },
       3: { top: '31.1%', left: '50.4%', width: '66.6%' },
       4: { top: '30.6%', left: '47.1%', width: '60.4%' },
     },
@@ -260,45 +241,28 @@ export function AccessoryLayer({ evolutionStage, equippedAccessories = [], depth
       >
         {worn.map(({ id, art, name, place }) => {
           const style = { ...place, transform: 'translate(-50%, -50%)', filter: SHADOW };
-          if (art.src) {
-            // A piece with a back half is drawn TWICE, once per pass, each
-            // time with the other half clipped off. Clipping the same image
-            // rather than shipping two files keeps the two halves pixel-
-            // exact neighbours — any seam would be a hairline of background
-            // straight down the middle of Jimmy's chest.
-            if (art.behind) {
-              const cut = `${art.behind * 100}%`;
-              style.clipPath = behindPass ? `inset(0 0 ${100 - art.behind * 100}% 0)` : `inset(${cut} 0 0 0)`;
-              // The back half is behind an opaque goat; a shadow on it can
-              // only leak out around his edges as a grey halo.
-              if (behindPass) delete style.filter;
-            }
-            return (
-              <img
-                key={id}
-                src={art.src}
-                alt={behindPass ? '' : name}
-                aria-hidden={behindPass ? true : undefined}
-                className="pointer-events-none absolute h-auto"
-                style={style}
-                draggable={false}
-              />
-            );
+          if (!art.src) return null;
+          // A piece with a back half is drawn TWICE, once per pass, each time
+          // with the other half clipped off. Clipping the same image rather
+          // than shipping two files keeps the halves pixel-exact neighbours —
+          // any seam would be a hairline of background down Jimmy's chest.
+          if (art.behind) {
+            const cut = `${art.behind * 100}%`;
+            style.clipPath = behindPass ? `inset(0 0 ${100 - art.behind * 100}% 0)` : `inset(${cut} 0 0 0)`;
+            // The back half is behind an opaque goat; a shadow on it can only
+            // leak out around his edges as a grey halo.
+            if (behindPass) delete style.filter;
           }
-          // Gradient ids are namespaced per item because several avatars
-          // can share a page and duplicate ids would cross-wire the fills.
-          const { Art } = art;
           return (
-            <svg
+            <img
               key={id}
-              viewBox={art.viewBox}
-              role="img"
-              aria-label={name}
-              className="pointer-events-none absolute overflow-visible"
+              src={art.src}
+              alt={behindPass ? '' : name}
+              aria-hidden={behindPass ? true : undefined}
+              className="pointer-events-none absolute h-auto"
               style={style}
-            >
-              <Art id={`acc-${id}`} />
-            </svg>
+              draggable={false}
+            />
           );
         })}
       </div>

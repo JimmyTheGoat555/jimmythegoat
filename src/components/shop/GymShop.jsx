@@ -21,7 +21,14 @@ import { danceNumberForItemId, getDancePreviewPath } from '../../utils/danceAnim
 // The actual charge always comes from the server's own copy
 // (functions/storeCatalog.js), so this file being stale can only ever make
 // the UI show a wrong price, never let anyone pay a wrong one.
-function ItemCard({ item, owned, equipped, canAfford, busy, onBuy, onEquip, previewSrc, tierImage, jimmyLook }) {
+// `jimmyLook` defaults rather than being assumed: this component renders the
+// avatar now, and reaching into an absent prop for `.evolutionStage` took the
+// whole Store tab down behind the error boundary — a white screen because one
+// of the two call sites was missing an attribute.
+function ItemCard({
+  item, owned, equipped, canAfford, busy, onBuy, onEquip, previewSrc, tierImage,
+  jimmyLook = { evolutionStage: 1, equippedAccessories: [] },
+}) {
   // Rarity colours the frame and the label. Only shown once you own the
   // item — before that the price is the thing that matters, and a loud
   // gold border on something unaffordable is just noise.
@@ -217,6 +224,7 @@ export default function GymShop({ account, onPurchase, onEquip, onSetAccessories
               busy={busyItemId === item.id}
               onBuy={() => handleBuy(item)}
               onEquip={() => handleEquip(item)}
+              jimmyLook={jimmyLook}
             />
           ))}
         </div>

@@ -16,85 +16,9 @@
 // percentages mean anything, because an untrimmed export carries however
 // much empty canvas the generator happened to leave around the subject.
 
-const GOLD = { light: '#fff3c4', mid: '#f2c14e', deep: '#b8860b', shadow: '#8a6508' };
 
-function GoldDefs({ id }) {
-  return (
-    <defs>
-      <linearGradient id={`${id}-gold`} x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor={GOLD.light} />
-        <stop offset="45%" stopColor={GOLD.mid} />
-        <stop offset="100%" stopColor={GOLD.deep} />
-      </linearGradient>
-    </defs>
-  );
-}
 
-// A crown: five points, a jewelled band, and a highlight along the top
-// edge so the gold reads as metal rather than a flat yellow shape.
-function Crown({ id }) {
-  return (
-    <>
-      <GoldDefs id={id} />
-      <path
-        d="M6 46 L6 12 L26 30 L50 4 L74 30 L94 12 L94 46 Z"
-        fill={`url(#${id}-gold)`}
-        stroke={GOLD.shadow}
-        strokeWidth="3"
-        strokeLinejoin="round"
-      />
-      <rect x="6" y="44" width="88" height="14" rx="4" fill={`url(#${id}-gold)`} stroke={GOLD.shadow} strokeWidth="3" />
-      {/* jewels */}
-      <circle cx="50" cy="51" r="4.5" fill="#e8407a" stroke={GOLD.shadow} strokeWidth="1.6" />
-      <circle cx="26" cy="51" r="3.4" fill="#3fb6e8" stroke={GOLD.shadow} strokeWidth="1.6" />
-      <circle cx="74" cy="51" r="3.4" fill="#3fb6e8" stroke={GOLD.shadow} strokeWidth="1.6" />
-      {/* point tips */}
-      <circle cx="50" cy="6" r="3.6" fill={GOLD.light} stroke={GOLD.shadow} strokeWidth="1.6" />
-      <circle cx="6" cy="12" r="3" fill={GOLD.light} stroke={GOLD.shadow} strokeWidth="1.6" />
-      <circle cx="94" cy="12" r="3" fill={GOLD.light} stroke={GOLD.shadow} strokeWidth="1.6" />
-    </>
-  );
-}
 
-// A chunky rope chain: overlapping links following a catenary, heaviest at
-// the bottom where a real necklace hangs.
-function Chain({ id }) {
-  // Links get larger toward the centre of the drape.
-  const links = [];
-  const N = 13;
-  for (let i = 0; i < N; i++) {
-    const t = i / (N - 1);
-    const x = 6 + t * 88;
-    // parabola: shallow at the ends, deepest in the middle
-    const y = 8 + Math.sin(Math.PI * t) * 30;
-    const r = 3.4 + Math.sin(Math.PI * t) * 2.2;
-    links.push({ x, y, r });
-  }
-  return (
-    <>
-      <GoldDefs id={id} />
-      {/* the darker under-strand gives the rope some depth */}
-      <path
-        d="M6 8 Q50 52 94 8"
-        fill="none"
-        stroke={GOLD.shadow}
-        strokeWidth="7"
-        strokeLinecap="round"
-      />
-      {links.map((l, i) => (
-        <circle
-          key={i}
-          cx={l.x}
-          cy={l.y}
-          r={l.r}
-          fill="none"
-          stroke={`url(#${id}-gold)`}
-          strokeWidth="3.2"
-        />
-      ))}
-    </>
-  );
-}
 
 // slot + art, one entry per catalog id. Placement lives in JimmyAvatar's
 // ACCESSORY_LAYOUT, because it is per-EVOLUTION-STAGE and this file has no
@@ -121,10 +45,10 @@ function Chain({ id }) {
 // neck was standing in the collar when the composite was made, so the
 // hole it left is genuinely transparent and his neck shows through it.
 export const ACCESSORY_ART = {
-  'accessory-shades': { slot: 'eyes', src: '/assets/accessories/shades.png', aspect: 2.632 },
-  'accessory-headband': { slot: 'head', src: '/assets/accessories/sweatband.png', aspect: 2.609 },
+  'accessory-shades': { slot: 'eyes', src: '/assets/accessories/shades.png', aspect: 3.298 },
   'accessory-headphones': { slot: 'head', src: '/assets/accessories/headphones.png', aspect: 1.280 },
   'accessory-cap': { slot: 'head', src: '/assets/accessories/cap.png', aspect: 1.389 },
+  'accessory-jeans': { slot: 'legs', src: '/assets/accessories/jeans.png', aspect: 0.654 },
   // Drawn per stage — the user made a version for each Jimmy, and the
   // Legend's is not the Goat's garment at a bigger size. Stage 1 and 2 came
   // out of folder-of-composites extraction; 3 and 4 from single images,
@@ -139,27 +63,27 @@ export const ACCESSORY_ART = {
     },
     aspect: { 1: 0.732, 2: 0.639, 3: 0.706, 4: 0.732 },
   },
-  // Three of the four. Stage 3 could not be lifted by subtraction at all —
-  // Canva re-renders the whole character per export, so on that one the
-  // BARE LEGS differ from our sprite by 28.6 after colour-matching while
-  // the garment only reaches 32; no separation to threshold. It came out
-  // by colour instead: this cloth sits near 15 on R-B and the fur near 41.
-  // Stage 4 is the reverse — his shorts are dark too, so colour grabs them
-  // and subtraction is the one that works. Stage 2 is absent (its hood
-  // brought the shadowed face along as a goat-shaped smudge) and falls back
-  // to stage 1, which is what shipped before.
+  // All four are their own. They needed two different techniques, and which
+  // one wins is not predictable: Canva re-renders the whole character per
+  // export, so on the Titan the BARE LEGS differ from our sprite by 28.6
+  // after colour-matching while the garment only reaches 32 — no gap to
+  // threshold, and subtraction returns the entire goat. Colour separates
+  // that one (cloth near 15 on R-B, fur near 41). The Legend is the reverse:
+  // his shorts are dark too, so colour grabs them and subtraction is the one
+  // that works. Try both on anything new.
+  //
+  // The Buff's keeps the shadowed face from inside its hood, at the user's
+  // request — as on the Legend, it reads as the hood shading him.
   'accessory-hoodie': {
     slot: 'body',
     src: {
       1: '/assets/accessories/hoodie-1.png',
+      2: '/assets/accessories/hoodie-2.png',
       3: '/assets/accessories/hoodie-3.png',
       4: '/assets/accessories/hoodie-4.png',
     },
-    aspect: { 1: 0.757, 3: 0.562, 4: 0.642 },
+    aspect: { 1: 0.757, 2: 0.476, 3: 0.562, 4: 0.642 },
   },
-  // --- still vector, awaiting art ---
-  'accessory-crown': { slot: 'head', viewBox: '0 0 100 62', Art: Crown },
-  'accessory-chain': { slot: 'neck', viewBox: '0 0 100 46', Art: Chain },
 };
 
 // Resolves an entry's art for one tier. A plain value is used on every
@@ -181,20 +105,10 @@ export function artFor(art, stage = 1) {
 // card is a square, so letting each one fit itself into the box is the only
 // way they all land at a sensible visual weight.
 export function AccessoryIcon({ itemId, className = '', stage = 1 }) {
-  // The shop card shows stage 1 by default. It is a picture of the ITEM,
-  // not of your goat wearing it, so it should not change under you when
-  // you evolve — and the tier you happen to be is already on screen.
+  // The shop card shows stage 1 by default. It is a picture of the ITEM, not
+  // of your goat wearing it, so it should not change under you when you
+  // evolve — the tier you happen to be is already on screen elsewhere.
   const art = artFor(ACCESSORY_ART[itemId], stage);
-  if (!art) return null;
-
-  if (art.src) {
-    return <img src={art.src} alt="" aria-hidden="true" className={`object-contain ${className}`} draggable={false} />;
-  }
-
-  const { Art } = art;
-  return (
-    <svg viewBox={art.viewBox} className={`overflow-visible ${className}`} role="img" aria-hidden="true">
-      <Art id={`icon-${itemId}`} />
-    </svg>
-  );
+  if (!art?.src) return null;
+  return <img src={art.src} alt="" aria-hidden="true" className={`object-contain ${className}`} draggable={false} />;
 }

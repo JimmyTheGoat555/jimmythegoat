@@ -130,13 +130,11 @@ const STORE_ITEMS = [
   { id: 'dance-victory', type: 'dance', name: 'Victory Lap', emoji: '🏆', cost: 1100 },
   { id: 'dance-moonwalk', type: 'dance', name: 'Moonwalk', emoji: '🌙', cost: 1500 },
   { id: 'accessory-cap', type: 'accessory', name: 'Ball Cap', emoji: '🧢', cost: 150, slot: 'head', rarity: 'common' },
-  { id: 'accessory-headband', type: 'accessory', name: 'Sweatband', emoji: '🎽', cost: 200, slot: 'head', rarity: 'common' },
   { id: 'accessory-shades', type: 'accessory', name: 'Shades', emoji: '🕶️', cost: 250, slot: 'eyes', rarity: 'common' },
   { id: 'accessory-tank', type: 'accessory', name: 'White Tank', emoji: '🎽', cost: 300, slot: 'body', rarity: 'common' },
+  { id: 'accessory-jeans', type: 'accessory', name: 'Ripped Jeans', emoji: '👖', cost: 400, slot: 'legs', rarity: 'rare' },
   { id: 'accessory-hoodie', type: 'accessory', name: 'Cutoff Hoodie', emoji: '🧥', cost: 450, slot: 'body', rarity: 'rare' },
   { id: 'accessory-headphones', type: 'accessory', name: 'Studio Headphones', emoji: '🎧', cost: 700, slot: 'head', rarity: 'rare' },
-  { id: 'accessory-chain', type: 'accessory', name: 'Gold Chain', emoji: '⛓️', cost: 350, slot: 'neck', rarity: 'rare' },
-  { id: 'accessory-crown', type: 'accessory', name: 'Crown', emoji: '👑', cost: 900, slot: 'head', rarity: 'legendary' },
 ];
 
 const STORE_ITEMS_BY_ID = new Map(STORE_ITEMS.map((item) => [item.id, item]));
