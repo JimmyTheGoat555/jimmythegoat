@@ -53,6 +53,62 @@ function PrioritySortToggle({ enabled, onChange, alreadyOptimal }) {
   );
 }
 
+// Insight 7, the "where are the abs?" interceptor. Fires on Finish when
+// the session contains no core work at all.
+//
+// Deliberately never blocking: "Skip abs" always completes the workout, so
+// this can nag but can never trap someone who genuinely didn't plan core
+// today. That's also why there's no once-per-workout suppression — the
+// escape hatch is right there, and being asked again after you explicitly
+// said "you're right, let's do abs" and then didn't is the joke working as
+// intended.
+function JimmyRoastModal({ onDoAbs, onSkip }) {
+  const [spriteBroken, setSpriteBroken] = useState(false);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-5">
+      <div className="card w-full max-w-xs p-6 text-center">
+        <div className="flex justify-center">
+          {spriteBroken ? (
+            <span className="text-6xl leading-none">🐐</span>
+          ) : (
+            <img
+              src="/assets/jimmy-goat.png"
+              alt="Jimmy, unimpressed"
+              onError={() => setSpriteBroken(true)}
+              className="h-28 w-28 object-contain"
+              style={{ filter: 'grayscale(0.55) brightness(0.85)' }}
+            />
+          )}
+        </div>
+
+        <h2 className="mt-2 text-xl text-neutral-50">Where are the abs?</h2>
+        <p className="mt-2 text-sm leading-snug text-neutral-300">
+          Didn&rsquo;t you say you&rsquo;d do abs at the end? Summer is coming. Don&rsquo;t be a Lazy Goat.
+        </p>
+
+        <button type="button" onClick={onDoAbs} className="btn-arcade mt-5 w-full py-3.5 text-base">
+          You&rsquo;re right, let&rsquo;s do abs
+        </button>
+        <button
+          type="button"
+          onClick={onSkip}
+          className="mt-1 w-full py-3 text-sm font-medium text-neutral-500 active:scale-[0.98]"
+        >
+          Skip abs, I accept the belly
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Custom exercises can carry any group string, so match loosely rather
+// than only on the catalog's own 'core' id.
+const CORE_GROUPS = new Set(['core', 'abs', 'abdominals']);
+
+export function hasCoreWork(exercises) {
+  return (exercises ?? []).some((e) => CORE_GROUPS.has(String(e.muscleGroup ?? '').toLowerCase()));
+}
+
 export default function ActiveWorkoutLogger({
   workout,
   exercises,
@@ -73,6 +129,7 @@ export default function ActiveWorkoutLogger({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [showCoreRoast, setShowCoreRoast] = useState(false);
   // Fresh gym-bro line each time a workout starts (this component mounts);
   // tapping it rolls another, never the same one twice running.
   const [quote, setQuote] = useState(() => randomGymQuote());
@@ -126,6 +183,20 @@ export default function ActiveWorkoutLogger({
         isBodyweight: exercise.isBodyweight === true,
       }),
     );
+  };
+
+  // Finish goes through the core check first (see JimmyRoastModal above).
+  // Only exercises that are actually part of the session count — a core
+  // exercise added but left entirely unchecked isn't core work, it's an
+  // intention, which is exactly what the roast is about.
+  const handleFinishPressed = () => {
+    const performed = workout.exercises.filter((e) => e.sets.some((s) => s.completed));
+    if (!hasCoreWork(performed)) {
+      navigator.vibrate?.([30]);
+      setShowCoreRoast(true);
+      return;
+    }
+    setShowSummary(true);
   };
 
   // Checking a set off pops the rest timer full-screen; un-checking it or
@@ -241,7 +312,7 @@ export default function ActiveWorkoutLogger({
           <button
             type="button"
             disabled={!canFinish}
-            onClick={() => setShowSummary(true)}
+            onClick={handleFinishPressed}
             className={`w-full font-semibold text-lg py-4 rounded-2xl transition active:scale-[0.98] ${
               canFinish ? 'bg-[var(--success)] text-white' : 'bg-neutral-800 text-neutral-600'
             }`}
@@ -260,6 +331,16 @@ export default function ActiveWorkoutLogger({
           onAddTime={rest.addTime}
           onSkip={rest.dismiss}
           onMinimize={() => setTimerMinimized(true)}
+        />
+      )}
+
+      {showCoreRoast && (
+        <JimmyRoastModal
+          onDoAbs={() => setShowCoreRoast(false)}
+          onSkip={() => {
+            setShowCoreRoast(false);
+            setShowSummary(true);
+          }}
         />
       )}
 

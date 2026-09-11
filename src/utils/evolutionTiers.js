@@ -61,6 +61,13 @@ export const EVOLUTION_TIERS = [
 // functions/storeCatalog.js's NEGLECT_RECOVERY_DAYS — the server uses the
 // same threshold to decide whether the comeback workout is a
 // "recovery workout" (earns nothing, just restores the tier).
+// Look a tier up by its `stage` rather than by array position — same
+// reasoning the stage field itself carries: inserting or reordering a tier
+// later must not silently change which sprite a caller gets.
+export function getTierByStage(stage) {
+  return EVOLUTION_TIERS.find((tier) => tier.stage === stage) ?? EVOLUTION_TIERS.at(-1);
+}
+
 export const NEGLECT_PENALTY_DAYS = 5;
 const NEGLECT_PENALTY_MS = NEGLECT_PENALTY_DAYS * 24 * 60 * 60 * 1000;
 

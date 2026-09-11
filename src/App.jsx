@@ -64,6 +64,9 @@ const SettingsPanel = lazy(() => import('./components/profile/SettingsPanel'));
 // A one-time, per-account overlay (the Silver Lootbox) — no reason to ship
 // it in the startup bundle for the sessions that will never see it again.
 const SilverLootboxModal = lazy(() => import('./components/workout/SilverLootboxModal'));
+// The post-finish victory lap. Only ever mounts for the few seconds
+// between a workout being logged and its reward landing.
+const WorkoutSummaryChecklist = lazy(() => import('./components/workout/WorkoutSummaryChecklist'));
 
 function prefetchTabScreens() {
   import('./components/progress/ProgressView');
@@ -200,6 +203,11 @@ export default function App() {
   // rather than folded into appNotice's small toast — see
   // SilverLootboxModal.jsx.
   const [lootboxReward, setLootboxReward] = useState(null);
+  // The checklist that plays after a workout is logged: { exercises, reward }.
+  // `reward` is the deferred "what the user actually earned" step (coin/badge
+  // toast, or the Silver Lootbox) — held back until the ticking finishes so
+  // the two moments land in sequence instead of on top of each other.
+  const [finishChecklist, setFinishChecklist] = useState(null);
   const handleSignUp = async (data) => {
     const { warning } = await signUp(data);
     if (warning) setAppNotice({ message: warning, tone: 'warning' });
@@ -425,40 +433,60 @@ export default function App() {
     if (workout.assignedWorkoutId) {
       completeAssignment(workout.assignedWorkoutId, workoutId);
     }
-    // The Silver Lootbox — exactly once, ever, the moment a brand-new
-    // account finishes its very first real workout (see
-    // functions/economy.js). The normal coin/badge toast below still
-    // fires as usual; this is a SEPARATE full-screen moment for the free
-    // dance specifically, not a replacement for it.
-    if (firstWorkoutReward) setLootboxReward(firstWorkoutReward);
+    // Captured BEFORE discardWorkout below clears the workout. Only
+    // exercises with a completed set — the checklist is a record of what
+    // was actually done, not what was planned.
+    const performedNames = workout.exercises
+      .filter((e) => e.sets.some((s) => s.completed))
+      .map((e) => e.name);
+
     // (Re-)arm the 71h local re-engagement nudge off this fresh workout —
     // prompts for notification permission if it hasn't been asked. Fire
     // and forget; a failure here must never block finishing a workout.
     armLazyNudge();
     discardWorkout();
     navigate('/');
-    if (recoveryWorkout) {
-      // The server withheld coins/volume for this one (>= 5 days since the
-      // last workout) regardless — but whether it actually LIFTED the
-      // neglect penalty now depends on whether it cleared
-      // RECOVERY_MIN_SCORE (see functions/economy.js): a token effort
-      // keeps the account "overdue" so the message has to say so rather
-      // than implying the tier was restored when it wasn't.
-      setAppNotice({
-        message: neglectPenaltyLifted
-          ? 'Comeback workout logged — tier restored. Log one more to start earning again.'
-          : "That barely counted — Jimmy needs a real effort to lift the penalty. Log a proper session to restore your tier.",
-        tone: neglectPenaltyLifted ? 'success' : 'warning',
-      });
-    } else if (newBadges?.length > 0 || coinsEarned > 0) {
-      // Badges (functions/badges.js) trump the coin line — they're rarer.
-      const badgeNames = (newBadges ?? []).map((id) => getBadge(id)?.name ?? 'New badge');
-      const coinPart = coinsEarned > 0 ? `+${coinsEarned} coins` : null;
-      const badgePart = badgeNames.length ? `🏅 ${badgeNames.join(' · ')} unlocked!` : null;
-      setAppNotice({
-        message: [badgePart, coinPart].filter(Boolean).join('  ·  '),
-        tone: 'success',
-      });
+
+    // Everything a workout EARNS is deferred behind the checklist, so the
+    // two moments land in sequence rather than the coin toast firing
+    // underneath the ticking list. The checklist calls this when it's done.
+    const showReward = () => {
+      // The Silver Lootbox — exactly once, ever, the moment a brand-new
+      // account finishes its very first real workout (see
+      // functions/economy.js). The coin/badge toast below still fires as
+      // usual; this is a SEPARATE full-screen moment for the free dance
+      // specifically, not a replacement for it.
+      if (firstWorkoutReward) setLootboxReward(firstWorkoutReward);
+
+      if (recoveryWorkout) {
+        // The server withheld coins/volume for this one (>= 5 days since
+        // the last workout) regardless — but whether it actually LIFTED
+        // the neglect penalty depends on whether it cleared
+        // RECOVERY_MIN_SCORE (see functions/economy.js): a token effort
+        // keeps the account "overdue" so the message has to say so rather
+        // than implying the tier was restored when it wasn't.
+        setAppNotice({
+          message: neglectPenaltyLifted
+            ? 'Comeback workout logged — tier restored. Log one more to start earning again.'
+            : "That barely counted — Jimmy needs a real effort to lift the penalty. Log a proper session to restore your tier.",
+          tone: neglectPenaltyLifted ? 'success' : 'warning',
+        });
+      } else if (newBadges?.length > 0 || coinsEarned > 0) {
+        // Badges (functions/badges.js) trump the coin line — they're rarer.
+        const badgeNames = (newBadges ?? []).map((id) => getBadge(id)?.name ?? 'New badge');
+        const coinPart = coinsEarned > 0 ? `+${coinsEarned} coins` : null;
+        const badgePart = badgeNames.length ? `🏅 ${badgeNames.join(' · ')} unlocked!` : null;
+        setAppNotice({
+          message: [badgePart, coinPart].filter(Boolean).join('  ·  '),
+          tone: 'success',
+        });
+      }
+    };
+
+    if (performedNames.length > 0) {
+      setFinishChecklist({ exercises: performedNames, reward: showReward });
+    } else {
+      showReward();
     }
   };
 
@@ -761,6 +789,19 @@ export default function App() {
       {!notifPromptSeen && !activeWorkout && (
         <Suspense fallback={null}>
           <NotificationPromptModal uid={uid} onDismiss={() => setNotifPromptSeen(true)} />
+        </Suspense>
+      )}
+
+      {finishChecklist && (
+        <Suspense fallback={null}>
+          <WorkoutSummaryChecklist
+            exercises={finishChecklist.exercises}
+            onDone={() => {
+              const { reward } = finishChecklist;
+              setFinishChecklist(null);
+              reward();
+            }}
+          />
         </Suspense>
       )}
 
