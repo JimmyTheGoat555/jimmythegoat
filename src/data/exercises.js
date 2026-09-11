@@ -33,57 +33,64 @@ export const MUSCLE_GROUPS = [
 // Only ever a first-set guess: the moment you have logged an exercise
 // once, SetEntrySheet seeds from YOUR last set instead and never consults
 // this again.
+//
+// `movement` ('compound' = multi-joint, 'isolation' = single-joint) and the
+// optional `sizeRank` override drive Jimmy's Priority sorting — see
+// utils/exerciseSorting.js. sizeRank only appears where the muscle group
+// would rank the exercise wrongly: calf raises are filed under legs but
+// belong at the end of a session with the other small stuff, not in front
+// of squats.
 export const EXERCISES = [
   // Chest
-  { id: 'bench-press', name: 'Barbell Bench Press', muscleGroup: 'chest', defaultWeightKg: 80 },
-  { id: 'incline-db-press', name: 'Incline Dumbbell Press', muscleGroup: 'chest', defaultWeightKg: 14 },
-  { id: 'chest-fly', name: 'Chest Fly', muscleGroup: 'chest', defaultWeightKg: 12 },
-  { id: 'push-up', name: 'Push-Up', muscleGroup: 'chest', isBodyweight: true },
-  { id: 'dips', name: 'Dips', muscleGroup: 'chest', isBodyweight: true },
-  { id: 'cable-crossover', name: 'Cable Crossover', muscleGroup: 'chest', defaultWeightKg: 12 },
+  { id: 'bench-press', name: 'Barbell Bench Press', muscleGroup: 'chest', defaultWeightKg: 80, movement: 'compound' },
+  { id: 'incline-db-press', name: 'Incline Dumbbell Press', muscleGroup: 'chest', defaultWeightKg: 14, movement: 'compound' },
+  { id: 'chest-fly', name: 'Chest Fly', muscleGroup: 'chest', defaultWeightKg: 12, movement: 'isolation' },
+  { id: 'push-up', name: 'Push-Up', muscleGroup: 'chest', isBodyweight: true, movement: 'compound' },
+  { id: 'dips', name: 'Dips', muscleGroup: 'chest', isBodyweight: true, movement: 'compound' },
+  { id: 'cable-crossover', name: 'Cable Crossover', muscleGroup: 'chest', defaultWeightKg: 12, movement: 'isolation' },
 
   // Back
-  { id: 'deadlift', name: 'Deadlift', muscleGroup: 'back', defaultWeightKg: 60 },
-  { id: 'pull-up', name: 'Pull-Up', muscleGroup: 'back', isBodyweight: true },
-  { id: 'chin-up', name: 'Chin-Up', muscleGroup: 'back', isBodyweight: true },
-  { id: 'barbell-row', name: 'Barbell Row', muscleGroup: 'back', defaultWeightKg: 40 },
-  { id: 'lat-pulldown', name: 'Lat Pulldown', muscleGroup: 'back', defaultWeightKg: 40 },
-  { id: 'seated-cable-row', name: 'Seated Cable Row', muscleGroup: 'back', defaultWeightKg: 40 },
+  { id: 'deadlift', name: 'Deadlift', muscleGroup: 'back', defaultWeightKg: 60, movement: 'compound' },
+  { id: 'pull-up', name: 'Pull-Up', muscleGroup: 'back', isBodyweight: true, movement: 'compound' },
+  { id: 'chin-up', name: 'Chin-Up', muscleGroup: 'back', isBodyweight: true, movement: 'compound' },
+  { id: 'barbell-row', name: 'Barbell Row', muscleGroup: 'back', defaultWeightKg: 40, movement: 'compound' },
+  { id: 'lat-pulldown', name: 'Lat Pulldown', muscleGroup: 'back', defaultWeightKg: 40, movement: 'compound' },
+  { id: 'seated-cable-row', name: 'Seated Cable Row', muscleGroup: 'back', defaultWeightKg: 40, movement: 'compound' },
 
   // Legs
-  { id: 'squat', name: 'Squat', muscleGroup: 'legs', defaultWeightKg: 50 },
-  { id: 'leg-press', name: 'Leg Press', muscleGroup: 'legs', defaultWeightKg: 80 },
-  { id: 'romanian-deadlift', name: 'Romanian Deadlift', muscleGroup: 'legs', defaultWeightKg: 40 },
-  { id: 'leg-extension', name: 'Leg Extension', muscleGroup: 'legs', defaultWeightKg: 30 },
-  { id: 'leg-curl', name: 'Leg Curl', muscleGroup: 'legs', defaultWeightKg: 25 },
-  { id: 'calf-raise', name: 'Calf Raise', muscleGroup: 'legs', defaultWeightKg: 40 },
+  { id: 'squat', name: 'Squat', muscleGroup: 'legs', defaultWeightKg: 50, movement: 'compound' },
+  { id: 'leg-press', name: 'Leg Press', muscleGroup: 'legs', defaultWeightKg: 80, movement: 'compound' },
+  { id: 'romanian-deadlift', name: 'Romanian Deadlift', muscleGroup: 'legs', defaultWeightKg: 40, movement: 'compound' },
+  { id: 'leg-extension', name: 'Leg Extension', muscleGroup: 'legs', defaultWeightKg: 30, movement: 'isolation' },
+  { id: 'leg-curl', name: 'Leg Curl', muscleGroup: 'legs', defaultWeightKg: 25, movement: 'isolation' },
+  { id: 'calf-raise', name: 'Calf Raise', muscleGroup: 'legs', defaultWeightKg: 40, movement: 'isolation', sizeRank: 4 },
 
   // Shoulders
-  { id: 'overhead-press', name: 'Overhead Press', muscleGroup: 'shoulders', defaultWeightKg: 25 },
-  { id: 'lateral-raise', name: 'Lateral Raise', muscleGroup: 'shoulders', defaultWeightKg: 7.5 },
-  { id: 'front-raise', name: 'Front Raise', muscleGroup: 'shoulders', defaultWeightKg: 7.5 },
-  { id: 'rear-delt-fly', name: 'Rear Delt Fly', muscleGroup: 'shoulders', defaultWeightKg: 7.5 },
-  { id: 'shrug', name: 'Shrug', muscleGroup: 'shoulders', defaultWeightKg: 40 },
+  { id: 'overhead-press', name: 'Overhead Press', muscleGroup: 'shoulders', defaultWeightKg: 25, movement: 'compound' },
+  { id: 'lateral-raise', name: 'Lateral Raise', muscleGroup: 'shoulders', defaultWeightKg: 7.5, movement: 'isolation' },
+  { id: 'front-raise', name: 'Front Raise', muscleGroup: 'shoulders', defaultWeightKg: 7.5, movement: 'isolation' },
+  { id: 'rear-delt-fly', name: 'Rear Delt Fly', muscleGroup: 'shoulders', defaultWeightKg: 7.5, movement: 'isolation' },
+  { id: 'shrug', name: 'Shrug', muscleGroup: 'shoulders', defaultWeightKg: 40, movement: 'isolation' },
 
   // Biceps
-  { id: 'barbell-curl', name: 'Barbell Curl', muscleGroup: 'biceps', defaultWeightKg: 20 },
-  { id: 'db-curl', name: 'Dumbbell Curl', muscleGroup: 'biceps', defaultWeightKg: 10 },
-  { id: 'hammer-curl', name: 'Hammer Curl', muscleGroup: 'biceps', defaultWeightKg: 10 },
-  { id: 'preacher-curl', name: 'Preacher Curl', muscleGroup: 'biceps', defaultWeightKg: 15 },
+  { id: 'barbell-curl', name: 'Barbell Curl', muscleGroup: 'biceps', defaultWeightKg: 20, movement: 'isolation' },
+  { id: 'db-curl', name: 'Dumbbell Curl', muscleGroup: 'biceps', defaultWeightKg: 10, movement: 'isolation' },
+  { id: 'hammer-curl', name: 'Hammer Curl', muscleGroup: 'biceps', defaultWeightKg: 10, movement: 'isolation' },
+  { id: 'preacher-curl', name: 'Preacher Curl', muscleGroup: 'biceps', defaultWeightKg: 15, movement: 'isolation' },
 
   // Triceps
-  { id: 'triceps-pushdown', name: 'Triceps Pushdown', muscleGroup: 'triceps', defaultWeightKg: 20 },
-  { id: 'skull-crusher', name: 'Skull Crusher', muscleGroup: 'triceps', defaultWeightKg: 20 },
-  { id: 'close-grip-bench', name: 'Close-Grip Bench Press', muscleGroup: 'triceps', defaultWeightKg: 30 },
-  { id: 'triceps-dip', name: 'Triceps Dip', muscleGroup: 'triceps', isBodyweight: true },
+  { id: 'triceps-pushdown', name: 'Triceps Pushdown', muscleGroup: 'triceps', defaultWeightKg: 20, movement: 'isolation' },
+  { id: 'skull-crusher', name: 'Skull Crusher', muscleGroup: 'triceps', defaultWeightKg: 20, movement: 'isolation' },
+  { id: 'close-grip-bench', name: 'Close-Grip Bench Press', muscleGroup: 'triceps', defaultWeightKg: 30, movement: 'compound' },
+  { id: 'triceps-dip', name: 'Triceps Dip', muscleGroup: 'triceps', isBodyweight: true, movement: 'compound' },
 
   // Core
   // Plank is a timed hold, which this log can't express — it still wants a
   // number, so it gets the lightest one rather than a fictional load.
-  { id: 'plank', name: 'Plank', muscleGroup: 'core', defaultWeightKg: 1 },
-  { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscleGroup: 'core', isBodyweight: true },
-  { id: 'cable-crunch', name: 'Cable Crunch', muscleGroup: 'core', defaultWeightKg: 20 },
-  { id: 'russian-twist', name: 'Russian Twist', muscleGroup: 'core', defaultWeightKg: 5 },
+  { id: 'plank', name: 'Plank', muscleGroup: 'core', defaultWeightKg: 1, movement: 'isolation' },
+  { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscleGroup: 'core', isBodyweight: true, movement: 'isolation' },
+  { id: 'cable-crunch', name: 'Cable Crunch', muscleGroup: 'core', defaultWeightKg: 20, movement: 'isolation' },
+  { id: 'russian-twist', name: 'Russian Twist', muscleGroup: 'core', defaultWeightKg: 5, movement: 'isolation' },
 ];
 
 export function exercisesByGroup(groupId) {

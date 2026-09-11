@@ -287,6 +287,7 @@ export default function App() {
     screenLockActive,
     addExercise,
     removeExercise,
+    reorderExercises,
     addSet,
     updateSet,
     removeSet,
@@ -709,6 +710,7 @@ export default function App() {
                   screenLockActive={screenLockActive}
                   onAddExercise={addExercise}
                   onRemoveExercise={removeExercise}
+                  onReorderExercises={reorderExercises}
                   onAddSet={addSet}
                   onUpdateSet={updateSet}
                   onRemoveSet={removeSet}

@@ -2,15 +2,48 @@ import { getMuscleGroup } from '../../data/exercises';
 import { formatSets } from '../../utils/lastPerformance';
 import SetRow from './SetRow';
 
-export default function ExerciseLogCard({ exercise, lastTime, onAddSet, onUpdateSet, onRemoveSet, onRemoveExercise }) {
+// The six-dot grip. Only rendered while manual sorting is on — a handle
+// that can't do anything is worse than no handle.
+function DragHandle(props) {
+  return (
+    <button
+      type="button"
+      aria-label={`Reorder ${props['aria-exercise'] ?? 'exercise'}`}
+      className="-ml-1 mr-1 flex h-11 w-8 shrink-0 cursor-grab items-center justify-center text-neutral-500 active:cursor-grabbing active:text-neutral-200"
+      {...props}
+      aria-exercise={undefined}
+    >
+      <svg viewBox="0 0 10 16" className="h-4 w-2.5" aria-hidden="true">
+        {[0, 1, 2].map((row) =>
+          [0, 1].map((col) => (
+            <circle key={`${row}-${col}`} cx={col * 6 + 2} cy={row * 6 + 2} r="1.5" fill="currentColor" />
+          )),
+        )}
+      </svg>
+    </button>
+  );
+}
+
+export default function ExerciseLogCard({
+  exercise,
+  lastTime,
+  onAddSet,
+  onUpdateSet,
+  onRemoveSet,
+  onRemoveExercise,
+  dragHandleProps = null,
+  isDragging = false,
+}) {
   const group = getMuscleGroup(exercise.muscleGroup);
   const completedCount = exercise.sets.filter((s) => s.completed).length;
   const isBodyweight = exercise.isBodyweight === true;
 
   return (
-    <div className="card overflow-hidden">
+    <div className={`card overflow-hidden ${isDragging ? 'ring-2 ring-white/25' : ''}`}>
       <div className="flex items-center justify-between px-5 py-4">
-        <div>
+        <div className="flex min-w-0 items-start">
+          {dragHandleProps && <DragHandle {...dragHandleProps} aria-exercise={exercise.name} />}
+          <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group?.color }} />
             <h3 className="font-semibold text-neutral-100 text-base">{exercise.name}</h3>
@@ -23,8 +56,9 @@ export default function ExerciseLogCard({ exercise, lastTime, onAddSet, onUpdate
               <span className="text-neutral-500">Last time</span> · {formatSets(lastTime.sets)}
             </p>
           )}
+          </div>
         </div>
-        <button type="button" onClick={onRemoveExercise} className="text-sm text-neutral-500 px-2 py-1">
+        <button type="button" onClick={onRemoveExercise} className="shrink-0 text-sm text-neutral-500 px-2 py-1">
           Remove
         </button>
       </div>

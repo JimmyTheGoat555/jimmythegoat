@@ -3,11 +3,54 @@ import ExerciseLogCard from './ExerciseLogCard';
 import ExercisePicker from './ExercisePicker';
 import WorkoutTimer from './WorkoutTimer';
 import FullScreenTimer from './FullScreenTimer';
+import ReorderableList from './ReorderableList';
 import WorkoutSummaryModal from './WorkoutSummaryModal';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import { useRestTimer } from '../../hooks/useRestTimer';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { lastPerformance } from '../../utils/lastPerformance';
+import { sortExercisesByPriority, isPrioritySorted } from '../../utils/exerciseSorting';
 import { randomGymQuote } from '../../data/gymQuotes';
+
+// Jimmy's Priority: on, the list is kept in coach order (compound before
+// isolation, big muscles first — see utils/exerciseSorting.js) and dragging
+// is off, because a hand-drag and an automatic sort fighting over the same
+// list is a guaranteed bad time. Off, the order is entirely the lifter's
+// and the drag handles appear. One switch, two clearly separate modes.
+function PrioritySortToggle({ enabled, onChange, alreadyOptimal }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900/60 px-4 py-3">
+      <span className="text-lg leading-none" aria-hidden="true">
+        🐐
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-neutral-100">Jimmy&rsquo;s Priority</p>
+        <p className="text-xs text-neutral-500">
+          {enabled
+            ? alreadyOptimal
+              ? 'Already in the optimal order'
+              : 'Big lifts first, arms and core last'
+            : 'Off — drag the handles to set your own order'}
+        </p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label="Jimmy's Priority sorting"
+        onClick={() => onChange(!enabled)}
+        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+          enabled ? 'bg-[var(--tier-accent)]' : 'bg-neutral-700'
+        }`}
+      >
+        <span
+          className="absolute top-1 h-5 w-5 rounded-full bg-white transition-all"
+          style={{ left: enabled ? '1.75rem' : '0.25rem' }}
+        />
+      </button>
+    </div>
+  );
+}
 
 export default function ActiveWorkoutLogger({
   workout,
@@ -24,6 +67,7 @@ export default function ActiveWorkoutLogger({
   bodyWeightKg = 0,
   onDiscard,
   onSaveTemplate,
+  onReorderExercises,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -33,6 +77,30 @@ export default function ActiveWorkoutLogger({
   const [quote, setQuote] = useState(() => randomGymQuote());
   const rest = useRestTimer();
   const [timerMinimized, setTimerMinimized] = useState(false);
+  // Remembered across workouts — someone who lifts to Jimmy's order wants
+  // it every session, and someone who arranges their own does too.
+  const [priorityOn, setPriorityOn] = useLocalStorage('jimmys-priority-sort', false);
+
+  // Applying the sort is a one-shot rewrite of the real order, not a
+  // display-only view: the workout that eventually gets logged should be
+  // in the order it was actually performed, and everything downstream
+  // (the summary, the feed post, the saved template) reads that array.
+  const handlePriorityToggle = (next) => {
+    setPriorityOn(next);
+    navigator.vibrate?.([30]);
+    if (next) onReorderExercises(sortExercisesByPriority(workout.exercises).map((e) => e.exerciseId));
+  };
+
+  // Adding an exercise mid-workout while the sort is on should drop it into
+  // its proper slot rather than tacking it on the end and quietly leaving
+  // the list wrong.
+  const exerciseCount = workout.exercises.length;
+  useEffect(() => {
+    if (priorityOn && !isPrioritySorted(workout.exercises)) {
+      onReorderExercises(sortExercisesByPriority(workout.exercises).map((e) => e.exerciseId));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priorityOn, exerciseCount]);
 
   const completedSets = workout.exercises.reduce(
     (sum, e) => sum + e.sets.filter((s) => s.completed).length,
@@ -105,17 +173,30 @@ export default function ActiveWorkoutLogger({
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {workout.exercises.map((exercise) => (
-            <ExerciseLogCard
-              key={exercise.exerciseId}
-              exercise={exercise}
-              lastTime={lastPerformance(exercise.exerciseId, history)}
-              onAddSet={() => onAddSet(exercise.exerciseId)}
-              onUpdateSet={(setId, patch) => handleUpdateSet(exercise.exerciseId, setId, patch)}
-              onRemoveSet={(setId) => onRemoveSet(exercise.exerciseId, setId)}
-              onRemoveExercise={() => onRemoveExercise(exercise.exerciseId)}
-            />
-          ))}
+          <PrioritySortToggle
+            enabled={priorityOn}
+            onChange={handlePriorityToggle}
+            alreadyOptimal={priorityOn && isPrioritySorted(workout.exercises)}
+          />
+
+          <ReorderableList
+            items={workout.exercises}
+            getKey={(e) => e.exerciseId}
+            onReorder={onReorderExercises}
+            disabled={priorityOn}
+            renderItem={(exercise, { dragHandleProps, isDragging }) => (
+              <ExerciseLogCard
+                exercise={exercise}
+                lastTime={lastPerformance(exercise.exerciseId, history)}
+                dragHandleProps={dragHandleProps}
+                isDragging={isDragging}
+                onAddSet={() => onAddSet(exercise.exerciseId)}
+                onUpdateSet={(setId, patch) => handleUpdateSet(exercise.exerciseId, setId, patch)}
+                onRemoveSet={(setId) => onRemoveSet(exercise.exerciseId, setId)}
+                onRemoveExercise={() => onRemoveExercise(exercise.exerciseId)}
+              />
+            )}
+          />
 
           <button
             type="button"

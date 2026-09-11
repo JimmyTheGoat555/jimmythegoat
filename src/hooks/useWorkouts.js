@@ -108,6 +108,25 @@ export function useActiveWorkout(uid) {
     [setActiveWorkout],
   );
 
+  // Replaces the exercise order wholesale, by id. Takes ids rather than the
+  // reordered objects themselves so a stale drag can never resurrect an
+  // exercise that was removed, or an old copy of one whose sets have since
+  // changed — the objects always come from current state.
+  const reorderExercises = useCallback(
+    (orderedIds) => {
+      setActiveWorkout((prev) => {
+        if (!prev) return prev;
+        const byId = new Map(prev.exercises.map((e) => [e.exerciseId, e]));
+        const next = orderedIds.map((id) => byId.get(id)).filter(Boolean);
+        // Anything the caller didn't mention keeps its place at the end,
+        // so a partial list can't silently drop work.
+        for (const e of prev.exercises) if (!orderedIds.includes(e.exerciseId)) next.push(e);
+        return { ...prev, exercises: next };
+      });
+    },
+    [setActiveWorkout],
+  );
+
   const removeExercise = useCallback(
     (exerciseId) => {
       setActiveWorkout((prev) => ({
@@ -179,6 +198,7 @@ export function useActiveWorkout(uid) {
     screenLockActive: screenLock.isActive,
     addExercise,
     removeExercise,
+    reorderExercises,
     addSet,
     updateSet,
     removeSet,
