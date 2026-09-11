@@ -35,21 +35,45 @@ export function useWorkoutHistory() {
   return { workouts, addWorkout, deleteWorkout, updateWorkout };
 }
 
+// Nearly every hypertrophy/strength exercise is programmed as 3 working
+// sets, so starting at 1 meant almost everyone tapped "+ Add Set" twice
+// per exercise, every exercise, every session. Starting at 3 costs the
+// minority who wanted fewer a single "✕" instead.
+//
+// Safe to leave blank rows lying around: an un-checked set is skipped by
+// both client stat functions (workoutStats.js filters on `completed`
+// before summing) and by the server (economy.js's validateAndScoreWorkout
+// `continue`s past anything not completed, and drops an exercise whose
+// sets are all incomplete), so extras never reach history, volume, or the
+// feed post. The "log at least one completed set" gate is unchanged.
+export const DEFAULT_SETS_PER_EXERCISE = 3;
+
+function emptySets() {
+  return Array.from({ length: DEFAULT_SETS_PER_EXERCISE }, () => ({
+    id: crypto.randomUUID(),
+    weight: '',
+    reps: '',
+    completed: false,
+  }));
+}
+
 function emptyWorkout(presetExercises, assignedWorkoutId) {
   return {
     id: crypto.randomUUID(),
     startedAt: new Date().toISOString(),
     finishedAt: null,
-    // A trainer-assigned routine arrives as {exerciseId, name, muscleGroup}
-    // per exercise — same shape addExercise() builds from, just pre-seeded
-    // with one empty set each instead of added one at a time.
+    // A trainer-assigned routine or saved template arrives as
+    // {exerciseId, name, muscleGroup} per exercise — same shape
+    // addExercise() builds from, just pre-seeded all at once. Neither
+    // carries a set count today, so they get the same default 3 as a
+    // hand-added exercise rather than a different number for no reason.
     exercises: (presetExercises ?? []).map((exercise) => ({
       exerciseId: exercise.exerciseId,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
       // Seed list decides this — an assigned routine only carries ids.
       isBodyweight: isBodyweightExercise(exercise.exerciseId),
-      sets: [{ id: crypto.randomUUID(), weight: '', reps: '', completed: false }],
+      sets: emptySets(),
     })),
     assignedWorkoutId: assignedWorkoutId ?? null,
   };
@@ -99,7 +123,7 @@ export function useActiveWorkout(uid) {
               // From the exercise definition (seed list has the flag;
               // custom exercises don't carry it → treated as weighted).
               isBodyweight: exercise.isBodyweight === true,
-              sets: [{ id: crypto.randomUUID(), weight: '', reps: '', completed: false }],
+              sets: emptySets(),
             },
           ],
         };
