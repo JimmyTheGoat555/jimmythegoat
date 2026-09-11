@@ -125,8 +125,36 @@ export const ACCESSORY_ART = {
   'accessory-headband': { slot: 'head', src: '/assets/accessories/sweatband.png', aspect: 2.609 },
   'accessory-headphones': { slot: 'head', src: '/assets/accessories/headphones.png', aspect: 1.280 },
   'accessory-cap': { slot: 'head', src: '/assets/accessories/cap.png', aspect: 1.389 },
-  'accessory-tank': { slot: 'body', src: '/assets/accessories/tank.png', aspect: 0.732 },
-  'accessory-hoodie': { slot: 'body', src: '/assets/accessories/hoodie.png', aspect: 0.757 },
+  // Drawn per stage — the user made a version for each Jimmy, and the
+  // Legend's is not the Goat's garment at a bigger size. Stage 1 and 2 came
+  // out of folder-of-composites extraction; 3 and 4 from single images,
+  // using our own sprite colour-matched on the bare legs as the reference.
+  'accessory-tank': {
+    slot: 'body',
+    src: {
+      1: '/assets/accessories/tank-1.png',
+      2: '/assets/accessories/tank-2.png',
+      3: '/assets/accessories/tank-3.png',
+      4: '/assets/accessories/tank-4.png',
+    },
+    aspect: { 1: 0.732, 2: 0.639, 3: 0.706, 4: 0.732 },
+  },
+  // Per stage as well, but only two of the four are good enough to use.
+  // Stage 3's composite diverges too far from our sprite for the
+  // subtraction to find the garment, and stage 2's brought the shadowed
+  // face out of the hood with it, landing a goat-shaped smudge on the
+  // wearer. Both are simply absent, so artFor falls back to stage 1 scaled
+  // by its own ACCESSORY_LAYOUT row — which is exactly the behaviour before
+  // any of this, and better than shipping a visible defect. Drop a
+  // hoodie-2/3.png in and add the line to fix either.
+  'accessory-hoodie': {
+    slot: 'body',
+    src: {
+      1: '/assets/accessories/hoodie-1.png',
+      4: '/assets/accessories/hoodie-4.png',
+    },
+    aspect: { 1: 0.757, 4: 0.642 },
+  },
   // --- still vector, awaiting art ---
   'accessory-crown': { slot: 'head', viewBox: '0 0 100 62', Art: Crown },
   'accessory-chain': { slot: 'neck', viewBox: '0 0 100 46', Art: Chain },

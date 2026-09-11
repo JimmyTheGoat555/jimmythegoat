@@ -169,19 +169,20 @@ const ACCESSORY_LAYOUT = {
   'accessory-tank': {
     z: 10,
     stages: {
+      // Measured from each stage's own composite, not scaled from stage 1.
       1: { top: '39.2%', left: '50.5%', width: '54.7%' },
-      2: { top: '39.0%', left: '48.4%', width: '60.7%' },
-      3: { top: '40.8%', left: '50.0%', width: '63.5%' },
-      4: { top: '43.5%', left: '49.2%', width: '65.6%' },
+      2: { top: '38.0%', left: '48.4%', width: '47.0%' },
+      3: { top: '36.1%', left: '51.0%', width: '50.7%' },
+      4: { top: '35.2%', left: '48.4%', width: '48.3%' },
     },
   },
   'accessory-hoodie': {
     z: 10,
     stages: {
       1: { top: '38.1%', left: '50.5%', width: '65.9%' },
-      2: { top: '37.3%', left: '48.4%', width: '69.2%' },
+      2: { top: '33.0%', left: '48.4%', width: '52.0%' },
       3: { top: '38.4%', left: '50.0%', width: '71.2%' },
-      4: { top: '40.1%', left: '49.2%', width: '72.5%' },
+      4: { top: '30.6%', left: '47.1%', width: '60.4%' },
     },
   },
 };
