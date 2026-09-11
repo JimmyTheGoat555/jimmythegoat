@@ -491,35 +491,60 @@ button.card:hover {
 }
 
 /* ---- SilverLootboxModal (src/components/workout/SilverLootboxModal.jsx) ---- */
-/* The chest's metal body — a brushed-silver gradient plus an inset
-   highlight/shadow pair so it reads as a solid object, not a flat
-   rectangle, at rest. */
-.chest-metal {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(135deg, #f5f5f9 0%, #cacad4 35%, #8d8d98 55%, #dcdce3 75%, #a7a7b1 100%);
-  box-shadow:
-    0 14px 32px rgba(0, 0, 0, 0.55),
-    inset 0 1px 2px rgba(255, 255, 255, 0.65),
-    inset 0 -6px 10px rgba(0, 0, 0, 0.28);
-}
-/* A diagonal highlight that sweeps across on a loop — the "metallic
-   sheen" cue, same trick a real chrome/foil surface gives off. */
-.chest-sheen::after {
-  content: '';
-  position: absolute;
-  inset: -60% -60%;
-  background: linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.65) 50%, transparent 58%);
-  animation: chest-sheen-sweep 3.4s ease-in-out infinite;
+/* The chest itself is SVG now (components/workout/SilverChest.jsx) — the
+   old .chest-metal/.chest-sheen div stack lived here and was replaced
+   wholesale, because gradients on a rectangle can't express three faces of
+   a box no matter how glossy they get. What's left here is motion only. */
+
+/* The specular bar travelling across the metal, clipped to the chest
+   silhouette in the SVG. Moves far enough to clear the whole box and then
+   waits, so it reads as an occasional catch of light rather than a strobe. */
+.chest-sheen-bar {
+  animation: chest-sheen-sweep 3.6s ease-in-out infinite;
 }
 @keyframes chest-sheen-sweep {
   0%,
-  15% {
-    transform: translateX(-55%);
+  12% {
+    transform: skewX(-18deg) translateX(0);
   }
-  65%,
+  62%,
   100% {
-    transform: translateX(55%);
+    transform: skewX(-18deg) translateX(330px);
+  }
+}
+
+/* Light rays behind the chest — very slow, so it never competes with the
+   chest for attention while idling. */
+.chest-rays {
+  transform-origin: 110px 104px;
+  animation: chest-rays-spin 26s linear infinite;
+  transition: opacity 0.5s ease-out;
+  mix-blend-mode: screen;
+}
+@keyframes chest-rays-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Sparkles popping out on the burst. */
+.chest-sparkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: chest-sparkle-pop 0.75s ease-out both;
+}
+@keyframes chest-sparkle-pop {
+  0% {
+    opacity: 0;
+    scale: 0.2;
+  }
+  45% {
+    opacity: 1;
+    scale: 1.25;
+  }
+  100% {
+    opacity: 0;
+    scale: 0.7;
   }
 }
 
@@ -586,7 +611,9 @@ button.card:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chest-sheen::after,
+  .chest-sheen-bar,
+  .chest-rays,
+  .chest-sparkle,
   [class*='chest-breathe'],
   [class*='chest-shake'],
   [class*='chest-flash'],

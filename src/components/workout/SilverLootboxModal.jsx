@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import SilverChest from './SilverChest';
 import { getDancePreviewPath, danceNumberForItemId } from '../../utils/danceAnimations';
 
 // A first-workout-only, full-screen reward moment — see functions/economy.js's
@@ -26,17 +27,48 @@ export default function SilverLootboxModal({ reward, evolutionStage, onClose }) 
       setStage(STAGE.BURST);
       import('canvas-confetti')
         .then(({ default: confetti }) => {
-          const base = { disableForReducedMotion: true, zIndex: 100, ticks: 300 };
+          const base = { disableForReducedMotion: true, zIndex: 100, ticks: 320 };
+          const silver = ['#ffffff', '#f5f5f9', '#cacad4', '#8d8d98'];
+          const gold = ['#fff6d0', '#f7cf5e', '#d4af37'];
+
+          // The eruption out of the chest itself: a tight, fast column
+          // straight up, which is what sells "this came OUT of the box"
+          // rather than "confetti happened somewhere on screen".
           confetti({
             ...base,
-            particleCount: 140,
-            spread: 100,
-            startVelocity: 48,
-            origin: { y: 0.55 },
-            colors: ['#f5f5f9', '#cacad4', '#ffffff', '#8d8d98', '#ffd76a'],
+            particleCount: 90,
+            spread: 42,
+            startVelocity: 62,
+            origin: { y: 0.52 },
+            colors: [...gold, ...silver],
+            scalar: 1.1,
           });
-          confetti({ ...base, particleCount: 60, angle: 60, spread: 70, origin: { x: 0.1, y: 0.6 } });
-          confetti({ ...base, particleCount: 60, angle: 120, spread: 70, origin: { x: 0.9, y: 0.6 } });
+          // Then the wide canopy over it.
+          confetti({
+            ...base,
+            particleCount: 130,
+            spread: 120,
+            startVelocity: 45,
+            origin: { y: 0.55 },
+            colors: [...silver, ...gold],
+          });
+          // Side cannons, angled inward so the two streams cross overhead.
+          confetti({ ...base, particleCount: 70, angle: 62, spread: 65, origin: { x: 0.05, y: 0.62 }, colors: gold });
+          confetti({ ...base, particleCount: 70, angle: 118, spread: 65, origin: { x: 0.95, y: 0.62 }, colors: gold });
+          // A late trickle of heavy, slow flakes so the air doesn't clear
+          // all at once the moment the reveal card lands.
+          window.setTimeout(() => {
+            confetti({
+              ...base,
+              particleCount: 60,
+              spread: 140,
+              startVelocity: 22,
+              gravity: 0.6,
+              scalar: 1.3,
+              origin: { y: 0.35 },
+              colors: [...gold, ...silver],
+            });
+          }, 480);
         })
         .catch(() => {
           // Chunk failed to load (offline, blocked) — the flash + shake +
@@ -78,9 +110,9 @@ export default function SilverLootboxModal({ reward, evolutionStage, onClose }) 
             </h1>
           </div>
 
-          <div className="relative flex h-56 w-56 items-center justify-center">
+          <div className="relative flex h-64 w-72 items-center justify-center">
             <div
-              className="absolute h-40 w-40 rounded-full opacity-70 blur-3xl"
+              className="pointer-events-none absolute h-44 w-44 rounded-full opacity-70 blur-3xl"
               style={{ background: 'radial-gradient(circle, rgba(210,210,230,0.8), transparent 70%)' }}
             />
 
@@ -90,34 +122,17 @@ export default function SilverLootboxModal({ reward, evolutionStage, onClose }) 
               disabled={stage !== STAGE.CLOSED}
               aria-label="Open the silver chest"
               className={[
-                'relative flex flex-col items-center active:scale-95',
-                stage === STAGE.CLOSED ? 'animate-[chest-breathe_2.6s_ease-in-out_infinite]' : '',
+                'relative w-full',
+                stage === STAGE.CLOSED ? 'animate-[chest-breathe_2.6s_ease-in-out_infinite] active:scale-95' : '',
                 stage === STAGE.SHAKING ? 'animate-[chest-shake_0.55s_ease-in-out]' : '',
               ].join(' ')}
             >
-              {/* Lid — flies off + fades on burst */}
-              <div
-                className="chest-metal chest-sheen h-14 w-40 rounded-t-2xl"
-                style={{
-                  transition: 'transform 0.5s ease-in, opacity 0.5s ease-in',
-                  transform: stage === STAGE.BURST ? 'translateY(-60px) rotate(-20deg)' : 'translateY(0) rotate(0)',
-                  opacity: stage === STAGE.BURST ? 0 : 1,
-                }}
-              />
-              {/* Base */}
-              <div className="chest-metal chest-sheen -mt-2 flex h-24 w-44 items-start justify-center rounded-2xl pt-3">
-                <span
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-black text-neutral-900 shadow-lg"
-                  style={{ background: 'linear-gradient(135deg, #fff6d0, #d4af37)' }}
-                >
-                  ?
-                </span>
-              </div>
+              <SilverChest stage={stage} className="h-full w-full drop-shadow-[0_18px_28px_rgba(0,0,0,0.55)]" />
             </button>
 
             {stage === STAGE.BURST && (
               <div
-                className="pointer-events-none absolute h-40 w-40 rounded-full animate-[chest-flash_0.5s_ease-out]"
+                className="pointer-events-none absolute h-44 w-44 rounded-full animate-[chest-flash_0.5s_ease-out]"
                 style={{ background: 'radial-gradient(circle, #fff, transparent 70%)' }}
               />
             )}
