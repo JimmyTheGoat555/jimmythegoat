@@ -139,21 +139,23 @@ export const ACCESSORY_ART = {
     },
     aspect: { 1: 0.732, 2: 0.639, 3: 0.706, 4: 0.732 },
   },
-  // Per stage as well, but only two of the four are good enough to use.
-  // Stage 3's composite diverges too far from our sprite for the
-  // subtraction to find the garment, and stage 2's brought the shadowed
-  // face out of the hood with it, landing a goat-shaped smudge on the
-  // wearer. Both are simply absent, so artFor falls back to stage 1 scaled
-  // by its own ACCESSORY_LAYOUT row — which is exactly the behaviour before
-  // any of this, and better than shipping a visible defect. Drop a
-  // hoodie-2/3.png in and add the line to fix either.
+  // Three of the four. Stage 3 could not be lifted by subtraction at all —
+  // Canva re-renders the whole character per export, so on that one the
+  // BARE LEGS differ from our sprite by 28.6 after colour-matching while
+  // the garment only reaches 32; no separation to threshold. It came out
+  // by colour instead: this cloth sits near 15 on R-B and the fur near 41.
+  // Stage 4 is the reverse — his shorts are dark too, so colour grabs them
+  // and subtraction is the one that works. Stage 2 is absent (its hood
+  // brought the shadowed face along as a goat-shaped smudge) and falls back
+  // to stage 1, which is what shipped before.
   'accessory-hoodie': {
     slot: 'body',
     src: {
       1: '/assets/accessories/hoodie-1.png',
+      3: '/assets/accessories/hoodie-3.png',
       4: '/assets/accessories/hoodie-4.png',
     },
-    aspect: { 1: 0.757, 4: 0.642 },
+    aspect: { 1: 0.757, 3: 0.562, 4: 0.642 },
   },
   // --- still vector, awaiting art ---
   'accessory-crown': { slot: 'head', viewBox: '0 0 100 62', Art: Crown },

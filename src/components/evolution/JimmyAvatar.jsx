@@ -181,7 +181,7 @@ const ACCESSORY_LAYOUT = {
     stages: {
       1: { top: '38.1%', left: '50.5%', width: '65.9%' },
       2: { top: '33.0%', left: '48.4%', width: '52.0%' },
-      3: { top: '38.4%', left: '50.0%', width: '71.2%' },
+      3: { top: '31.1%', left: '50.4%', width: '66.6%' },
       4: { top: '30.6%', left: '47.1%', width: '60.4%' },
     },
   },
