@@ -25,7 +25,7 @@ export function useEconomy(uid) {
       // are — see functions/records.js — this only answers "announce them?".
       sharePersonalRecords,
     });
-    return data; // { workoutId, coinsEarned, personalRecords }
+    return data; // { workoutId, coinsEarned, personalRecords, recoveryWorkout, neglectPenaltyLifted, newBadges, firstWorkoutReward }
   }, []);
 
   const purchaseItem = useCallback(async (itemId) => {

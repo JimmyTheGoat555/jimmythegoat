@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fullEvolutionGradient } from '../../utils/tierTheme';
 import { roundToTenth } from '../../utils/units';
 import { EXPERIENCE_LEVELS, GENDERS, TRAINING_DAYS_MIN, TRAINING_DAYS_MAX } from '../../utils/onboarding';
@@ -148,8 +148,19 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [trainerCode, setTrainerCode] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [touched, setTouched] = useState({});
   const [triedSubmit, setTriedSubmit] = useState(false);
+
+  // A friend's share link (`?ref=CODE`) pre-fills the referral field so
+  // the invited person never has to type it — see useAuth.js's signUp /
+  // functions/referral.js for what actually happens with it. Reading
+  // location.search directly (not react-router) since this runs before
+  // there's any real route to read it from.
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get('ref');
+    if (ref) setReferralCode(ref.trim().toUpperCase());
+  }, []);
 
   // Unit toggles convert the current value once so the number keeps its
   // meaning — never derive-from-canonical each render (that feeds a lossy
@@ -218,6 +229,7 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
         displayName: displayName.trim(),
         role,
         trainerCode: trainerCode.trim(),
+        referralCode: referralCode.trim(),
         onboarding: {
           experienceLevel,
           targetDaysPerWeek,
@@ -434,6 +446,13 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
                   placeholder="Ask your coach"
                 />
               )}
+              <Field
+                label="Referral code (optional)"
+                autoComplete="off"
+                value={referralCode}
+                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                placeholder="A friend's code — they get 150 coins"
+              />
               <p className="mt-1 text-[11px] leading-snug text-white/50">
                 Signing up as <span className="font-semibold text-white/70">{email.trim() || 'your email'}</span>. By
                 continuing you agree to our{' '}

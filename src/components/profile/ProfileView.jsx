@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { pushNotification } from '../../hooks/useNotifications';
 import { WEEKDAY_LABELS, isWeighInDayToday, isWeighInDayTomorrow, goalMatchesDelta } from '../../utils/weighIn';
 import WeighInModal from './WeighInModal';
 import BadgeShelf from './BadgeShelf';
@@ -19,7 +18,7 @@ function formatDate(iso) {
 // notification/sound toggles, and sign-out all moved to SettingsPanel
 // (reached via the gear icon in TopHud) so this stays what its own
 // heading says: your numbers, not app preferences.
-export default function ProfileView({ account, profile, updateDetails, logBodyWeight, deleteBodyWeightEntry, onConnectToTrainer, onDisconnectFromTrainer }) {
+export default function ProfileView({ account, profile, updateDetails, logBodyWeight, deleteBodyWeightEntry, onConnectToTrainer, onDisconnectFromTrainer, onNotifyTrainer }) {
   const navigate = useNavigate();
   const [weightInput, setWeightInput] = useState('');
   const [trainerCodeInput, setTrainerCodeInput] = useState('');
@@ -81,21 +80,13 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
 
     // The trainer is updated on EVERY weigh-in, regardless of the public/
     // private choice above — that toggle only ever controls the wider
-    // "activity" visibility (see WeighInModal), never trainer visibility,
-    // which already works this way for body weight in general.
-    if (account?.trainerId) {
-      const amount = deltaKg != null ? `${Math.abs(deltaKg).toFixed(1)} kg` : null;
-      const direction = deltaKg > 0 ? 'up' : deltaKg < 0 ? 'down' : null;
-      pushNotification(account.trainerId, {
-        type: 'trainee_weigh_in',
-        title: `${account.displayName} logged a weigh-in`,
-        body: achieved
-          ? `Progress toward their goal: ${amount} ${direction}. Now ${weight} kg.`
-          : amount
-            ? `${weight} kg (${amount} ${direction} from last time).`
-            : `First weigh-in logged: ${weight} kg.`,
-        data: { traineeId: account.id },
-      });
+    // "activity" visibility (see WeighInModal), never trainer visibility.
+    // Server-side callable now (useAuth's notifyTrainer): it builds the
+    // notification text itself and only delivers to a trainer this account
+    // is actually connected to. Best-effort — a failed ping never blocks
+    // the weigh-in.
+    if (account?.trainerId && onNotifyTrainer) {
+      onNotifyTrainer({ weight, deltaKg, achieved }).catch(() => {});
     }
 
     setPendingWeighIn(null);

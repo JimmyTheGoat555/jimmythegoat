@@ -19,6 +19,30 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(uid)).data.trainerId == request.auth.uid;
     }
 
+    // Fields a client may touch on its OWN users/{uid} doc after signup.
+    // An allow-LIST, not a deny-list: `role`, `email`, `createdAt`,
+    // `friendCode` (immutable once set), and anything added server-side
+    // later are all off-limits by omission — a client can't self-promote
+    // to 'trainer' or overwrite its stored email. The four server-managed
+    // fields (coins/friends/etc.) stay blocked by serverManagedFieldsUnchanged()
+    // too, belt and suspenders.
+    function userUpdateFieldsAllowed() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['displayName', 'usernameChangedOnce', 'trainerId',
+                  'equippedDance', 'equippedAccessory', 'hasUnreadNudgePush', 'friendCode']);
+    }
+
+    // `trainerId` may only be cleared or pointed at an account that is
+    // actually a trainer — stops a client aiming its own trainerId at an
+    // arbitrary victim uid (which used to make isConnectedTraineeOf(victim)
+    // true and, before the notifications rule was tightened, opened a push
+    // channel into that victim's inbox).
+    function trainerIdChangeValid() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['trainerId']) ||
+        request.resource.data.trainerId == null ||
+        get(/databases/$(database)/documents/users/$(request.resource.data.trainerId)).data.role == 'trainer';
+    }
+
     // The mirror of isTrainerOf — true if the caller is a trainee currently
     // connected to trainer `uid` (i.e. the caller's OWN trainerId points at
     // this trainer). Used only for the one-directional trainee→trainer
@@ -187,8 +211,14 @@ service cloud.firestore {
 
     match /users/{uid} {
       // A trainee's own doc is also readable by their connected trainer
-      // (Trainer Dashboard roster query relies on this).
-      allow read: if isOwner(uid) || resource.data.trainerId == request.auth.uid;
+      // (Trainer Dashboard roster query relies on this). The `signedIn()`
+      // guard on the second clause is load-bearing: for the many accounts
+      // whose `trainerId` is null, an UNauthenticated request has a null
+      // `request.auth.uid` too, and `null == null` is true — without this
+      // guard the whole clause would grant anonymous read of every
+      // unconnected user's doc (email, friends list, coins…).
+      allow read: if isOwner(uid) ||
+        (signedIn() && resource.data.trainerId == request.auth.uid);
       // Only ever written by its own owner: signup (create) and later
       // self-service edits — connecting to a trainer, updating displayName
       // (subject to usernameChangeValid()'s one-time limit — see Settings),
@@ -198,7 +228,8 @@ service cloud.firestore {
       // deliberately excluded from what "owner" alone can change — that's
       // what serverManagedFieldsUnchanged() blocks.
       allow create: if isOwner(uid) && serverManagedFieldsAtDefault() && equippedFieldsValid();
-      allow update: if isOwner(uid) && serverManagedFieldsUnchanged() && equippedFieldsValid() && usernameChangeValid();
+      allow update: if isOwner(uid) && serverManagedFieldsUnchanged() && equippedFieldsValid()
+        && usernameChangeValid() && userUpdateFieldsAllowed() && trainerIdChangeValid();
       allow delete: if false;
 
       match /friendRequests/{fromUid} {
@@ -247,26 +278,42 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      match /meta/records {
+        // The best-per-exercise / lifetime-volume / workout-count / streak
+        // aggregate logWorkout() maintains incrementally instead of
+        // re-scanning full workout history on every call (see
+        // functions/records.js). Same shape of risk as meta/economy: this
+        // is now a TRUSTED input to badge awards and the friend-visible
+        // profile summary, not just a cache, so it needs the exact same
+        // "never client-writable" rule — a client patching its own
+        // bestPerExercise/workoutCount here would forge PRs, badges and
+        // lifetime volume in one write, no fake workout required at all.
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
       match /meta/{docId} {
         // Body weight + name/height details (single doc, id 'profile').
         // Same read pattern as workouts: owner sees/edits their own, their
         // trainer can view but never edit.
         //
-        // docId != 'economy' on the write is not a style choice — it is the
-        // actual security boundary. Firestore evaluates EVERY match block
-        // whose path pattern fits a given document, and allows the request
-        // if ANY of them says yes — a literal segment match does not
-        // override a sibling wildcard the way a router's "most specific
-        // wins" would. Without this exclusion, meta/economy matches BOTH
-        // this wildcard (which would grant isOwner(uid) write access) and
-        // the dedicated `match /meta/economy` block above (which correctly
-        // denies all writes) — and the wildcard's yes wins the OR.
-        // Confirmed exploitable live: an account could PATCH its own
-        // workoutsToday/lastWorkoutLoggedAt straight through this rule,
-        // bypassing logWorkout()'s cooldown and daily cap entirely and
-        // farming coins by looping reset -> log -> reset -> log.
+        // docId != 'economy' && docId != 'records' on the write is not a
+        // style choice — it is the actual security boundary. Firestore
+        // evaluates EVERY match block whose path pattern fits a given
+        // document, and allows the request if ANY of them says yes — a
+        // literal segment match does not override a sibling wildcard the
+        // way a router's "most specific wins" would. Without this
+        // exclusion, meta/economy (or meta/records) matches BOTH this
+        // wildcard (which would grant isOwner(uid) write access) and its
+        // own dedicated block above (which correctly denies all writes) —
+        // and the wildcard's yes wins the OR. Confirmed exploitable live
+        // once already for meta/economy (see git history): an account
+        // could PATCH its own workoutsToday/lastWorkoutLoggedAt straight
+        // through this rule, bypassing logWorkout()'s cooldown and daily
+        // cap entirely and farming coins by looping reset -> log -> reset
+        // -> log — meta/records would be the same hole for badges/PRs.
         allow read: if isOwner(uid) || isTrainerOf(uid);
-        allow write: if isOwner(uid) && docId != 'economy';
+        allow write: if isOwner(uid) && docId != 'economy' && docId != 'records';
       }
 
       match /templates/{templateId} {
@@ -277,15 +324,21 @@ service cloud.firestore {
       }
 
       match /notifications/{notificationId} {
-        // Your own inbox — only you ever read, mark-read, or dismiss your
-        // own notifications. This is a one-directional trainee→trainer
-        // channel, not shared visibility: a trainer can WRITE into it
-        // (only their own connected trainee's client actually does this,
-        // via pushNotification()) but can never READ a trainee's inbox,
-        // and vice versa. The scheduled reminder Cloud Function writes via
-        // the Admin SDK, which bypasses these rules entirely.
+        // Your own inbox — only you ever read, mark-read, dismiss, or write
+        // to it. Cross-user delivery (a trainee's weigh-in landing in
+        // their trainer's inbox; nudges; scheduled reminders) all go
+        // through the Admin SDK, which bypasses these rules entirely.
+        //
+        // `create` was previously `isOwner(uid) || isConnectedTraineeOf(uid)`.
+        // That second clause read the CALLER's own self-asserted trainerId,
+        // so any account could point trainerId at a victim and then write
+        // arbitrary title/body docs that sendPushOnNotificationCreate
+        // turned into real OS pushes — a spam/phishing channel. The
+        // weigh-in notification is now the notifyTrainer callable
+        // (functions/coaching.js): server-templated text, verified-email
+        // gated, rate-limited.
         allow read, update, delete: if isOwner(uid);
-        allow create: if isOwner(uid) || isConnectedTraineeOf(uid);
+        allow create: if isOwner(uid);
       }
 
       match /fcmTokens/{tokenId} {

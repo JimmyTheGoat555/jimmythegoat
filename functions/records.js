@@ -1,4 +1,4 @@
-// Server-side personal-record detection.
+// Server-side personal-record + aggregate-stats logic.
 //
 // Deliberately a duplicate of src/utils/personalRecords.js rather than a
 // shared module — same reason headline() is duplicated in economy.js: the
@@ -6,11 +6,26 @@
 // lines costs more than it saves. The two must agree; if you change the
 // definition of a PR, change both.
 //
-// The client copy only decides whether to ASK about sharing. This copy is
-// what actually gets published, recomputed from stored history, so a client
-// cannot claim a record it did not set.
+// Pure functions only, no Firestore access — economy.js owns reading/
+// writing users/{uid}/meta/records; this file just knows how to compute
+// its contents from a workout history (buildRecordsSnapshot, used exactly
+// ONCE per account to bootstrap the doc) or fold one new workout onto an
+// existing snapshot (applyWorkoutToRecords, used on every logWorkout
+// after that). Splitting it this way is what killed the old design's
+// O(N) reads-per-log: logWorkout used to re-read + re-scan the account's
+// ENTIRE workout history on every single call just to answer "is this a
+// new PR" and "how many workouts / what's the streak" — fine at a handful
+// of workouts, a real billing + latency risk once real users have
+// hundreds. Now that full scan happens once, ever, per account.
 
 const { LEGACY_BODYWEIGHT_KG } = require('./storeCatalog');
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function dayIndex(iso) {
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? Math.floor(ms / DAY_MS) : null;
+}
 
 function bestSetOf(exercise) {
   let best = null;
@@ -38,9 +53,8 @@ function bestWeightPerExercise(workouts) {
       const current = best.get(exercise.exerciseId);
       // `name` rides along here only for publicProfile.js's benefit (the
       // full all-time-best list shown on a friend's profile needs a label
-      // per exercise) — findNewPersonalRecords below never reads it off
-      // this map, it only compares .weight, so adding the field doesn't
-      // touch the actual PR definition.
+      // per exercise) — the PR comparisons below never read it, only
+      // .weight, so adding the field doesn't touch the actual PR definition.
       if (!current || top.weight > current.weight) {
         best.set(exercise.exerciseId, { ...top, name: exercise.name ?? exercise.exerciseId });
       }
@@ -55,6 +69,15 @@ function bestWeightPerExercise(workouts) {
 // scale against an average lifter (workouts logged before relative
 // scoring existed).
 function workoutRelativeScore(workout) {
+  // Only server-written workouts count toward the lifetime total / tier.
+  // `verified` and `score` are both stamped by logWorkout()'s Admin path
+  // and can never appear on a doc a client wrote directly (firestore.rules
+  // blocks them) — nor can a client add per-set `relativeVolume` to a
+  // trusted total this way, since a workout without one of these two
+  // top-level markers scores 0 regardless of what its sets claim. A
+  // hand-written "history correction" stays visible in the log but earns
+  // nothing.
+  if (workout?.verified !== true && typeof workout?.score !== 'number') return 0;
   if (typeof workout?.score === 'number' && Number.isFinite(workout.score)) return workout.score;
   let total = 0;
   let sawRelative = false;
@@ -90,13 +113,17 @@ function lifetimeVolumeOf(workouts) {
   return total;
 }
 
-function findNewPersonalRecords(currentExercises, pastWorkouts) {
-  const best = bestWeightPerExercise(pastWorkouts);
+// PR detection against the AGGREGATE best-per-exercise map (the shape
+// users/{uid}/meta/records.bestPerExercise is stored in — a plain object,
+// not the Map bestWeightPerExercise returns), so logWorkout never needs a
+// fresh full-history scan just to answer "did this beat my old best".
+function findNewPersonalRecordsFromBest(currentExercises, bestPerExercise) {
+  const best = bestPerExercise ?? {};
   const records = [];
   for (const exercise of currentExercises ?? []) {
     const top = bestSetOf(exercise);
     if (!top || !exercise.exerciseId) continue;
-    const previous = best.get(exercise.exerciseId);
+    const previous = best[exercise.exerciseId];
     if (!previous || top.weight <= previous.weight) continue;
     records.push({
       exerciseId: exercise.exerciseId,
@@ -109,4 +136,115 @@ function findNewPersonalRecords(currentExercises, pastWorkouts) {
   return records;
 }
 
-module.exports = { bestWeightPerExercise, findNewPersonalRecords, lifetimeVolumeOf };
+// Computes the FULL users/{uid}/meta/records aggregate from a complete
+// workout history. Called exactly once per account — the first time
+// logWorkout finds no records doc yet (see economy.js's loadRecords) — to
+// bootstrap it; every later log calls applyWorkoutToRecords instead of
+// re-scanning. Because this is a real full scan, everything it produces
+// (best lifts, lifetime volume, workout count, current streak, the
+// highest single-set relative score ever) is retroactively correct for a
+// veteran account the moment its doc is first built — a 60-workout user
+// gets credit for all 60, not just workouts logged after this shipped.
+function buildRecordsSnapshot(workouts) {
+  const rewardable = (workouts ?? []).filter((w) => w && !w.recoveryWorkout);
+
+  const bestMap = bestWeightPerExercise(workouts); // already skips recovery workouts itself
+  const bestPerExercise = {};
+  for (const [exerciseId, r] of bestMap) {
+    bestPerExercise[exerciseId] = { weight: r.weight, reps: r.reps, name: r.name };
+  }
+
+  let maxSetScore = 0;
+  for (const workout of rewardable) {
+    for (const exercise of workout.exercises ?? []) {
+      for (const set of exercise.sets ?? []) {
+        if (set?.completed === false) continue;
+        const rel = Number(set?.relativeVolume);
+        if (Number.isFinite(rel) && rel > maxSetScore) maxSetScore = rel;
+      }
+    }
+  }
+
+  const finished = rewardable.filter((w) => typeof w.finishedAt === 'string');
+  // Distinct calendar days (UTC), ascending — walking oldest to newest and
+  // resetting on any gap leaves `streakDays` holding the run ending at the
+  // MOST RECENT day, i.e. the current streak.
+  const days = [...new Set(finished.map((w) => dayIndex(w.finishedAt)).filter((d) => d != null))].sort(
+    (a, b) => a - b,
+  );
+  let streakDays = 0;
+  let lastWorkoutDay = null;
+  for (const d of days) {
+    streakDays = lastWorkoutDay != null && d === lastWorkoutDay + 1 ? streakDays + 1 : 1;
+    lastWorkoutDay = d;
+  }
+
+  return {
+    bestPerExercise,
+    lifetimeVolume: Math.round(lifetimeVolumeOf(workouts) * 100) / 100,
+    workoutCount: finished.length,
+    streakDays,
+    lastWorkoutDay,
+    maxSetScore: Math.round(maxSetScore * 100) / 100,
+  };
+}
+
+// Folds ONE new, already-validated-and-scored workout onto a records
+// snapshot — the incremental counterpart to buildRecordsSnapshot. A
+// recovery workout (isRecovery) touches nothing here and returns the
+// snapshot unchanged, matching bestWeightPerExercise/lifetimeVolumeOf's
+// existing rule that recovery workouts don't count toward anything.
+function applyWorkoutToRecords(records, { cleanExercises, finishedAtIso, totalScore, isRecovery }) {
+  const next = {
+    bestPerExercise: { ...(records?.bestPerExercise ?? {}) },
+    lifetimeVolume: records?.lifetimeVolume ?? 0,
+    workoutCount: records?.workoutCount ?? 0,
+    streakDays: records?.streakDays ?? 0,
+    lastWorkoutDay: records?.lastWorkoutDay ?? null,
+    maxSetScore: records?.maxSetScore ?? 0,
+  };
+  if (isRecovery) return next;
+
+  for (const exercise of cleanExercises ?? []) {
+    const top = bestSetOf(exercise);
+    if (top && exercise.exerciseId) {
+      const current = next.bestPerExercise[exercise.exerciseId];
+      if (!current || top.weight > current.weight) {
+        next.bestPerExercise[exercise.exerciseId] = {
+          weight: top.weight,
+          reps: top.reps,
+          name: exercise.name ?? exercise.exerciseId,
+        };
+      }
+    }
+    for (const set of exercise.sets ?? []) {
+      const rel = Number(set?.relativeVolume);
+      if (Number.isFinite(rel) && rel > next.maxSetScore) next.maxSetScore = rel;
+    }
+  }
+
+  next.lifetimeVolume = Math.round((next.lifetimeVolume + totalScore) * 100) / 100;
+  next.workoutCount += 1;
+
+  const d = dayIndex(finishedAtIso);
+  if (d != null) {
+    if (next.lastWorkoutDay == null) next.streakDays = 1;
+    else if (d === next.lastWorkoutDay) {
+      // A second workout the same calendar day doesn't advance OR reset
+      // the streak — buildRecordsSnapshot dedupes by day before counting
+      // for the same reason.
+    } else if (d === next.lastWorkoutDay + 1) next.streakDays += 1;
+    else next.streakDays = 1;
+    next.lastWorkoutDay = d;
+  }
+
+  return next;
+}
+
+module.exports = {
+  bestWeightPerExercise,
+  lifetimeVolumeOf,
+  findNewPersonalRecordsFromBest,
+  buildRecordsSnapshot,
+  applyWorkoutToRecords,
+};

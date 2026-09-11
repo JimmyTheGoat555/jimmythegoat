@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { exerciseProgress, exercisesTrainedInHistory, workoutVolume } from '../../utils/workoutStats';
 import JimmyEvolution from '../evolution/JimmyEvolution';
+import StreakHeatmap from './StreakHeatmap';
 import WeeklySummaryCard from './WeeklySummaryCard';
 import LifetimeVolumeCard from './LifetimeVolumeCard';
 import WeeklyVolumeCard from './WeeklyVolumeCard';
@@ -60,6 +61,7 @@ export default function ProgressView({ workouts, exercises, bodyWeightKg = 0 }) 
       </header>
 
       <JimmyEvolution workouts={workouts} bodyWeightKg={bodyWeightKg} />
+      <StreakHeatmap workouts={workouts} />
       <LifetimeVolumeCard workouts={workouts} bodyWeightKg={bodyWeightKg} />
       <WeeklyVolumeCard workouts={workouts} />
       <WeeklySummaryCard workouts={workouts} />

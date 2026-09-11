@@ -131,7 +131,7 @@ export function useAuth() {
     return () => document.removeEventListener('visibilitychange', reset);
   }, [user, profile?.hasUnreadNudgePush]);
 
-  const signUp = useCallback(async ({ email, password, displayName, role, trainerCode, onboarding }) => {
+  const signUp = useCallback(async ({ email, password, displayName, role, trainerCode, referralCode, onboarding }) => {
     setAuthError(null);
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
@@ -278,6 +278,16 @@ export function useAuth() {
         await setDoc(doc(db, 'users', cred.user.uid, 'meta', 'profile'), profileDoc, { merge: true });
       }
 
+      // Referral bonus — credits the REFERRER, not this account, so it's
+      // best-effort exactly like the trainer-code lookup above: a bad,
+      // expired, or self-referred code must never fail a signup that
+      // otherwise succeeded. See functions/referral.js for the actual
+      // validation (self-referral, one-claim-per-account, a per-referrer
+      // daily cap).
+      if (referralCode && referralCode.trim()) {
+        httpsCallable(functions, 'claimReferral')({ code: referralCode.trim() }).catch(() => {});
+      }
+
       // Surfaced by AuthScreen as a one-line heads-up on the app itself
       // (the sign-up form is gone by the time this resolves — see above),
       // rather than as an error, since the account really did succeed.
@@ -374,6 +384,16 @@ export function useAuth() {
     await httpsCallable(functions, 'disconnectTrainer')(traineeUid ? { traineeUid } : {});
   }, []);
 
+  // Tell the connected trainer about a fresh weigh-in. A callable, not a
+  // direct write into their notifications subcollection: that used to be a
+  // client write and let any account aim its own trainerId at a victim and
+  // post arbitrary push text (see functions/coaching.js's notifyTrainer).
+  // Best-effort — a weigh-in still saves locally even if the coach ping
+  // fails.
+  const notifyTrainer = useCallback(async ({ weight, deltaKg, achieved }) => {
+    await httpsCallable(functions, 'notifyTrainer')({ weight, deltaKg, achieved });
+  }, []);
+
   return {
     user,
     profile,
@@ -385,6 +405,7 @@ export function useAuth() {
     signOut: signOutUser,
     connectToTrainer,
     disconnectFromTrainer,
+    notifyTrainer,
     updateUsername,
     resetPassword,
     deleteAccount,

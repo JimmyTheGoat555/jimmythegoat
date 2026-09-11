@@ -66,7 +66,10 @@ export default function FriendsManager({
         <section className="card p-5 flex flex-col gap-4">
           <p className="text-sm text-neutral-500">
             Your code: <span className="text-neutral-100 font-semibold tracking-widest">{myFriendCode}</span>{' '}
-            — share it so friends can add you.
+            — share it so friends can add you.{' '}
+            <span className="text-[var(--ember)] font-semibold">
+              New to Jimmy? They enter it at sign-up and you get +150 coins.
+            </span>
           </p>
 
           <form onSubmit={handleSend} className="flex gap-2">

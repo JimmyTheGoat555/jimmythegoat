@@ -38,8 +38,12 @@ exports.purchaseItem = purchaseItem;
 const { deleteAccount } = require('./account');
 exports.deleteAccount = deleteAccount;
 
-const { disconnectTrainer } = require('./coaching');
+const { disconnectTrainer, notifyTrainer } = require('./coaching');
 exports.disconnectTrainer = disconnectTrainer;
+exports.notifyTrainer = notifyTrainer;
+
+const { claimReferral } = require('./referral');
+exports.claimReferral = claimReferral;
 
 const { setSharePRs } = require('./publicProfile');
 exports.setSharePRs = setSharePRs;

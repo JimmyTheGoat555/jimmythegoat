@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 // Live in-app notification inbox at users/{uid}/notifications — trainer
@@ -46,20 +46,9 @@ export function useNotifications(uid) {
   return { notifications, unreadCount, markRead, dismiss };
 }
 
-// Writes a notification into someone ELSE's inbox — used when a trainee
-// logs a weigh-in and their connected trainer should see it. Only valid
-// per firestore.rules when the signed-in caller's own trainerId equals
-// `targetUid` (a trainee writing to their own trainer's inbox); writing to
-// anyone else's fails closed.
-export function pushNotification(targetUid, { type, title, body, data }) {
-  if (!targetUid) return;
-  const id = crypto.randomUUID();
-  return setDoc(doc(db, 'users', targetUid, 'notifications', id), {
-    type,
-    title,
-    body,
-    data: data ?? null,
-    read: false,
-    createdAt: new Date().toISOString(),
-  });
-}
+// (Removed) pushNotification() used to write a weigh-in notification
+// straight into a connected trainer's inbox. That was a client cross-user
+// write — the firestore.rules `create` on notifications is now
+// `isOwner(uid)` only, and the weigh-in ping goes through the notifyTrainer
+// callable (functions/coaching.js) so its text is server-templated and
+// rate-limited. See useAuth.js's notifyTrainer wrapper.

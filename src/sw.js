@@ -59,7 +59,13 @@ if (firebaseConfig.apiKey && firebaseConfig.messagingSenderId) {
 // lazy-goat nudge points at /workout); everything else lands on /.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = event.notification.data?.url ?? '/';
+  // Only ever follow a same-origin absolute PATH ("/workout"). A bare
+  // `?? '/'` was safe with today's notifications (we never send data.url),
+  // but pinning it to `^/[^/]` means a future code path — or anything that
+  // ever lets attacker data reach here — can't turn a tap into an
+  // off-origin or `javascript:` navigation.
+  const raw = event.notification.data?.url;
+  const target = typeof raw === 'string' && /^\/[^/]/.test(raw) ? raw : '/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       const existing = clients[0];
