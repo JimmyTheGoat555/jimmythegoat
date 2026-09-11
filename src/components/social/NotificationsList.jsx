@@ -14,6 +14,7 @@ const ICONS = {
   weigh_in_reminder_tomorrow: '📅',
   weigh_in_reminder_today: '⏰',
   friend_nudge: '🐐',
+  lazy_goat_tease: '😴',
 };
 
 // The shared inbox surface — lives on the Social tab (see SocialPage.jsx),

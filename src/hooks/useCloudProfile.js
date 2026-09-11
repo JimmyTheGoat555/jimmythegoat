@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { roundToTenth } from '../utils/units';
 
 const DEFAULT_PROFILE = {
   name: '',
@@ -59,7 +60,8 @@ export function useCloudProfile(uid) {
       save({
         ...profile,
         bodyWeightLog: [
-          { id: crypto.randomUUID(), date, weight: Number(weight), visibility },
+          // Same 0.1 precision the workout weight uses (utils/units.js).
+          { id: crypto.randomUUID(), date, weight: roundToTenth(weight), visibility },
           ...profile.bodyWeightLog,
         ],
       });

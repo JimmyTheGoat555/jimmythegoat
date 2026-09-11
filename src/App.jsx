@@ -5,7 +5,6 @@ import BottomNav from './components/layout/BottomNav';
 import { TAB_PATHS, TRAINER_TAB_PATH } from './components/layout/tabPaths';
 import AuthScreen from './components/auth/AuthScreen';
 import FirebaseSetupNeeded from './components/auth/FirebaseSetupNeeded';
-import VerifyEmailBanner from './components/auth/VerifyEmailBanner';
 import TopHud from './components/layout/TopHud';
 import { useCloudWorkoutHistory } from './hooks/useCloudWorkouts';
 import { useCloudProfile } from './hooks/useCloudProfile';
@@ -16,14 +15,17 @@ import { useFriendsGraph } from './hooks/useFriendsGraph';
 import { useFeed } from './hooks/useFeed';
 import { useAuth } from './hooks/useAuth';
 import { useNotifications } from './hooks/useNotifications';
+import { useTierUpCelebration } from './hooks/useTierUpCelebration';
+import { useLazyGoatNudge } from './hooks/useLazyGoatNudge';
 import { useAssignedWorkouts } from './hooks/useAssignedWorkouts';
 import { useWorkoutTemplates } from './hooks/useWorkoutTemplates';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useTabSwipe } from './hooks/useTabSwipe';
 import { firebaseConfigured } from './lib/firebase';
-import { lifetimeVolume } from './utils/workoutStats';
+import { lifetimeVolume, lastWorkoutAt } from './utils/workoutStats';
 import { getEvolutionProgress } from './utils/evolutionTiers';
 import { findNewPersonalRecords } from './utils/personalRecords';
+import { getBadge } from './data/badges';
 import { tierCssVars } from './utils/tierTheme';
 
 // Everything past the first screen is split out of the initial bundle. The
@@ -150,9 +152,6 @@ export default function App() {
     disconnectFromTrainer,
     updateUsername,
     resetPassword,
-    emailVerified,
-    refreshEmailVerified,
-    resendVerification,
     deleteAccount,
     setSharePRs,
   } = useAuth();
@@ -268,6 +267,29 @@ export default function App() {
   // trainee, since they share one app experience. See WorkoutHome.jsx for
   // the scope note on why this isn't (yet) a trainer→trainee shared library.
   const { templates, saveTemplate, deleteTemplate } = useWorkoutTemplates(uid);
+  // Jimmy's evolution tier from lifetime tonnage — computed once here and
+  // reused for the app-wide accent theme (below) and the tier-up
+  // celebration. `lastWorkoutAt` applies the neglect penalty (a 1-tier
+  // drop after 5 days idle — see utils/evolutionTiers.js), so the whole
+  // app's accent dulls to the lower tier until the user trains again.
+  // getEvolutionProgress is pure and both helpers reduce the whole history
+  // array, so doing it once matters as that array grows.
+  const lastWorkout = lastWorkoutAt(workouts);
+  const evolution = getEvolutionProgress(lifetimeVolume(workouts), { lastWorkoutAt: lastWorkout });
+  // Latest logged body weight (0 = none yet). Tier math stays fully
+  // relative; this only personalises how the progress bars RENDER those
+  // relative goals as big absolute-kg numbers — see
+  // utils/evolutionTiers.js's formatTierGoalKg (75 kg fallback there).
+  const bodyWeightKg = Number(profile?.bodyWeightLog?.[0]?.weight) || 0;
+  // Fires the confetti / screen-shake / haptic / XP-bar-rush sequence the
+  // first time evolutionStage strictly increases past what's been
+  // celebrated before — see the hook. `shaking` drives the shake class on
+  // the app root; `barOverride` is handed to WorkoutHome's XP bar.
+  const tierUp = useTierUpCelebration(evolution.current.stage);
+  // Client-only "lazy goat" nudge — auto-disarms on app open / foreground
+  // (below); armLazyNudge() is called after a workout is logged. Best
+  // effort, Chrome/Android installed PWAs only — see the hook.
+  const armLazyNudge = useLazyGoatNudge();
   // One-time "want notifications?" pitch — per account, per device (a
   // fresh browser/phone asks again, same as the real OS permission it
   // leads into). Namespaced by uid the same way every other per-account
@@ -309,14 +331,35 @@ export default function App() {
     : [];
 
   const handleFinishWorkout = async ({ sharePersonalRecords = false } = {}) => {
-    const { workoutId, coinsEarned } = await logWorkout(activeWorkout, { sharePersonalRecords });
+    const { workoutId, coinsEarned, recoveryWorkout, newBadges } = await logWorkout(activeWorkout, {
+      sharePersonalRecords,
+    });
     if (activeWorkout.assignedWorkoutId) {
       completeAssignment(activeWorkout.assignedWorkoutId, workoutId);
     }
+    // (Re-)arm the 71h local re-engagement nudge off this fresh workout —
+    // prompts for notification permission if it hasn't been asked. Fire
+    // and forget; a failure here must never block finishing a workout.
+    armLazyNudge();
     discardWorkout();
     navigate('/');
-    if (coinsEarned > 0) {
-      setAppNotice({ message: `+${coinsEarned} coins earned!`, tone: 'success' });
+    if (recoveryWorkout) {
+      // The server withheld coins/volume for this one (>= 5 days since the
+      // last workout) — it only lifted the neglect penalty. Say so, so the
+      // missing reward doesn't read as a bug.
+      setAppNotice({
+        message: "Comeback workout logged — tier restored. Log one more to start earning again.",
+        tone: 'success',
+      });
+    } else if (newBadges?.length > 0 || coinsEarned > 0) {
+      // Badges (functions/badges.js) trump the coin line — they're rarer.
+      const badgeNames = (newBadges ?? []).map((id) => getBadge(id)?.name ?? 'New badge');
+      const coinPart = coinsEarned > 0 ? `+${coinsEarned} coins` : null;
+      const badgePart = badgeNames.length ? `🏅 ${badgeNames.join(' · ')} unlocked!` : null;
+      setAppNotice({
+        message: [badgePart, coinPart].filter(Boolean).join('  ·  '),
+        tone: 'success',
+      });
     }
   };
 
@@ -367,15 +410,18 @@ export default function App() {
   if (!account) return null;
 
   const isTrainer = account.role === 'trainer';
-  // Every account's own evolution tier — a trainer's tier reflects THEIR
-  // own lifting, same as a trainee's. Computed once here and applied as
-  // CSS custom properties so the whole app's accent (buttons, active tab,
-  // glowing borders, ambient background) matches how far this person has
-  // evolved, tying the rest of the UI back to the AuthScreen showcase.
-  const { current: currentTier } = getEvolutionProgress(lifetimeVolume(workouts));
+  // A trainer's tier reflects THEIR own lifting, same as a trainee's.
+  // Applied as CSS custom properties so the whole app's accent (buttons,
+  // active tab, glowing borders, ambient background) matches how far this
+  // person has evolved, tying the rest of the UI back to the AuthScreen
+  // showcase. `evolution` is computed up with the hooks above.
+  const currentTier = evolution.current;
 
   return (
-    <div className="relative isolate min-h-screen bg-neutral-950" style={tierCssVars(currentTier.id)}>
+    <div
+      className={`relative isolate min-h-screen bg-neutral-950${tierUp.shaking ? ' screen-shake' : ''}`}
+      style={tierCssVars(currentTier.id)}
+    >
       {/* The Fortnite/Arcade backdrop — grid, particles, speed lines, all
           defined in .ambient-bg itself now (index.css), so no inline
           override here (an earlier "colorful as login" pass used to pin
@@ -405,15 +451,6 @@ export default function App() {
               ✕
             </button>
           </div>
-        )}
-        {/* Held back mid-workout for the same reason as the notification
-            prompt below — nobody wants account admin between sets. */}
-        {!emailVerified && !activeWorkout && (
-          <VerifyEmailBanner
-            email={user.email}
-            onResend={resendVerification}
-            onRecheck={refreshEmailVerified}
-          />
         )}
         <Suspense fallback={<ScreenFallback />}>
         <Routes>
@@ -449,11 +486,17 @@ export default function App() {
                     // that logic needed zero changes.
                     friends={feed.posts.map((p) => ({ username: p.userName, weeklyTonnage: p.totalVolume }))}
                     equippedDance={account.equippedDance}
+                    barOverride={tierUp.barOverride}
+                    lastWorkoutAt={lastWorkout}
+                    bodyWeightKg={bodyWeightKg}
                   />
                 )
               }
             />
-            <Route path="progress" element={<ProgressView workouts={workouts} exercises={exercises} />} />
+            <Route
+              path="progress"
+              element={<ProgressView workouts={workouts} exercises={exercises} bodyWeightKg={bodyWeightKg} />}
+            />
             <Route
               path="social"
               element={
@@ -559,6 +602,7 @@ export default function App() {
                   onFinish={handleFinishWorkout}
                   personalRecords={activePersonalRecords}
                   history={workouts}
+                  bodyWeightKg={bodyWeightKg}
                   onDiscard={handleDiscardWorkout}
                   onSaveTemplate={handleSaveTemplate}
                 />

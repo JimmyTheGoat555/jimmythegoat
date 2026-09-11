@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { pushNotification } from '../../hooks/useNotifications';
 import { WEEKDAY_LABELS, isWeighInDayToday, isWeighInDayTomorrow, goalMatchesDelta } from '../../utils/weighIn';
 import WeighInModal from './WeighInModal';
+import BadgeShelf from './BadgeShelf';
 
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -199,6 +200,8 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
           )}
         </section>
       )}
+
+      <BadgeShelf badges={account?.badges} />
 
       <section className="card p-5 flex flex-col gap-4">
         <h2 className="text-lg font-semibold text-neutral-100">Details</h2>

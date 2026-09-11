@@ -1,6 +1,15 @@
 import { precacheAndRoute } from 'workbox-precaching';
 import { initializeApp } from 'firebase/app';
 import { getMessaging, onBackgroundMessage } from 'firebase/messaging/sw';
+import {
+  getLazyNudge,
+  markLazyNudgeFired,
+  LAZY_NUDGE_BODY,
+  LAZY_NUDGE_CEILING_MS,
+  LAZY_NUDGE_SYNC_TAG,
+  LAZY_NUDGE_TAG,
+  LAZY_NUDGE_TITLE,
+} from './lib/lazyNudge';
 
 // Injected by vite-plugin-pwa's injectManifest strategy at build time —
 // the same offline app-shell caching the old generateSW strategy set up
@@ -46,15 +55,60 @@ if (firebaseConfig.apiKey && firebaseConfig.messagingSenderId) {
 }
 
 // Tapping the OS notification focuses/opens the app instead of just
-// dismissing it.
+// dismissing it. A notification carrying data.url deep-links there (the
+// lazy-goat nudge points at /workout); everything else lands on /.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const target = event.notification.data?.url ?? '/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      if (clients.length > 0) return clients[0].focus();
-      return self.clients.openWindow('/');
+      const existing = clients[0];
+      if (existing) {
+        existing.navigate?.(target);
+        return existing.focus();
+      }
+      return self.clients.openWindow(target);
     }),
   );
+});
+
+// ---- Client-only "lazy goat" re-engagement nudge ----
+// See src/lib/lazyNudge.js for why this is best-effort: `periodicsync` is
+// the only way to run code on a timer while the PWA is closed, it's
+// Chrome-on-Android + installed-PWA only, and the browser — not us —
+// decides when it actually fires. So this handler doesn't "wait 71h"; it
+// just checks, every time it happens to run, whether the armed nudge is
+// now due and hasn't already been shown.
+async function maybeShowLazyNudge() {
+  if (self.Notification && self.Notification.permission !== 'granted') return;
+  const rec = await getLazyNudge();
+  if (!rec || rec.fired) return;
+
+  const now = Date.now();
+  // Not yet 71h in — or so far past it that the neglect penalty / server
+  // tease own this now (see LAZY_NUDGE_CEILING_MS).
+  if (now < rec.dueAt || now > rec.lastWorkoutMs + LAZY_NUDGE_CEILING_MS) return;
+
+  await self.registration.showNotification(LAZY_NUDGE_TITLE, {
+    body: LAZY_NUDGE_BODY,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: LAZY_NUDGE_TAG,
+    data: { url: '/workout' },
+  });
+  await markLazyNudgeFired();
+}
+
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === LAZY_NUDGE_SYNC_TAG) event.waitUntil(maybeShowLazyNudge());
+});
+
+// A one-shot Background Sync fallback: some builds of Chrome fire a plain
+// `sync` on the next connectivity event even when periodicSync isn't
+// available, which at least gives the check a chance to run when the
+// device comes back online with the app still closed.
+self.addEventListener('sync', (event) => {
+  if (event.tag === LAZY_NUDGE_SYNC_TAG) event.waitUntil(maybeShowLazyNudge());
 });
 
 self.skipWaiting();

@@ -358,3 +358,122 @@ button.card:hover {
     transform: scale(1.2);
   }
 }
+
+/* Tier-up celebration — a hard, decaying shake on the app root when Jimmy
+   evolves to a new stage (see hooks/useTierUpCelebration.js). translate3d
+   keeps it on the compositor; the decaying amplitude reads as an impact
+   settling rather than a constant rattle. Duration here is mirrored by
+   SHAKE_MS in that hook. */
+@keyframes screen-shake {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0);
+  }
+  10% {
+    transform: translate3d(-9px, 5px, 0) rotate(-1deg);
+  }
+  20% {
+    transform: translate3d(8px, -7px, 0) rotate(1deg);
+  }
+  30% {
+    transform: translate3d(-7px, 6px, 0) rotate(0);
+  }
+  40% {
+    transform: translate3d(6px, -4px, 0) rotate(1deg);
+  }
+  50% {
+    transform: translate3d(-5px, 4px, 0) rotate(0);
+  }
+  60% {
+    transform: translate3d(4px, -3px, 0) rotate(0);
+  }
+  70% {
+    transform: translate3d(-3px, 2px, 0) rotate(0);
+  }
+  80% {
+    transform: translate3d(2px, -2px, 0) rotate(0);
+  }
+  90% {
+    transform: translate3d(-1px, 1px, 0) rotate(0);
+  }
+}
+
+.screen-shake {
+  animation: screen-shake 0.9s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-shake {
+    animation: none;
+  }
+}
+
+/* ---- WheelPicker (src/components/shared/WheelPicker.jsx) ---- */
+/* iOS-style scroll wheel: CSS scroll-snap does the momentum + snapping so
+   the component only has to read back the settled value. Scrollbar hidden;
+   top/bottom faded with a mask so off-centre values trail off like a real
+   wheel. */
+.wheel-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  /* NO `scroll-behavior: smooth` here — it turns `el.scrollTop = x`
+     (used to park the wheel on its value) into an animated scroll that
+     fights the native touch/snap. The component asks for smooth
+     explicitly via scrollTo({behavior:'smooth'}) only for the +/- and
+     arrow-key steps. */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 24%,
+    #000 76%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 24%, #000 76%, transparent 100%);
+}
+.wheel-scroll::-webkit-scrollbar {
+  display: none;
+}
+.wheel-item {
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+
+/* ---- OnboardingFlow (src/components/auth/OnboardingFlow.jsx) ---- */
+/* Each step is remounted (keyed on the step index) so the enter animation
+   replays every time. `dir` on the wrapper picks which way it slides in:
+   forward (Next) comes from the right, back (Back) from the left. Pure
+   CSS — the project has no animation library. */
+@keyframes onboard-in-forward {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes onboard-in-backward {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.onboard-step {
+  animation: onboard-in-forward 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.onboard-step[data-dir='back'] {
+  animation-name: onboard-in-backward;
+}
+@media (prefers-reduced-motion: reduce) {
+  .onboard-step {
+    animation: none;
+  }
+}

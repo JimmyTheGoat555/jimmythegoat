@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, firebaseConfigured, functions } from '../lib/firebase';
+import { roundToTenth } from '../utils/units';
 
 // Short, human-typeable code — used for both a trainer's trainerCode (a
 // trainee enters it once at signup) and now every account's friendCode
@@ -35,11 +36,6 @@ export function useAuth() {
   const [profile, setProfile] = useState(null);
   const [initializing, setInitializing] = useState(true);
   const [authError, setAuthError] = useState(null);
-  // Kept as its own state rather than read straight off `user.emailVerified`
-  // because Firebase mutates that flag on the existing user object when the
-  // token refreshes — it does NOT emit a new object, so React would never
-  // re-render on it. refreshEmailVerified() below is what moves this.
-  const [emailVerified, setEmailVerified] = useState(false);
   // Set only if the profile doc listener itself fails (permission-denied,
   // offline, etc) — separate from authError so App.jsx can tell "still
   // loading" apart from "loading broke" and show a real way out instead of
@@ -54,7 +50,6 @@ export function useAuth() {
     }
     return onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
-      setEmailVerified(Boolean(firebaseUser?.emailVerified));
       setInitializing(false);
       if (!firebaseUser) setProfile(null);
     });
@@ -142,11 +137,13 @@ export function useAuth() {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(cred.user, { displayName });
 
-      // Best-effort, exactly like the trainer-code lookup below: the account
-      // already exists and this person is already signed in, so a failure to
-      // send (rate limit, transient network) must not take down a signup
-      // that otherwise succeeded. Verification is a nudge, not a gate — see
-      // VerifyEmailBanner — and they can resend from there.
+      // The one and only place a verification email is sent — right here at
+      // sign-up. Best-effort, exactly like the trainer-code lookup below:
+      // the account already exists and this person is already signed in, so
+      // a failure to send (rate limit, transient network) must not take
+      // down a signup that otherwise succeeded. Verification is not a gate
+      // in the app; the server-side outbound-social guards
+      // (functions/guards.js) are what actually require a confirmed address.
       sendEmailVerification(cred.user).catch(() => {});
 
       // Resolving the trainer code is best-effort, NOT a precondition for
@@ -183,6 +180,30 @@ export function useAuth() {
 
       const ownTrainerCode = role === 'trainer' ? randomShareCode() : null;
       const ownFriendCode = randomShareCode(); // everyone gets one — see useFriendsGraph.js
+
+      // Gamer-grade onboarding preferences (AuthScreen -> OnboardingFlow):
+      // unit system, training experience, primary goal, routine style,
+      // planned days/week. Stored on the user doc itself — firestore.rules'
+      // users/{uid} create rule pins only coins/unlocks/friends/sharePRs to
+      // their defaults and lets any other field ride along on this first
+      // write. Body weight + height go to meta/profile instead (below),
+      // beside the weigh-in log they belong with. Every field optional —
+      // only what was actually chosen is written.
+      const onboardingPrefs = {};
+      if (onboarding) {
+        const { unitSystem, experienceLevel, primaryGoal, routineStyle, targetDaysPerWeek, gender, birthday } =
+          onboarding;
+        if (unitSystem) onboardingPrefs.unitSystem = unitSystem;
+        if (experienceLevel) onboardingPrefs.experienceLevel = experienceLevel;
+        if (primaryGoal) onboardingPrefs.primaryGoal = primaryGoal;
+        if (routineStyle) onboardingPrefs.routineStyle = routineStyle;
+        if (targetDaysPerWeek) onboardingPrefs.targetDaysPerWeek = Number(targetDaysPerWeek);
+        // Single-topic wizard screens (components/auth/OnboardingFlow.jsx).
+        // `birthday` is a plain YYYY-MM-DD string.
+        if (gender) onboardingPrefs.gender = gender;
+        if (birthday) onboardingPrefs.birthday = birthday;
+      }
+
       await setDoc(doc(db, 'users', cred.user.uid), {
         email,
         displayName,
@@ -218,6 +239,7 @@ export function useAuth() {
         // pushes TO its own owner, so there's nothing to gain by lying
         // about your own copy of it.
         hasUnreadNudgePush: false,
+        ...onboardingPrefs,
       });
       // A trainer's/friend's code must be resolvable the moment the
       // account exists — not just once the self-heal effect above happens
@@ -228,23 +250,29 @@ export function useAuth() {
       }
       await setDoc(doc(db, 'friendCodes', ownFriendCode), { uid: cred.user.uid, displayName });
 
-      // Step 2 of sign-up (AuthScreen's onboarding questionnaire) — body
-      // stats/goals/weekly target. Same doc + same owner/trainer-only read
-      // rule as body weight (users/{uid}/meta/profile, see firestore.rules),
-      // so this is private the instant it's written, no separate rules
-      // needed. Every field is optional at signup, so only ever written
-      // when actually provided — an empty questionnaire just leaves the
-      // doc with its useCloudProfile defaults instead of a wall of blanks.
+      // Onboarding's body stats -> meta/profile (same owner/trainer-only
+      // read rule as everything else in there — private the instant it's
+      // written, no extra rules). The initial bodyWeightLog entry is the
+      // important one: logWorkout scores every set by strength-to-body-
+      // weight, so without a weight on file the very first workout can't
+      // be scored. `fitnessGoal`/`weeklyTarget` are mirrored here under
+      // their older names too, so Profile and the trainer's Trainee view
+      // (which already read them from meta/profile) need no changes —
+      // users/{uid} keeps the canonical `primaryGoal`/`targetDaysPerWeek`.
       if (onboarding) {
-        const { weightKg, heightCm, bodyType, fitnessGoal, weeklyTarget } = onboarding;
+        const { weightKg, heightCm, primaryGoal, targetDaysPerWeek } = onboarding;
         const profileDoc = { name: displayName };
-        if (heightCm) profileDoc.heightCm = heightCm;
-        if (bodyType) profileDoc.bodyType = bodyType;
-        if (fitnessGoal) profileDoc.fitnessGoal = fitnessGoal;
-        if (weeklyTarget) profileDoc.weeklyTarget = weeklyTarget;
+        if (heightCm) profileDoc.heightCm = Number(heightCm);
+        if (primaryGoal) profileDoc.fitnessGoal = primaryGoal;
+        if (targetDaysPerWeek) profileDoc.weeklyTarget = Number(targetDaysPerWeek);
         if (weightKg) {
           profileDoc.bodyWeightLog = [
-            { id: crypto.randomUUID(), date: new Date().toISOString(), weight: Number(weightKg) },
+            {
+              id: crypto.randomUUID(),
+              date: new Date().toISOString(),
+              weight: roundToTenth(Number(weightKg)),
+              visibility: 'private',
+            },
           ];
         }
         await setDoc(doc(db, 'users', cred.user.uid, 'meta', 'profile'), profileDoc, { merge: true });
@@ -279,24 +307,6 @@ export function useAuth() {
   // error banner, so the two can never visually collide if both happened
   // to be set at once.
   const resetPassword = useCallback((email) => sendPasswordResetEmail(auth, email), []);
-
-  // The verification link opens a Firebase-hosted page, not this app, so
-  // nothing tells us when it's been clicked — the flag only moves on the
-  // next token refresh. reload() forces that check on demand, which is what
-  // lets the banner disappear when someone comes back to the tab having
-  // just verified, instead of lingering until their next sign-in.
-  const refreshEmailVerified = useCallback(async () => {
-    if (!auth.currentUser) return false;
-    await auth.currentUser.reload();
-    const verified = Boolean(auth.currentUser.emailVerified);
-    setEmailVerified(verified);
-    return verified;
-  }, []);
-
-  const resendVerification = useCallback(async () => {
-    if (!auth.currentUser) throw new Error('You need to be signed in.');
-    await sendEmailVerification(auth.currentUser);
-  }, []);
 
   // Erasing an account reaches into other people's documents (their friends
   // arrays, requests this person sent them) and has to remove the Firebase
@@ -377,9 +387,6 @@ export function useAuth() {
     disconnectFromTrainer,
     updateUsername,
     resetPassword,
-    emailVerified,
-    refreshEmailVerified,
-    resendVerification,
     deleteAccount,
     setSharePRs,
   };
