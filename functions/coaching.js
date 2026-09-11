@@ -18,6 +18,68 @@
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore } = require('firebase-admin/firestore');
+const { requireVerifiedEmail, enforceRateLimit } = require('./guards');
+
+// A trainee's client calls this after logging a weigh-in so their
+// connected trainer gets an inbox notification (which
+// sendPushOnNotificationCreate turns into a push). It replaces a direct
+// client write into the trainer's notifications subcollection — that path
+// let any account point its own `trainerId` at a victim and post
+// arbitrary title/body text. Here the text is built server-side from
+// numbers + the caller's OWN verified displayName, so the worst a caller
+// can do is send a real-looking weigh-in update to a trainer they've
+// actually connected to, rate-limited on top.
+exports.notifyTrainer = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  requireVerifiedEmail(request);
+  const uid = request.auth.uid;
+
+  const weight = Number(request.data?.weight);
+  if (!Number.isFinite(weight) || weight < 20 || weight > 500) {
+    throw new HttpsError('invalid-argument', 'Weight out of range.');
+  }
+  const deltaRaw = request.data?.deltaKg;
+  const deltaKg = deltaRaw == null ? null : Number(deltaRaw);
+  if (deltaKg !== null && (!Number.isFinite(deltaKg) || Math.abs(deltaKg) > 100)) {
+    throw new HttpsError('invalid-argument', 'Delta out of range.');
+  }
+  const achieved = request.data?.achieved === true;
+
+  const db = getFirestore();
+  const callerSnap = await db.collection('users').doc(uid).get();
+  if (!callerSnap.exists) throw new HttpsError('failed-precondition', 'Profile not ready yet.');
+  const caller = callerSnap.data();
+  const trainerId = caller.trainerId ?? null;
+  if (!trainerId) return { sent: false, reason: 'no-trainer' };
+
+  const trainerSnap = await db.collection('users').doc(trainerId).get();
+  if (!trainerSnap.exists || trainerSnap.data().role !== 'trainer') {
+    return { sent: false, reason: 'trainer-gone' };
+  }
+
+  await enforceRateLimit(uid, 'weighInNotify');
+
+  const name = typeof caller.displayName === 'string' ? caller.displayName.slice(0, 60) : 'Your trainee';
+  const w = Math.round(weight * 10) / 10;
+  const amount = deltaKg != null ? `${Math.abs(Math.round(deltaKg * 10) / 10)} kg` : null;
+  const direction = deltaKg > 0 ? 'up' : deltaKg < 0 ? 'down' : null;
+  const body = achieved
+    ? `Progress toward their goal: ${amount} ${direction}. Now ${w} kg.`
+    : amount && direction
+      ? `${w} kg (${amount} ${direction} from last time).`
+      : `First weigh-in logged: ${w} kg.`;
+
+  await db.collection('users').doc(trainerId).collection('notifications').add({
+    type: 'trainee_weigh_in',
+    title: `${name} logged a weigh-in`,
+    body,
+    data: { traineeId: uid },
+    read: false,
+    createdAt: new Date().toISOString(),
+  });
+
+  return { sent: true };
+});
 
 exports.disconnectTrainer = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');

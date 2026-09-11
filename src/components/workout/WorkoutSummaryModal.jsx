@@ -35,7 +35,13 @@ export default function WorkoutSummaryModal({
   // bounds, logging too soon, today's limit hit). On rejection the workout
   // stays active and open right here rather than silently discarding it,
   // so nothing logged gets lost to a rule the person couldn't see coming.
-  const [busy, setBusy] = useState(false);
+  //
+  // `isSubmitting` is a hard double-submit gate: the button disables the
+  // instant it's tapped, and handleFinish bails immediately if it's
+  // somehow re-entered before React re-renders the disabled state — a
+  // second logWorkout call would race the transaction and could
+  // double-log.
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
   const sets = workoutSetCount(workout);
@@ -44,8 +50,9 @@ export default function WorkoutSummaryModal({
   const volume = workoutVolume(workout, bodyWeightKg);
 
   const handleFinish = async () => {
+    if (isSubmitting) return; // re-entrancy guard — see isSubmitting above
     setError(null);
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await onDone({ sharePersonalRecords: personalRecords.length > 0 && sharePRs });
       // onSaveTemplate fires only once onDone has actually succeeded —
@@ -55,7 +62,7 @@ export default function WorkoutSummaryModal({
     } catch (err) {
       setError(err.message);
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -152,12 +159,28 @@ export default function WorkoutSummaryModal({
         <button
           type="button"
           onClick={handleFinish}
-          disabled={busy}
-          className="btn-arcade w-full py-4 text-lg disabled:opacity-50"
+          disabled={isSubmitting}
+          aria-busy={isSubmitting}
+          className="btn-arcade w-full py-4 text-lg disabled:opacity-60 flex items-center justify-center gap-2"
         >
-          {busy ? 'Saving…' : 'Done'}
+          {isSubmitting ? (
+            <>
+              <span
+                className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                aria-hidden="true"
+              />
+              Saving…
+            </>
+          ) : (
+            'Done'
+          )}
         </button>
-        <button type="button" onClick={onBack} disabled={busy} className="text-sm text-neutral-500 -mt-2 disabled:opacity-50">
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={isSubmitting}
+          className="text-sm text-neutral-500 -mt-2 disabled:opacity-50"
+        >
           ← Back to workout
         </button>
       </div>

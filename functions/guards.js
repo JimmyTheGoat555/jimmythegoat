@@ -41,6 +41,7 @@ function withinWindow(timestamps, windowMs, now) {
 }
 
 const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 // Tunables, all deliberately generous for a real user and still far below
 // what a spam script wants:
@@ -55,6 +56,18 @@ const LIMITS = {
   // friends at once.
   nudgePerTarget: { cooldownMs: HOUR_MS },
   nudgeGlobal: { windowMs: HOUR_MS, max: 15 },
+  // Trainee → trainer weigh-in notification (functions/coaching.js's
+  // notifyTrainer). A real person logs a weigh-in a couple of times a day
+  // at most; 6/hour is generous and still stops a script from flooding a
+  // trainer's inbox.
+  weighInNotify: { windowMs: HOUR_MS, max: 6 },
+  // How many times any ONE referrer can be paid out in a day
+  // (functions/referral.js). Keyed on the REFERRER's own uid, not the
+  // caller — a script can't mass-create throwaway accounts against a
+  // single code to farm coins for whoever holds it. 20/day is far past
+  // what a real invite loop needs and still lets a code go genuinely
+  // viral for a day without every referral silently failing to pay out.
+  referralCredit: { windowMs: DAY_MS, max: 20 },
 };
 
 // Throws HttpsError('resource-exhausted', ...) when the caller is over the
@@ -76,6 +89,26 @@ async function enforceRateLimit(uid, action, targetUid) {
       }
       recent.push(now);
       tx.set(ref, { friendRequests: recent }, { merge: true });
+      return;
+    }
+
+    if (action === 'weighInNotify') {
+      const recent = withinWindow(data.weighInNotify, LIMITS.weighInNotify.windowMs, now);
+      if (recent.length >= LIMITS.weighInNotify.max) {
+        throw new HttpsError('resource-exhausted', 'Too many weigh-in updates in a short window — try again later.');
+      }
+      recent.push(now);
+      tx.set(ref, { weighInNotify: recent }, { merge: true });
+      return;
+    }
+
+    if (action === 'referralCredit') {
+      const recent = withinWindow(data.referralCredits, LIMITS.referralCredit.windowMs, now);
+      if (recent.length >= LIMITS.referralCredit.max) {
+        throw new HttpsError('resource-exhausted', "This referral code has reached its daily reward limit.");
+      }
+      recent.push(now);
+      tx.set(ref, { referralCredits: recent }, { merge: true });
       return;
     }
 

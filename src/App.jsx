@@ -58,6 +58,9 @@ const AssignWorkoutForm = lazy(() => import('./components/trainer/AssignWorkoutF
 // touch.
 const NotificationPromptModal = lazy(() => import('./components/profile/NotificationPromptModal'));
 const SettingsPanel = lazy(() => import('./components/profile/SettingsPanel'));
+// A one-time, per-account overlay (the Silver Lootbox) — no reason to ship
+// it in the startup bundle for the sessions that will never see it again.
+const SilverLootboxModal = lazy(() => import('./components/workout/SilverLootboxModal'));
 
 function prefetchTabScreens() {
   import('./components/progress/ProgressView');
@@ -138,6 +141,28 @@ function Layout({ isTrainer, tierId, coins, unreadNotifications, onOpenSettings 
   );
 }
 
+// True when a failed callable (logWorkout) failed because the device is
+// offline / can't reach the backend — as opposed to a real rejection the
+// server sent back (a set out of bounds, the cooldown, today's cap). Only
+// the offline case is safe to retry unchanged; a real error has to reach
+// the user. `navigator.onLine === false` is the strongest signal; the code
+// / message checks catch the "flaky connection, request never landed" case
+// where the browser still thinks it's online.
+function isOfflineError(err) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  const code = String(err?.code ?? '');
+  // Deliberately NOT 'deadline-exceeded': a real server timeout might have
+  // committed the transaction, and auto-retrying it would race the
+  // cooldown check for a possibly-already-logged workout. A genuine
+  // "no connection" surfaces as one of the below or navigator.onLine.
+  if (code === 'functions/unavailable' || code === 'unavailable') {
+    return true;
+  }
+  return /failed to fetch|network error|network request failed|internet connection|load failed/i.test(
+    String(err?.message ?? ''),
+  );
+}
+
 export default function App() {
   const navigate = useNavigate();
   const {
@@ -150,6 +175,7 @@ export default function App() {
     signOut,
     connectToTrainer,
     disconnectFromTrainer,
+    notifyTrainer,
     updateUsername,
     resetPassword,
     deleteAccount,
@@ -165,6 +191,12 @@ export default function App() {
   // earned" after a workout — same shape, same reason it lives up here
   // instead of on whichever screen triggered it.
   const [appNotice, setAppNotice] = useState(null);
+  // The Silver Lootbox — set once, ever, per account, the moment
+  // logWorkout's response carries a firstWorkoutReward (see
+  // handleFinishWorkout below). Rendered as its own full-screen overlay
+  // rather than folded into appNotice's small toast — see
+  // SilverLootboxModal.jsx.
+  const [lootboxReward, setLootboxReward] = useState(null);
   const handleSignUp = async (data) => {
     const { warning } = await signUp(data);
     if (warning) setAppNotice({ message: warning, tone: 'warning' });
@@ -259,6 +291,13 @@ export default function App() {
     updateSet,
     removeSet,
   } = useActiveWorkout(uid);
+  // Refs read by the "retry a deferred offline finish" effect below —
+  // event listeners there would otherwise close over a stale render.
+  // `pendingOfflineFinishRef` holds { sharePersonalRecords } while a
+  // finish is waiting on the network, or null.
+  const activeWorkoutRef = useRef(activeWorkout);
+  const pendingOfflineFinishRef = useRef(null);
+  const finishWorkoutRef = useRef(null);
   // Only ever populated for a trainee with a connected trainer — a trainer
   // signed into their own account simply has none, so this stays a no-op
   // for them rather than needing a role check.
@@ -331,12 +370,47 @@ export default function App() {
     : [];
 
   const handleFinishWorkout = async ({ sharePersonalRecords = false } = {}) => {
-    const { workoutId, coinsEarned, recoveryWorkout, newBadges } = await logWorkout(activeWorkout, {
-      sharePersonalRecords,
-    });
-    if (activeWorkout.assignedWorkoutId) {
-      completeAssignment(activeWorkout.assignedWorkoutId, workoutId);
+    const workout = activeWorkoutRef.current;
+    if (!workout) return;
+
+    let result;
+    try {
+      result = await logWorkout(workout, { sharePersonalRecords });
+    } catch (err) {
+      if (isOfflineError(err)) {
+        // logWorkout is a callable Cloud Function — Firestore's offline
+        // cache (see lib/firebase.js) can only queue direct writes, not a
+        // callable. The workout itself is already safe in localStorage
+        // (useActiveWorkout), so keep it active, tell the user, and let
+        // the `online` effect below retry it automatically. NOT rethrown:
+        // the summary modal treats a throw as a hard failure to show in
+        // red, which this isn't.
+        // Leave the workout in activeWorkout (localStorage) — NOT discarded
+        // — so it survives an app close in the basement and the retry
+        // (below, plus on next launch) always has the real payload to send.
+        pendingOfflineFinishRef.current = { sharePersonalRecords };
+        setAppNotice({
+          message:
+            "📴 No signal — your workout is saved on this phone and will log automatically once you're back online.",
+          tone: 'warning',
+        });
+        navigate('/');
+        return;
+      }
+      throw err; // real rejection (validation / cooldown / cap) — modal surfaces it
     }
+
+    pendingOfflineFinishRef.current = null;
+    const { workoutId, coinsEarned, recoveryWorkout, neglectPenaltyLifted, newBadges, firstWorkoutReward } = result;
+    if (workout.assignedWorkoutId) {
+      completeAssignment(workout.assignedWorkoutId, workoutId);
+    }
+    // The Silver Lootbox — exactly once, ever, the moment a brand-new
+    // account finishes its very first real workout (see
+    // functions/economy.js). The normal coin/badge toast below still
+    // fires as usual; this is a SEPARATE full-screen moment for the free
+    // dance specifically, not a replacement for it.
+    if (firstWorkoutReward) setLootboxReward(firstWorkoutReward);
     // (Re-)arm the 71h local re-engagement nudge off this fresh workout —
     // prompts for notification permission if it hasn't been asked. Fire
     // and forget; a failure here must never block finishing a workout.
@@ -345,11 +419,16 @@ export default function App() {
     navigate('/');
     if (recoveryWorkout) {
       // The server withheld coins/volume for this one (>= 5 days since the
-      // last workout) — it only lifted the neglect penalty. Say so, so the
-      // missing reward doesn't read as a bug.
+      // last workout) regardless — but whether it actually LIFTED the
+      // neglect penalty now depends on whether it cleared
+      // RECOVERY_MIN_SCORE (see functions/economy.js): a token effort
+      // keeps the account "overdue" so the message has to say so rather
+      // than implying the tier was restored when it wasn't.
       setAppNotice({
-        message: "Comeback workout logged — tier restored. Log one more to start earning again.",
-        tone: 'success',
+        message: neglectPenaltyLifted
+          ? 'Comeback workout logged — tier restored. Log one more to start earning again.'
+          : "That barely counted — Jimmy needs a real effort to lift the penalty. Log a proper session to restore your tier.",
+        tone: neglectPenaltyLifted ? 'success' : 'warning',
       });
     } else if (newBadges?.length > 0 || coinsEarned > 0) {
       // Badges (functions/badges.js) trump the coin line — they're rarer.
@@ -362,6 +441,39 @@ export default function App() {
       });
     }
   };
+
+  // Keep the refs the offline-retry effect reads pointed at this render's
+  // values (that effect has an empty dep array on purpose — it must
+  // register its window listeners exactly once).
+  useEffect(() => {
+    activeWorkoutRef.current = activeWorkout;
+    finishWorkoutRef.current = handleFinishWorkout;
+  });
+
+  // A workout finished with no signal (see handleFinishWorkout) stays in
+  // activeWorkout with pendingOfflineFinishRef set. Retry it the moment
+  // the connection returns, and once shortly after mount to cover "already
+  // back online by the time the app reopened". A retry that still fails is
+  // re-armed for the next reconnect; a real server rejection clears the
+  // pending flag and resurfaces when the user reopens the summary.
+  useEffect(() => {
+    const retry = async () => {
+      const pending = pendingOfflineFinishRef.current;
+      if (!pending || !navigator.onLine || !activeWorkoutRef.current) return;
+      pendingOfflineFinishRef.current = null;
+      try {
+        await finishWorkoutRef.current?.(pending);
+      } catch {
+        pendingOfflineFinishRef.current = pending;
+      }
+    };
+    window.addEventListener('online', retry);
+    const t = setTimeout(retry, 3000);
+    return () => {
+      window.removeEventListener('online', retry);
+      clearTimeout(t);
+    };
+  }, []);
 
   // Saves the exercise lineup of the workout currently being finished —
   // called from WorkoutSummaryModal before onFinish actually commits it,
@@ -534,6 +646,7 @@ export default function App() {
                   deleteBodyWeightEntry={deleteBodyWeightEntry}
                   onConnectToTrainer={connectToTrainer}
                   onDisconnectFromTrainer={disconnectFromTrainer}
+                  onNotifyTrainer={notifyTrainer}
                 />
               }
             />
@@ -630,6 +743,16 @@ export default function App() {
         </Suspense>
       )}
 
+      {lootboxReward && (
+        <Suspense fallback={null}>
+          <SilverLootboxModal
+            reward={lootboxReward}
+            evolutionStage={evolution.current.stage}
+            onClose={() => setLootboxReward(null)}
+          />
+        </Suspense>
+      )}
+
       {settingsOpen && (
         <Suspense fallback={null}>
           <SettingsPanel
@@ -638,6 +761,8 @@ export default function App() {
             uid={uid}
             onUpdateUsername={updateUsername}
             onUpdateGoals={updateDetails}
+            onUpdateDetails={updateDetails}
+            onLogBodyWeight={logBodyWeight}
             onSignOut={signOut}
             onDeleteAccount={deleteAccount}
             onUpdateSharePRs={setSharePRs}

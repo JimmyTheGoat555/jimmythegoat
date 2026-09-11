@@ -9,12 +9,12 @@
 // Kept right on the item definition rather than a separate lookup table,
 // so there's one place to look when adding a 5th dance.
 export const STORE_ITEMS = [
-  { id: 'dance-shuffle', type: 'dance', name: 'The Shuffle', emoji: '🕺', cost: 150, videoDanceNumber: 1 },
-  { id: 'dance-headbang', type: 'dance', name: 'Headbanger', emoji: '🤘', cost: 150, videoDanceNumber: 2 },
-  { id: 'dance-victory', type: 'dance', name: 'Victory Lap', emoji: '🏆', cost: 300, videoDanceNumber: 3 },
-  { id: 'dance-moonwalk', type: 'dance', name: 'Moonwalk', emoji: '🌙', cost: 500, videoDanceNumber: 4 },
-  { id: 'accessory-cap', type: 'accessory', name: 'Backwards Cap', emoji: '🧢', cost: 100 },
-  { id: 'accessory-shades', type: 'accessory', name: 'Shades', emoji: '🕶️', cost: 200 },
+  { id: 'dance-shuffle', type: 'dance', name: 'The Shuffle', emoji: '🕺', cost: 600, videoDanceNumber: 1 },
+  { id: 'dance-headbang', type: 'dance', name: 'Headbanger', emoji: '🤘', cost: 800, videoDanceNumber: 2 },
+  { id: 'dance-victory', type: 'dance', name: 'Victory Lap', emoji: '🏆', cost: 1100, videoDanceNumber: 3 },
+  { id: 'dance-moonwalk', type: 'dance', name: 'Moonwalk', emoji: '🌙', cost: 1500, videoDanceNumber: 4 },
+  { id: 'accessory-cap', type: 'accessory', name: 'Backwards Cap', emoji: '🧢', cost: 150 },
+  { id: 'accessory-shades', type: 'accessory', name: 'Shades', emoji: '🕶️', cost: 250 },
   { id: 'accessory-chain', type: 'accessory', name: 'Gold Chain', emoji: '⛓️', cost: 350 },
-  { id: 'accessory-crown', type: 'accessory', name: 'Crown', emoji: '👑', cost: 750 },
+  { id: 'accessory-crown', type: 'accessory', name: 'Crown', emoji: '👑', cost: 900 },
 ];

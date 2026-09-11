@@ -127,7 +127,14 @@ const LEGACY_BODYWEIGHT_KG = 75;
 // Relative Strength Volume for one workout: the stored `score` if it has
 // one (new workouts), else the sum of per-set `relativeVolume`, else raw
 // kg mapped onto the new scale against an average lifter (legacy).
+//
+// Mirrors functions/records.js's workoutRelativeScore: a workout only
+// counts toward the tier if it carries `verified: true` or a numeric
+// `score` — both server-stamped and un-writable by a client. A directly
+// edited "history correction" (allowed by firestore.rules for fixing a
+// typo) contributes 0, so it can't inflate the displayed tier either.
 export function workoutScore(workout) {
+  if (workout.verified !== true && typeof workout.score !== 'number') return 0;
   if (typeof workout.score === 'number' && Number.isFinite(workout.score)) return workout.score;
   let relative = 0;
   let legacy = 0;

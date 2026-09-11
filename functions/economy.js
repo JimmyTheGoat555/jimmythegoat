@@ -8,8 +8,8 @@
 // client, double check later" step anywhere in here.
 const { randomUUID } = require('crypto');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const { findNewPersonalRecords, bestWeightPerExercise, lifetimeVolumeOf } = require('./records');
-const { evaluateBadges } = require('./badges');
+const { findNewPersonalRecordsFromBest, buildRecordsSnapshot, applyWorkoutToRecords } = require('./records');
+const { evaluateBadgesFromRecords } = require('./badges');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const {
   MIN_WEIGHT_KG,
@@ -20,13 +20,17 @@ const {
   MIN_BODYWEIGHT_KG,
   MAX_BODYWEIGHT_KG,
   MAX_SETS_PER_WORKOUT,
+  MAX_EXERCISES_PER_WORKOUT,
+  MAX_STARTED_AT_AGE_MS,
   WINDOW_MS,
   MIN_GAP_MS,
   MAX_WORKOUTS_PER_WINDOW,
   NEGLECT_RECOVERY_MS,
+  RECOVERY_MIN_SCORE,
   COINS_PER_RELATIVE_POINT,
   MAX_COINS_PER_WORKOUT,
   STORE_ITEMS_BY_ID,
+  STARTER_DANCE_ID,
 } = require('./storeCatalog');
 const { BODYWEIGHT_EXERCISE_IDS } = require('./exercises');
 
@@ -51,6 +55,19 @@ const round2 = (n) => Math.round(Number(n) * 100) / 100;
 function validateAndScoreWorkout(exercises, bodyWeightKg) {
   if (!Array.isArray(exercises) || exercises.length === 0) {
     throw new HttpsError('invalid-argument', 'A workout needs at least one exercise.');
+  }
+  // Bounds the ARRAY itself, before any per-exercise work runs — a huge
+  // payload of empty/near-empty exercise objects would otherwise still
+  // cost a full iteration (and a large request body) before the
+  // per-exercise checks below ever got a chance to reject anything.
+  // MAX_SETS_PER_WORKOUT alone doesn't catch this: it only bounds
+  // COMPLETED sets, and an exercise with zero sets is silently dropped
+  // rather than rejected.
+  if (exercises.length > MAX_EXERCISES_PER_WORKOUT) {
+    throw new HttpsError(
+      'invalid-argument',
+      `A single workout can't include more than ${MAX_EXERCISES_PER_WORKOUT} exercises.`,
+    );
   }
   if (!Number.isFinite(bodyWeightKg) || bodyWeightKg <= 0) {
     throw new HttpsError(
@@ -167,6 +184,21 @@ function formatWait(ms) {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+// `startedAt` only ever drives the DISPLAYED workout duration (finishedAt
+// minus startedAt) — it never touches scoring or coins — but an
+// unvalidated client timestamp still lets someone claim a 6-hour "beast
+// mode" session that was actually 10 seconds, or the reverse. Reject
+// anything in the future (clock can't run backwards from the server's own
+// `now`) or further back than MAX_STARTED_AT_AGE_MS, falling back to the
+// server's own finishedAt — i.e. a zero-duration workout — rather than
+// rejecting the whole log over a cosmetic field.
+function sanitizeStartedAt(startedAt, finishedAtIso, now) {
+  if (typeof startedAt !== 'string') return finishedAtIso;
+  const ms = Date.parse(startedAt);
+  if (!Number.isFinite(ms) || ms > now || ms < now - MAX_STARTED_AT_AGE_MS) return finishedAtIso;
+  return startedAt;
+}
+
 // Same "first exercise + N more" shorthand WorkoutSummaryModal.jsx already
 // uses for a template's default name — duplicated rather than shared
 // across the functions/src boundary for four lines of logic.
@@ -216,21 +248,28 @@ exports.logWorkout = onCall(async (request) => {
   // confused reading the code six months from now.
   const feedPostRef = db.collection('feedPosts').doc();
 
-  // Personal records are recomputed here from stored history rather than
-  // trusted from the client, which only used its own copy to decide whether
-  // to offer the share. Read outside the transaction: it is a whole-history
-  // scan, and the per-user cooldown a few lines down means the same account
-  // cannot be logging two workouts concurrently for it to race with.
+  // The account's aggregate stats — best lift per exercise, lifetime
+  // relative volume, workout count, current day-streak, highest single-set
+  // score ever. Read outside the transaction: staleness of a few minutes
+  // is fine (same tolerance the old code already accepted here), and the
+  // per-user cooldown a few lines down means the same account can't be
+  // logging two workouts concurrently for it to race with.
   //
-  // Scale note: this reads every workout the user has ever logged, on every
-  // log. Fine at this app's size (same judgement as weeklyWeighInReminders
-  // in index.js); if that stops being true, keep a running best-per-exercise
-  // doc under users/{uid}/meta and update it here instead.
-  const pastWorkoutsSnap = await userRef.collection('workouts').get();
-  const personalRecords = findNewPersonalRecords(
-    cleanExercises,
-    pastWorkoutsSnap.docs.map((d) => d.data()),
-  );
+  // This used to be `userRef.collection('workouts').get()` — the account's
+  // ENTIRE workout history, re-read and re-scanned on EVERY single log.
+  // Fine at a handful of workouts, a real Firestore-billing and latency
+  // risk once real users have hundreds. loadRecords() below only ever
+  // pays that full-scan cost ONCE per account (bootstrapping
+  // meta/records the first time it's missing); every log after that reads
+  // one small aggregate doc and folds this workout onto it in memory — see
+  // records.js's buildRecordsSnapshot / applyWorkoutToRecords.
+  const recordsRef = userRef.collection('meta').doc('records');
+  const recordsSnap = await recordsRef.get();
+  const records = recordsSnap.exists
+    ? recordsSnap.data()
+    : buildRecordsSnapshot((await userRef.collection('workouts').get()).docs.map((d) => d.data()));
+
+  const personalRecords = findNewPersonalRecordsFromBest(cleanExercises, records.bestPerExercise);
 
   const now = Date.now();
 
@@ -238,9 +277,11 @@ exports.logWorkout = onCall(async (request) => {
   // economy-doc read there), used again in the return below — hoisted so
   // both scopes can see them.
   let isRecovery = false;
+  let neglectPenaltyLifted = true;
   let effectiveCoins = coinsEarned;
   let effectiveRecords = personalRecords;
   let newBadges = [];
+  let firstWorkoutReward = null;
 
   await db.runTransaction(async (tx) => {
     const [userSnap, economySnap] = await Promise.all([tx.get(userRef), tx.get(economyRef)]);
@@ -281,22 +322,32 @@ exports.logWorkout = onCall(async (request) => {
     const finishedAtIso = new Date(now).toISOString();
 
     // Neglect / comeback: if it has been NEGLECT_RECOVERY_MS or more since
-    // the last logged workout, THIS one is a recovery workout. It still
-    // gets written to history and still refreshes `lastWorkoutAt` (which
-    // is what lifts the client-side 1-tier penalty — see
-    // src/utils/evolutionTiers.js), but it earns no coins, adds nothing to
-    // lifetime volume, sets no PRs, and doesn't post to the feed. A
-    // second, normal workout is then needed to actually progress again.
-    // Requires a PRIOR workout: a brand-new account's very first workout
-    // (no lastWorkoutAt) is never a "recovery".
+    // the last logged workout, THIS one is a recovery workout — it earns
+    // no coins, adds nothing to lifetime volume/records, sets no PRs, and
+    // doesn't post to the feed, regardless of how it scores. Requires a
+    // PRIOR workout: a brand-new account's very first workout (no
+    // lastWorkoutAt) is never a "recovery".
     const lastWorkoutMs = Date.parse(economy.lastWorkoutAt);
     isRecovery = Number.isFinite(lastWorkoutMs) && now - lastWorkoutMs >= NEGLECT_RECOVERY_MS;
     effectiveCoins = isRecovery ? 0 : coinsEarned;
     effectiveRecords = isRecovery ? [] : personalRecords;
 
+    // A recovery workout only lifts the neglect penalty (refreshes
+    // lastWorkoutAt) if it clears a real minimum-effort bar
+    // (RECOVERY_MIN_SCORE). Without this, the cheapest possible workout —
+    // one set, one rep — was exactly as good at resetting the clock as a
+    // real session: log a 10-second throwaway to lift the penalty, then a
+    // genuine workout right after for full, un-penalised rewards. A
+    // recovery workout that doesn't clear the bar leaves the OLD
+    // lastWorkoutAt untouched, so the NEXT log is judged against that same
+    // stale timestamp — still "overdue" — until one actually clears it.
+    neglectPenaltyLifted = !isRecovery || totalScore >= RECOVERY_MIN_SCORE;
+
     tx.set(workoutRef, {
       exercises: cleanExercises,
-      startedAt: typeof startedAt === 'string' ? startedAt : finishedAtIso,
+      // Bounded to [now - 48h, now] — see sanitizeStartedAt. Never fed
+      // into scoring/coins, only the displayed workout duration.
+      startedAt: sanitizeStartedAt(startedAt, finishedAtIso, now),
       finishedAt: finishedAtIso,
       assignedWorkoutId: typeof assignedWorkoutId === 'string' ? assignedWorkoutId : null,
       // Marks this doc as having come through server validation + reward —
@@ -316,61 +367,65 @@ exports.logWorkout = onCall(async (request) => {
       // (records.js, src/utils/workoutStats.js, src/utils/personalRecords.js).
       recoveryWorkout: isRecovery,
     });
-    tx.set(
-      economyRef,
-      {
-        // .slice(-MAX_WORKOUTS_PER_WINDOW): `recent` is already filtered to
-        // the live window and gated at < MAX_WORKOUTS_PER_WINDOW above, so
-        // this never actually trims anything today — it is a deliberate
-        // second line of defense that keeps the array from growing without
-        // bound if this constant is ever raised later without a migration.
-        recentWorkoutLogs: [...recent, now].slice(-MAX_WORKOUTS_PER_WINDOW).map((ms) => new Date(ms).toISOString()),
-        // The authoritative "when did this user last train" — the rolling
-        // window above only spans 24h, so it can't answer the 5-day
-        // neglect question. Written on EVERY log, recovery or not.
-        lastWorkoutAt: finishedAtIso,
-      },
-      { merge: true },
-    );
+
+    const economyUpdate = {
+      // .slice(-MAX_WORKOUTS_PER_WINDOW): `recent` is already filtered to
+      // the live window and gated at < MAX_WORKOUTS_PER_WINDOW above, so
+      // this never actually trims anything today — it is a deliberate
+      // second line of defense that keeps the array from growing without
+      // bound if this constant is ever raised later without a migration.
+      // Appended regardless of neglectPenaltyLifted — the rate limit still
+      // applies to a below-the-bar recovery attempt.
+      recentWorkoutLogs: [...recent, now].slice(-MAX_WORKOUTS_PER_WINDOW).map((ms) => new Date(ms).toISOString()),
+    };
+    // The authoritative "when did this user last train" — only advanced
+    // when neglectPenaltyLifted, so an under-the-bar recovery attempt
+    // can't quietly reset the 5-day clock for free (see above).
+    if (neglectPenaltyLifted) economyUpdate.lastWorkoutAt = finishedAtIso;
+    tx.set(economyRef, economyUpdate, { merge: true });
+
     if (effectiveCoins > 0) {
       tx.update(userRef, { coins: FieldValue.increment(effectiveCoins) });
     }
 
-    // Mirror of economyRef.lastWorkoutAt onto the user doc itself, written
-    // on EVERY log (recovery included). The economy-doc copy is read by
+    // Mirror of economyRef.lastWorkoutAt onto the user doc itself — same
+    // neglectPenaltyLifted gate as above. The economy-doc copy is read by
     // this same function for the recovery check; this copy exists so the
     // daily re-engagement job (functions/index.js's teaseLazyGoats) can
     // find idle users with one indexed range query on `users` instead of
     // fetching every user's meta/economy subdoc. Server-only — see
     // firestore.rules' serverManagedFieldsUnchanged().
-    tx.set(userRef, { lastWorkoutAt: finishedAtIso }, { merge: true });
+    if (neglectPenaltyLifted) {
+      tx.set(userRef, { lastWorkoutAt: finishedAtIso }, { merge: true });
+    }
 
     const userData = userSnap.data();
+
+    // Fold this workout onto the account's aggregate stats — a recovery
+    // workout touches nothing here (same rule the old full-scan
+    // bestWeightPerExercise/lifetimeVolumeOf already enforced). This
+    // REPLACES the old "re-scan full history into `allWorkouts`" step —
+    // nextRecords already IS the up-to-date aggregate, no scan needed.
+    const nextRecords = applyWorkoutToRecords(records, {
+      cleanExercises,
+      finishedAtIso,
+      totalScore,
+      isRecovery,
+    });
+    tx.set(recordsRef, { ...nextRecords, updatedAt: finishedAtIso });
 
     // Refresh the friend-visible profile summary — see publicProfile.js.
     // `sharePersonalRecords` below is a one-off, per-post consent ("call
     // out this workout's PR in the feed"); `userData.sharePRs` is the
     // standing profile-level consent ("let friends see my current
     // all-time bests at all"). They are deliberately independent.
-    //
-    // The in-progress workout is appended carrying its recoveryWorkout
-    // flag so lifetimeVolumeOf / bestWeightPerExercise skip it exactly as
-    // they skip past recovery workouts — a recovery log must not move the
-    // friend-visible tier either.
-    const allWorkouts = [
-      ...pastWorkoutsSnap.docs.map((d) => d.data()),
-      // `finishedAt` + `score` mirror what the workout doc gets written
-      // with above, so badge evaluation (workout count, streak) and
-      // lifetimeVolumeOf both see this session as a real, dated entry.
-      { exercises: cleanExercises, finishedAt: finishedAtIso, score: isRecovery ? 0 : totalScore, recoveryWorkout: isRecovery },
-    ];
     const summary = {
       displayName: userData.displayName ?? 'Someone',
-      lifetimeVolume: Math.round(lifetimeVolumeOf(allWorkouts)),
+      lifetimeVolume: Math.round(nextRecords.lifetimeVolume),
       sharePRs: userData.sharePRs === true,
     };
     if (userData.sharePRs === true) {
-      summary.personalRecords = [...bestWeightPerExercise(allWorkouts).entries()].map(([exerciseId, r]) => ({
+      summary.personalRecords = Object.entries(nextRecords.bestPerExercise).map(([exerciseId, r]) => ({
         exerciseId,
         name: r.name,
         weight: r.weight,
@@ -379,20 +434,37 @@ exports.logWorkout = onCall(async (request) => {
     }
     tx.set(userRef.collection('public').doc('summary'), summary, { merge: true });
 
-    // Achievement badges (see functions/badges.js + src/data/badges.js).
-    // Re-derived from the full history every log — never trusted from the
-    // client — and only ever ADDED (arrayUnion), so a badge earned once
-    // stays earned. A recovery workout awards nothing, same as coins/PRs.
+    // Achievement badges (see functions/badges.js + src/data/records.js).
+    // Derived from nextRecords — never a history re-scan — and only ever
+    // ADDED (arrayUnion), so a badge earned once stays earned. A recovery
+    // workout awards nothing, same as coins/PRs.
     const heldBadgeIds = new Set(
       (Array.isArray(userData.badges) ? userData.badges : []).map((b) => (typeof b === 'string' ? b : b?.id)),
     );
     newBadges = isRecovery
       ? []
-      : [...evaluateBadges(allWorkouts)].filter((id) => !heldBadgeIds.has(id));
+      : [...evaluateBadgesFromRecords(nextRecords)].filter((id) => !heldBadgeIds.has(id));
     if (newBadges.length > 0) {
       tx.update(userRef, {
         badges: FieldValue.arrayUnion(...newBadges.map((id) => ({ id, at: finishedAtIso }))),
       });
+    }
+
+    // The Silver Lootbox: a brand-new account's very first REAL workout
+    // (records.workoutCount is the count BEFORE this one folded in, and a
+    // recovery workout requires a prior workout to exist at all — so
+    // `!isRecovery && workoutCount === 0` can only be true once, ever, per
+    // account) grants one free dance instead of quietly landing in
+    // unlockedDances with no fanfare. The client shows this as a
+    // full-screen chest-opening moment (see SilverLootboxModal.jsx) rather
+    // than folding it into the normal "+N coins" toast.
+    if (!isRecovery && (records.workoutCount ?? 0) === 0) {
+      const alreadyOwned = Array.isArray(userData.unlockedDances) && userData.unlockedDances.includes(STARTER_DANCE_ID);
+      if (!alreadyOwned) {
+        tx.update(userRef, { unlockedDances: FieldValue.arrayUnion(STARTER_DANCE_ID) });
+        const starterItem = STORE_ITEMS_BY_ID.get(STARTER_DANCE_ID);
+        firstWorkoutReward = { itemId: STARTER_DANCE_ID, name: starterItem?.name ?? 'A new dance', emoji: starterItem?.emoji ?? '🎁' };
+      }
     }
 
     // A recovery workout is a private "get back on the horse" — no feed
@@ -434,9 +506,17 @@ exports.logWorkout = onCall(async (request) => {
     coinsEarned: effectiveCoins,
     personalRecords: effectiveRecords,
     recoveryWorkout: isRecovery,
+    // Only meaningful when recoveryWorkout is true: whether THIS one
+    // actually cleared RECOVERY_MIN_SCORE and lifted the neglect penalty,
+    // vs. staying "overdue" because it was too light to count. Always true
+    // for a normal (non-recovery) workout.
+    neglectPenaltyLifted,
     // Badge ids unlocked by THIS workout (empty for a recovery log). The
     // full set lives on users/{uid}.badges; this is just what to celebrate.
     newBadges,
+    // { itemId, name, emoji } exactly once, ever, per account — the
+    // Silver Lootbox's first-workout dance grant. null every other time.
+    firstWorkoutReward,
   };
 });
 

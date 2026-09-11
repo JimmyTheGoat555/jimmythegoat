@@ -50,6 +50,8 @@ export default function SettingsPanel({
   uid,
   onUpdateUsername,
   onUpdateGoals,
+  onUpdateDetails,
+  onLogBodyWeight,
   onSignOut,
   onDeleteAccount,
   onUpdateSharePRs,
@@ -63,6 +65,15 @@ export default function SettingsPanel({
   const [weeklyTarget, setWeeklyTarget] = useState(profile.weeklyTarget);
   const [confirmingGoals, setConfirmingGoals] = useState(false);
   const goalsChanged = fitnessGoal !== profile.fitnessGoal || weeklyTarget !== profile.weeklyTarget;
+
+  // Height + body weight — the same two vitals collected in the sign-up
+  // wizard (OnboardingFlow). They live on meta/profile (heightCm; body
+  // weight as the newest entry in bodyWeightLog), so pre-filling from
+  // `profile` here IS the sync: whatever you entered at signup shows up,
+  // and saving writes back to the same doc the rest of the app reads.
+  const currentWeight = profile.bodyWeightLog?.[0]?.weight ?? '';
+  const [heightInput, setHeightInput] = useState(profile.heightCm ?? '');
+  const [weightInput, setWeightInput] = useState('');
 
   // Best-effort initial read of the real OS permission — not perfectly in
   // sync with whether THIS device's token is still registered server-side
@@ -117,6 +128,19 @@ export default function SettingsPanel({
   const handleConfirmGoals = () => {
     onUpdateGoals({ fitnessGoal, weeklyTarget });
     setConfirmingGoals(false);
+  };
+
+  const heightChanged = String(heightInput).trim() !== String(profile.heightCm ?? '');
+  const handleSaveHeight = () => {
+    const cm = Number(heightInput);
+    if (!Number.isFinite(cm) || cm < 50 || cm > 272) return;
+    onUpdateDetails({ heightCm: cm });
+  };
+  const handleSaveWeight = () => {
+    const kg = Number(weightInput);
+    if (!Number.isFinite(kg) || kg < 20 || kg > 500) return;
+    onLogBodyWeight(kg); // adds a new weigh-in entry; visibility defaults private
+    setWeightInput('');
   };
 
   const handleDeleteAccount = async () => {
@@ -263,6 +287,58 @@ export default function SettingsPanel({
             >
               Save Goals
             </button>
+          </section>
+
+          <section className="py-4 flex flex-col gap-3">
+            <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Body</p>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm text-neutral-500">Height (cm)</span>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={heightInput}
+                  onChange={(e) => setHeightInput(e.target.value)}
+                  placeholder="e.g. 178"
+                  className="flex-1 bg-neutral-800 rounded-xl px-3.5 py-3 text-base text-neutral-100 focus:outline-none focus:ring-2 focus:ring-[var(--ember)]"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveHeight}
+                  disabled={!heightChanged || !Number(heightInput)}
+                  className="bg-[var(--ember)] text-white font-semibold text-base px-5 rounded-xl disabled:opacity-40"
+                >
+                  Save
+                </button>
+              </div>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm text-neutral-500">
+                Body weight (kg){currentWeight !== '' && ` — currently ${currentWeight}`}
+              </span>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.1"
+                  value={weightInput}
+                  onChange={(e) => setWeightInput(e.target.value)}
+                  placeholder={currentWeight !== '' ? String(currentWeight) : 'e.g. 75.5'}
+                  className="flex-1 bg-neutral-800 rounded-xl px-3.5 py-3 text-base text-neutral-100 focus:outline-none focus:ring-2 focus:ring-[var(--ember)]"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveWeight}
+                  disabled={!Number(weightInput)}
+                  className="bg-[var(--ember)] text-white font-semibold text-base px-5 rounded-xl disabled:opacity-40"
+                >
+                  Save
+                </button>
+              </div>
+              <span className="text-xs text-neutral-500">
+                Powers your strength-relative score. Full history lives on your Profile.
+              </span>
+            </label>
           </section>
 
           <section className="py-1 flex flex-col">

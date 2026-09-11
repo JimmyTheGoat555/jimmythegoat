@@ -34,6 +34,30 @@ const MAX_BODYWEIGHT_KG = 300;
 // single workout with thousands of sets to try to brute-force past the
 // per-workout coin cap below via sheer volume.
 const MAX_SETS_PER_WORKOUT = 100;
+// Same idea, one level up: MAX_SETS_PER_WORKOUT only bounds COMPLETED
+// sets, so a payload of e.g. 50,000 near-empty exercise objects (0 sets
+// each, or all-incomplete) would still make validateAndScoreWorkout
+// iterate the whole array — real CPU work, and a large request body,
+// before a single "no sets" rejection fires. No real routine comes close
+// to this; it's a backstop, not a training limit.
+const MAX_EXERCISES_PER_WORKOUT = 40;
+
+// How far `startedAt` (client-supplied, used only for the displayed
+// workout duration) is allowed to drift from "now" before it's rejected
+// in favor of the server's own finishedAt timestamp. Generous enough for
+// a very long real session or a slightly stale client clock; anything
+// outside this window is either clock skew nobody should trust or a
+// deliberate attempt to fake a workout's duration.
+const MAX_STARTED_AT_AGE_MS = 48 * 60 * 60 * 1000; // 48 hours
+
+// The neglect/recovery mechanic (below) only actually lifts the penalty if
+// the comeback workout clears this bar. Without it, the cheapest possible
+// workout (one set, one rep) is just as good at resetting the clock as a
+// real session, making the "log something real to recover" requirement a
+// formality — see economy.js's neglectPenaltyLifted. ~20 points is a fifth
+// of an average session (~100), high enough that a token 1-rep set can't
+// clear it under realistic weights.
+const RECOVERY_MIN_SCORE = 20;
 
 // ---- Anti-abuse: rolling-window cap ----
 // Keyed off users/{uid}/meta/economy, which only this server code (via the
@@ -94,18 +118,37 @@ const LEGACY_BODYWEIGHT_KG = 75;
 // Either way the server only ever cares that these are ids living in the
 // user's unlockedDances/unlockedAccessories arrays; all rendering is
 // client-side.
+//
+// Repriced so the catalog reads as a real status ladder against the
+// ~200-coin/workout payout above (COINS_PER_RELATIVE_POINT): accessories
+// are a session or three, dances are a deliberate, multi-session flex —
+// the Crown and Moonwalk are the two "I've clearly put in the time" items
+// at the top of each track.
 const STORE_ITEMS = [
-  { id: 'dance-shuffle', type: 'dance', name: 'The Shuffle', emoji: '🕺', cost: 150 },
-  { id: 'dance-headbang', type: 'dance', name: 'Headbanger', emoji: '🤘', cost: 150 },
-  { id: 'dance-victory', type: 'dance', name: 'Victory Lap', emoji: '🏆', cost: 300 },
-  { id: 'dance-moonwalk', type: 'dance', name: 'Moonwalk', emoji: '🌙', cost: 500 },
-  { id: 'accessory-cap', type: 'accessory', name: 'Backwards Cap', emoji: '🧢', cost: 100 },
-  { id: 'accessory-shades', type: 'accessory', name: 'Shades', emoji: '🕶️', cost: 200 },
+  { id: 'dance-shuffle', type: 'dance', name: 'The Shuffle', emoji: '🕺', cost: 600 },
+  { id: 'dance-headbang', type: 'dance', name: 'Headbanger', emoji: '🤘', cost: 800 },
+  { id: 'dance-victory', type: 'dance', name: 'Victory Lap', emoji: '🏆', cost: 1100 },
+  { id: 'dance-moonwalk', type: 'dance', name: 'Moonwalk', emoji: '🌙', cost: 1500 },
+  { id: 'accessory-cap', type: 'accessory', name: 'Backwards Cap', emoji: '🧢', cost: 150 },
+  { id: 'accessory-shades', type: 'accessory', name: 'Shades', emoji: '🕶️', cost: 250 },
   { id: 'accessory-chain', type: 'accessory', name: 'Gold Chain', emoji: '⛓️', cost: 350 },
-  { id: 'accessory-crown', type: 'accessory', name: 'Crown', emoji: '👑', cost: 750 },
+  { id: 'accessory-crown', type: 'accessory', name: 'Crown', emoji: '👑', cost: 900 },
 ];
 
 const STORE_ITEMS_BY_ID = new Map(STORE_ITEMS.map((item) => [item.id, item]));
+
+// Coins credited to an EXISTING user when someone signs up using their
+// friend code — see functions/referral.js. Paid once per new account (not
+// per friendship — see that file for why becoming friends stays a
+// separate, mutual-consent action rather than something a signup-time
+// code can wire up unilaterally).
+const REFERRAL_BONUS_COINS = 150;
+
+// The dance handed out for free by the first-workout Silver Lootbox (see
+// economy.js's logWorkout) — deliberately the cheapest dance in the
+// catalog above, so "free" still reads as a real discount rather than
+// devaluing the item itself.
+const STARTER_DANCE_ID = 'dance-shuffle';
 
 module.exports = {
   MIN_WEIGHT_KG,
@@ -116,14 +159,19 @@ module.exports = {
   MIN_BODYWEIGHT_KG,
   MAX_BODYWEIGHT_KG,
   MAX_SETS_PER_WORKOUT,
+  MAX_EXERCISES_PER_WORKOUT,
+  MAX_STARTED_AT_AGE_MS,
   WINDOW_MS,
   MIN_GAP_MS,
   MAX_WORKOUTS_PER_WINDOW,
   NEGLECT_RECOVERY_DAYS,
   NEGLECT_RECOVERY_MS,
+  RECOVERY_MIN_SCORE,
   COINS_PER_RELATIVE_POINT,
   MAX_COINS_PER_WORKOUT,
   LEGACY_BODYWEIGHT_KG,
   STORE_ITEMS,
   STORE_ITEMS_BY_ID,
+  REFERRAL_BONUS_COINS,
+  STARTER_DANCE_ID,
 };
