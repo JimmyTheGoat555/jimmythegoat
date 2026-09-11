@@ -51,10 +51,15 @@ function ItemCard({ item, owned, equipped, canAfford, busy, onBuy, onEquip, prev
         />
       ) : (
         <>
-          {/* The real vector art, not the emoji — what you see here is
-              exactly what lands on Jimmy. */}
-          <span className="flex h-12 w-full items-center justify-center px-2">
-            <AccessoryIcon itemId={item.id} className="h-full w-auto max-w-[70%]" />
+          {/* The real artwork, not the emoji — what you see here is exactly
+              what lands on Jimmy. One fixed box for every accessory with
+              the art fitted inside it (object-contain for the PNGs, the
+              default preserveAspectRatio for the SVGs), because these are
+              wildly different shapes: the shades are 2.6:1 and the hoodie
+              0.58:1, and anything that pins one dimension makes one of
+              them either a smear or a stamp. */}
+          <span className="flex h-20 w-full items-center justify-center px-2">
+            <AccessoryIcon itemId={item.id} className="h-full w-full" />
           </span>
           <p className="text-sm font-semibold text-neutral-100">{item.name}</p>
         </>

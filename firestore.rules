@@ -117,16 +117,16 @@ service cloud.firestore {
           request.resource.data.get('unlockedDances', []).hasAny([request.resource.data.equippedDance])) &&
         (request.resource.data.get('equippedAccessory', null) == null ||
           request.resource.data.get('unlockedAccessories', []).hasAny([request.resource.data.equippedAccessory])) &&
-        // Multi-slot accessories (head/eyes/neck — see data/storeItems.js).
-        // hasAll() the other way round from the singular check above:
-        // every id being worn must appear in the owned list, so one
-        // unowned entry anywhere in the array rejects the whole write.
-        // The size cap is a cheap belt-and-braces bound — there are only
-        // three slots, so anything longer is a malformed or hostile
-        // payload rather than a loadout, and it stops the array being used
-        // as unbounded free storage on a doc everyone can read via
-        // public/summary.
-        (request.resource.data.get('equippedAccessories', []).size() <= 3 &&
+        // Multi-slot accessories (body/neck/head/eyes — see
+        // data/storeItems.js). hasAll() the other way round from the
+        // singular check above: every id being worn must appear in the
+        // owned list, so one unowned entry anywhere in the array rejects
+        // the whole write. The size cap is a cheap belt-and-braces bound —
+        // there are only four slots, so anything longer is a malformed or
+        // hostile payload rather than a loadout, and it stops the array
+        // being used as unbounded free storage on a doc everyone can read
+        // via public/summary. Bump this whenever a slot is added.
+        (request.resource.data.get('equippedAccessories', []).size() <= 4 &&
           request.resource.data.get('unlockedAccessories', [])
             .hasAll(request.resource.data.get('equippedAccessories', [])));
     }
