@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { REST_ALARM_WAV_BASE64 } from '../../utils/restAlarmSound';
+import { nextRestTip, TIP_KINDS } from '../../data/restTips';
 
 // The rest timer, sized to be read from the floor. Replaces the little
 // banner that used to sit in ActiveWorkoutLogger's footer — field testing
@@ -32,6 +33,103 @@ function formatClock(totalSeconds) {
 }
 
 const QUICK_STEP = 15;
+const TIP_ROTATE_MS = 15000;
+const TIP_FADE_OUT_MS = 280; // must match .tip-exit's duration in index.css
+
+// The "staring blankly at the wall" fix: a tip card under the clock that
+// swaps every 15 seconds, so a 90-second rest gives you about six things
+// worth reading instead of one static screen.
+//
+// The swap is out-then-in rather than a cross-dissolve (framer-motion's
+// AnimatePresence mode="wait", built here in CSS — see index.css's tip-in/
+// tip-out, and ReorderableList for why this project doesn't pull in an
+// animation library). Swapping the text only while the card is invisible
+// is what keeps a tip from ever being caught mid-change.
+function RestTipCard() {
+  const [tip, setTip] = useState(() => nextRestTip(null));
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const rotate = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setTip((current) => nextRestTip(current));
+        setVisible(true);
+      }, TIP_FADE_OUT_MS);
+    }, TIP_ROTATE_MS);
+    return () => clearInterval(rotate);
+  }, []);
+
+  const kind = TIP_KINDS[tip.kind] ?? TIP_KINDS.roast;
+
+  return (
+    <div className="relative w-full max-w-sm px-1">
+      {/* Gold frame, deliberately unlike anything else on this screen: the
+          clock owns the state colour (white/green/red), so the card needs
+          its own identity or it reads as part of the countdown. The frame
+          is a gradient-filled 2px padding box behind an opaque fill — the
+          same trick GradientBorder uses elsewhere in the app, which is
+          what makes it read as a crisp inlay rather than a glow. */}
+      <div className="tip-frame relative rounded-2xl p-[2px]">
+        <div className="relative overflow-hidden rounded-[14px] bg-neutral-950 px-5 py-4">
+          {/* Warm vignette behind the text, tinted to the tip's category —
+              enough to feel lit from within, far too subtle to hurt
+              legibility. */}
+          <div
+            className="pointer-events-none absolute inset-0 transition-opacity duration-500"
+            style={{ background: `radial-gradient(120% 90% at 50% 0%, ${kind.accent}22, transparent 70%)` }}
+          />
+
+          {/* Four corner ornaments — the small detail that separates a
+              "card with a border" from something that looks printed. */}
+          {[
+            'left-1.5 top-1.5 border-l border-t',
+            'right-1.5 top-1.5 border-r border-t',
+            'left-1.5 bottom-1.5 border-b border-l',
+            'right-1.5 bottom-1.5 border-b border-r',
+          ].map((pos) => (
+            <span
+              key={pos}
+              className={`pointer-events-none absolute h-2.5 w-2.5 ${pos}`}
+              style={{ borderColor: 'rgba(212,175,55,0.55)' }}
+            />
+          ))}
+
+          <div className="relative flex flex-col items-center">
+            {/* Category badge. Always gold-framed for card identity, but
+                tinted to the kind, so you can tell at a glance whether
+                you're being taught something or insulted. */}
+            <span
+              key={kind.label}
+              className={`mb-2.5 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.22em] ${
+                visible ? 'tip-enter' : 'tip-exit'
+              }`}
+              style={{
+                color: kind.accent,
+                borderColor: `${kind.accent}55`,
+                background: `${kind.accent}12`,
+              }}
+            >
+              <span aria-hidden="true">{kind.icon}</span>
+              {kind.label}
+            </span>
+
+            {/* min-height holds the card steady across tips of different
+                lengths, so the controls below never jump mid-rest. */}
+            <p
+              key={tip.text}
+              className={`flex min-h-[3.75rem] items-center justify-center text-balance text-center text-[15px] font-medium leading-snug text-neutral-200 ${
+                visible ? 'tip-enter' : 'tip-exit'
+              }`}
+            >
+              {tip.text}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function FullScreenTimer({
   secondsLeft,
@@ -123,6 +221,8 @@ export default function FullScreenTimer({
           {formatClock(secondsLeft)}
         </p>
       </div>
+
+      <RestTipCard />
 
       <div className="relative flex w-full max-w-md flex-col gap-3">
         <div className="flex gap-3">

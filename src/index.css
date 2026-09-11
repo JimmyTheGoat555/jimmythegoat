@@ -527,6 +527,39 @@ button.card:hover {
   }
 }
 
+/* ---- FullScreenTimer's rest-tip card ---- */
+/* The out-then-in crossfade between tips. Two separate keyframes driven by
+   a `visible` flag rather than one looping animation, because the swap has
+   to happen at a known moment — while the card is invisible — so a tip is
+   never seen mid-change. Same shape as framer-motion's AnimatePresence
+   mode="wait", in CSS this project already uses everywhere else. */
+.tip-enter {
+  animation: tip-in 0.42s ease-out both;
+}
+.tip-exit {
+  animation: tip-out 0.28s ease-in both;
+}
+@keyframes tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes tip-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
 /* Sparkles popping out on the burst. */
 .chest-sparkle {
   transform-box: fill-box;
@@ -614,10 +647,43 @@ button.card:hover {
   .chest-sheen-bar,
   .chest-rays,
   .chest-sparkle,
+  .tip-enter,
+  .tip-exit,
+  .tip-frame,
   [class*='chest-breathe'],
   [class*='chest-shake'],
   [class*='chest-flash'],
   [class*='reward-pop'] {
     animation: none;
+  }
+}
+
+/* ---- FullScreenTimer's rest-tip card frame ---- */
+/* A gradient-filled padding box (the GradientBorder trick used elsewhere in
+   this app) with a highlight that drifts along it, so the gold reads as
+   metal catching light rather than a flat stroke. Slow on purpose: this
+   sits under a countdown someone is watching, and anything quick here
+   would pull the eye away from the numbers. */
+.tip-frame {
+  background: linear-gradient(
+    115deg,
+    rgba(212, 175, 55, 0.25) 0%,
+    rgba(212, 175, 55, 0.85) 18%,
+    rgba(255, 240, 200, 0.95) 26%,
+    rgba(212, 175, 55, 0.8) 34%,
+    rgba(212, 175, 55, 0.22) 55%,
+    rgba(212, 175, 55, 0.7) 100%
+  );
+  background-size: 260% 100%;
+  animation: tip-frame-sheen 7s ease-in-out infinite;
+}
+@keyframes tip-frame-sheen {
+  0%,
+  8% {
+    background-position: 100% 0;
+  }
+  58%,
+  100% {
+    background-position: 0 0;
   }
 }
