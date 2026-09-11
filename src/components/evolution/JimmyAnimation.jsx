@@ -84,6 +84,16 @@ export default function JimmyAnimation({
       tabIndex={canReplay ? 0 : undefined}
       aria-label={canReplay ? `Play ${alt}'s dance again` : undefined}
     >
+      {/* Behind the goat, so a collar passes under his neck rather than
+          across it. Drawn before both layers below, all absolutely
+          positioned, so paint order follows DOM order. */}
+      {evolutionStage != null && (
+        <AccessoryLayer
+          evolutionStage={evolutionStage}
+          equippedAccessories={equippedAccessories}
+          depth="behind"
+        />
+      )}
       <img
         src={staticImageSrc}
         alt={alt}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { getTierByStage } from '../../utils/evolutionTiers';
+import JimmyAvatar from '../evolution/JimmyAvatar';
+import { useJimmyLook } from '../../context/JimmyLook';
 
 // The victory lap. Plays once a workout has actually been logged, before
 // the coins/lootbox land — the point is the small, stupidly satisfying
@@ -24,8 +25,8 @@ const STAGGER_MS = 260;
 const HOLD_AFTER_DONE_MS = 1500;
 
 export default function WorkoutSummaryChecklist({ exercises, onDone }) {
+  const jimmyLook = useJimmyLook();
   const [crossed, setCrossed] = useState(0);
-  const [heroBroken, setHeroBroken] = useState(false);
   const total = exercises.length;
 
   // Held in a ref so changing the callback identity can't restart the
@@ -55,7 +56,6 @@ export default function WorkoutSummaryChecklist({ exercises, onDone }) {
     return () => clearTimeout(timer);
   }, [crossed, total]);
 
-  const hero = getTierByStage(4);
   const allDone = total > 0 && crossed >= total;
 
   return (
@@ -69,16 +69,15 @@ export default function WorkoutSummaryChecklist({ exercises, onDone }) {
       />
 
       <div className="relative flex flex-col items-center">
-        {heroBroken ? (
-          <span className="text-7xl leading-none">🐐</span>
-        ) : (
-          <img
-            src={hero?.image}
-            alt={hero?.label ?? 'Jimmy'}
-            onError={() => setHeroBroken(true)}
-            className="h-36 w-36 object-contain drop-shadow-[0_10px_24px_rgba(57,255,20,0.35)]"
-          />
-        )}
+        {/* The goat who just did the work, wearing what he was wearing
+            while he did it. JimmyAvatar owns the sprite and its broken-
+            image fallback, so this no longer tracks that itself.
+            NOTE this also changes WHICH goat: the hero here was hardcoded
+            to getTierByStage(4), so every user's workout ended with the
+            Legendary sprite no matter what tier they were actually on.
+            There was no comment defending that and it reads as a bug —
+            the whole point of the tiers is that you earn the big one. */}
+        <JimmyAvatar {...jimmyLook} size="lg" className="drop-shadow-[0_10px_24px_rgba(57,255,20,0.35)]" />
         <h2 className="mt-2 text-center text-2xl text-neutral-50">Workout Logged</h2>
         <p className="mt-1 text-sm text-neutral-500">
           {allDone ? 'Every rep counted.' : `${crossed} of ${total} down…`}

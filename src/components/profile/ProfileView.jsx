@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { WEEKDAY_LABELS, isWeighInDayToday, isWeighInDayTomorrow, goalMatchesDelta } from '../../utils/weighIn';
 import WeighInModal from './WeighInModal';
 import BadgeShelf from './BadgeShelf';
+import JimmyAvatar from '../evolution/JimmyAvatar';
+import { useJimmyLook } from '../../context/JimmyLook';
 
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -20,6 +22,7 @@ function formatDate(iso) {
 // heading says: your numbers, not app preferences.
 export default function ProfileView({ account, profile, updateDetails, logBodyWeight, deleteBodyWeightEntry, onConnectToTrainer, onDisconnectFromTrainer, onNotifyTrainer }) {
   const navigate = useNavigate();
+  const jimmyLook = useJimmyLook();
   const [weightInput, setWeightInput] = useState('');
   const [trainerCodeInput, setTrainerCodeInput] = useState('');
   const [connectError, setConnectError] = useState(null);
@@ -103,7 +106,13 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
         <button type="button" onClick={() => navigate(-1)} className="text-sm text-neutral-500 mb-1">
           ← Back
         </button>
-        <h1 className="text-3xl font-bold text-neutral-50">Profile</h1>
+        {/* This page had no goat on it at all — the one screen that is
+            explicitly about you showed none of the character you have been
+            dressing. Same header treatment as the coach dashboard. */}
+        <div className="flex items-center gap-3">
+          <JimmyAvatar {...jimmyLook} crop="head" size={64} className="shrink-0 rounded-full bg-white/5" />
+          <h1 className="text-3xl font-bold text-neutral-50">Profile</h1>
+        </div>
       </div>
 
       {(weighInToday || weighInTomorrow) && (

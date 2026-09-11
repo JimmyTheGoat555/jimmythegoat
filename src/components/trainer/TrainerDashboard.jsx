@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import JimmyAvatar from '../evolution/JimmyAvatar';
+import { useJimmyLook } from '../../context/JimmyLook';
 import { Link } from 'react-router-dom';
 import { useTrainerTrainees } from '../../hooks/useTrainerTrainees';
 import { lifetimeVolume, lastWorkoutAt } from '../../utils/workoutStats';
@@ -17,21 +18,13 @@ export default function TrainerDashboard({ profile, workouts }) {
   const { current: yourTier } = getEvolutionProgress(lifetimeVolume(workouts), {
     lastWorkoutAt: lastWorkoutAt(workouts),
   });
-  const [mascotBroken, setMascotBroken] = useState(false);
 
   return (
     <div className="flex flex-col gap-4 pt-6 pb-24">
       <div className="flex items-center gap-3">
-        {mascotBroken ? (
-          <span className="text-4xl leading-none">{yourTier.emoji}</span>
-        ) : (
-          <img
-            src={yourTier.image}
-            alt=""
-            onError={() => setMascotBroken(true)}
-            className="w-14 h-14 object-contain object-top"
-          />
-        )}
+        {/* `object-top` used to be a crude head crop — JimmyAvatar does it
+            properly, and brings the coach's own gear with it. */}
+        <JimmyAvatar {...useJimmyLook()} crop="head" size={56} className="shrink-0 rounded-full bg-white/5" />
         <div>
           <p className="text-neutral-500 text-lg">Coach dashboard</p>
           <h1 className="text-3xl font-bold text-neutral-50">{profile.displayName}</h1>

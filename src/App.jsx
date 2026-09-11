@@ -27,7 +27,7 @@ import { getEvolutionProgress } from './utils/evolutionTiers';
 import { findNewPersonalRecords } from './utils/personalRecords';
 import { lastPerformance, seedSetsFromHistory } from './utils/lastPerformance';
 import { isBodyweightExercise } from './data/exercises';
-import { readEquippedAccessories } from './data/storeItems';
+import { JimmyLookProvider } from './context/JimmyLook';
 import { DEFAULT_SETS_PER_EXERCISE } from './hooks/useWorkouts';
 import { getBadge } from './data/badges';
 import { tierCssVars } from './utils/tierTheme';
@@ -577,277 +577,272 @@ export default function App() {
   // person has evolved, tying the rest of the UI back to the AuthScreen
   // showcase. `evolution` is computed up with the hooks above.
   const currentTier = evolution.current;
-  // Read once here rather than at each render site: the Workout lobby, the
-  // Progress card and the Shop all need the same list, and the helper also
-  // folds in the pre-multi-slot `equippedAccessory` string for accounts
-  // that predate slots.
-  const equippedAccessories = readEquippedAccessories(account);
 
   return (
-    <div
-      className={`relative isolate min-h-screen bg-neutral-950${tierUp.shaking ? ' screen-shake' : ''}`}
-      style={tierCssVars(currentTier.id)}
-    >
-      {/* The Fortnite/Arcade backdrop — grid, particles, speed lines, all
-          defined in .ambient-bg itself now (index.css), so no inline
-          override here (an earlier "colorful as login" pass used to pin
-          a plain gradient over it via inline style; that's gone now that
-          .ambient-bg's own background IS the design). `relative isolate`
-          here plus an explicit z-index on .ambient-bg/.ambient-scrim (see
-          index.css) — relying on plain DOM order to keep these two fixed,
-          animated layers behind the page content was NOT reliable: on the
-          /workout route specifically (which has its own separate `fixed`
-          footer) they could end up compositing ON TOP of everything,
-          hiding every button behind a wall of gradient. Real bug, found
-          live on the deployed site, not a testing artifact. */}
-      <div className="ambient-bg" />
-      <div className="ambient-scrim" />
-      <div className="max-w-md mx-auto px-4">
-        {appNotice && (
-          <div
-            className={`relative z-10 mt-4 px-4 py-3 rounded-2xl border text-sm flex items-start gap-2 ${
-              appNotice.tone === 'success'
-                ? 'bg-[var(--success)]/15 border-[var(--success)]/30 text-[var(--success)]'
-                : 'bg-amber-500/15 border-amber-500/30 text-amber-200'
-            }`}
-          >
-            <span>{appNotice.tone === 'success' ? '🪙' : '⚠️'}</span>
-            <p className="flex-1">{appNotice.message}</p>
-            <button type="button" onClick={() => setAppNotice(null)} className="font-bold px-1 opacity-70">
-              ✕
-            </button>
-          </div>
-        )}
-        <Suspense fallback={<ScreenFallback />}>
-        <Routes>
-          <Route
-            element={
-              <Layout
-                isTrainer={isTrainer}
-                tierId={currentTier.id}
-                coins={account.coins}
-                unreadNotifications={unreadNotifications}
-                onOpenSettings={() => setSettingsOpen(true)}
-              />
-            }
-          >
+    <JimmyLookProvider evolutionStage={currentTier.stage} account={account}>
+      <div
+        className={`relative isolate min-h-screen bg-neutral-950${tierUp.shaking ? ' screen-shake' : ''}`}
+        style={tierCssVars(currentTier.id)}
+      >
+        {/* The Fortnite/Arcade backdrop — grid, particles, speed lines, all
+            defined in .ambient-bg itself now (index.css), so no inline
+            override here (an earlier "colorful as login" pass used to pin
+            a plain gradient over it via inline style; that's gone now that
+            .ambient-bg's own background IS the design). `relative isolate`
+            here plus an explicit z-index on .ambient-bg/.ambient-scrim (see
+            index.css) — relying on plain DOM order to keep these two fixed,
+            animated layers behind the page content was NOT reliable: on the
+            /workout route specifically (which has its own separate `fixed`
+            footer) they could end up compositing ON TOP of everything,
+            hiding every button behind a wall of gradient. Real bug, found
+            live on the deployed site, not a testing artifact. */}
+        <div className="ambient-bg" />
+        <div className="ambient-scrim" />
+        <div className="max-w-md mx-auto px-4">
+          {appNotice && (
+            <div
+              className={`relative z-10 mt-4 px-4 py-3 rounded-2xl border text-sm flex items-start gap-2 ${
+                appNotice.tone === 'success'
+                  ? 'bg-[var(--success)]/15 border-[var(--success)]/30 text-[var(--success)]'
+                  : 'bg-amber-500/15 border-amber-500/30 text-amber-200'
+              }`}
+            >
+              <span>{appNotice.tone === 'success' ? '🪙' : '⚠️'}</span>
+              <p className="flex-1">{appNotice.message}</p>
+              <button type="button" onClick={() => setAppNotice(null)} className="font-bold px-1 opacity-70">
+                ✕
+              </button>
+            </div>
+          )}
+          <Suspense fallback={<ScreenFallback />}>
+          <Routes>
             <Route
-              index
               element={
-                activeWorkout ? (
-                  <Navigate to="/workout" replace />
-                ) : (
-                  <WorkoutHome
-                    onStartWorkout={handleStartWorkout}
-                    onStartAssigned={handleStartAssigned}
-                    onStartTemplate={handleStartTemplate}
-                    onDeleteTemplate={deleteTemplate}
-                    assignments={assignments}
-                    templates={templates}
+                <Layout
+                  isTrainer={isTrainer}
+                  tierId={currentTier.id}
+                  coins={account.coins}
+                  unreadNotifications={unreadNotifications}
+                  onOpenSettings={() => setSettingsOpen(true)}
+                />
+              }
+            >
+              <Route
+                index
+                element={
+                  activeWorkout ? (
+                    <Navigate to="/workout" replace />
+                  ) : (
+                    <WorkoutHome
+                      onStartWorkout={handleStartWorkout}
+                      onStartAssigned={handleStartAssigned}
+                      onStartTemplate={handleStartTemplate}
+                      onDeleteTemplate={deleteTemplate}
+                      assignments={assignments}
+                      templates={templates}
+                      workouts={workouts}
+                      // Real recent-workout flavor text instead of the old
+                      // mock friends' fake stats — see hooks/useFeed.js.
+                      // {username, weeklyTonnage} shape kept exactly as
+                      // WorkoutHome's buildHypeMessages() already expects, so
+                      // that logic needed zero changes.
+                      friends={feed.posts.map((p) => ({ username: p.userName, weeklyTonnage: p.totalVolume }))}
+                      equippedDance={account.equippedDance}
+                        barOverride={tierUp.barOverride}
+                      lastWorkoutAt={lastWorkout}
+                      bodyWeightKg={bodyWeightKg}
+                    />
+                  )
+                }
+              />
+              <Route
+                path="progress"
+                element={
+                  <ProgressView
                     workouts={workouts}
-                    // Real recent-workout flavor text instead of the old
-                    // mock friends' fake stats — see hooks/useFeed.js.
-                    // {username, weeklyTonnage} shape kept exactly as
-                    // WorkoutHome's buildHypeMessages() already expects, so
-                    // that logic needed zero changes.
-                    friends={feed.posts.map((p) => ({ username: p.userName, weeklyTonnage: p.totalVolume }))}
-                    equippedDance={account.equippedDance}
-                    equippedAccessories={equippedAccessories}
-                    barOverride={tierUp.barOverride}
-                    lastWorkoutAt={lastWorkout}
+                    exercises={exercises}
                     bodyWeightKg={bodyWeightKg}
                   />
+                }
+              />
+              <Route
+                path="social"
+                element={
+                  <SocialPage
+                    account={account}
+                    workouts={workouts}
+                    feedPosts={feed.posts}
+                    feedLoading={feed.loading}
+                    feedError={feed.error}
+                    myUid={uid}
+                    myFriendCode={account?.friendCode}
+                    friendUids={friendUids}
+                    friends={friendsGraph.friends}
+                    incomingRequests={friendsGraph.incomingRequests}
+                    onSendRequest={friendsGraph.sendFriendRequest}
+                    onRespond={friendsGraph.respondToFriendRequest}
+                    onRemove={friendsGraph.removeFriend}
+                    notifications={notifications}
+                    onMarkNotificationRead={markNotificationRead}
+                    onDismissNotification={dismissNotification}
+                  />
+                }
+              />
+              <Route
+                path="friends/:friendUid"
+                element={<FriendProfile friends={friendsGraph.friends} onSendNudge={friendsGraph.sendNudge} />}
+              />
+              <Route
+                path="profile"
+                element={
+                  <ProfileView
+                    account={account}
+                    profile={profile}
+                    updateDetails={updateDetails}
+                    logBodyWeight={logBodyWeight}
+                    deleteBodyWeightEntry={deleteBodyWeightEntry}
+                    onConnectToTrainer={connectToTrainer}
+                    onDisconnectFromTrainer={disconnectFromTrainer}
+                    onNotifyTrainer={notifyTrainer}
+                  />
+                }
+              />
+              <Route
+                path="shop"
+                element={
+                  <GymShop
+                    account={account}
+                    onPurchase={purchaseItem}
+                    onEquip={equipItem}
+                      onSetAccessories={setEquippedAccessories}
+                    evolutionStage={currentTier.stage}
+                    tierImage={currentTier.image}
+                  />
+                }
+              />
+              <Route
+                path="history"
+                element={<HistoryList workouts={workouts} deleteWorkout={deleteWorkout} />}
+              />
+              <Route
+                path="workouts/:id"
+                element={
+                  <WorkoutDetail
+                    workouts={workouts}
+                    updateWorkout={updateWorkout}
+                    deleteWorkout={deleteWorkout}
+                  />
+                }
+              />
+
+              {isTrainer && (
+                <>
+                  <Route
+                    path="trainees"
+                    element={<TrainerDashboard profile={account} workouts={workouts} onSignOut={signOut} />}
+                  />
+                  <Route
+                    path="trainees/:traineeId"
+                    element={<TraineeDetail profile={account} onRemoveTrainee={disconnectFromTrainer} />}
+                  />
+                  <Route
+                    path="trainees/:traineeId/assign"
+                    element={<AssignWorkoutForm profile={account} exercises={exercises} />}
+                  />
+                  <Route
+                    path="trainees/:traineeId/workouts/:workoutId"
+                    element={<TraineeWorkoutDetail profile={account} />}
+                  />
+                </>
+              )}
+            </Route>
+
+            <Route
+              path="workout"
+              element={
+                activeWorkout ? (
+                  <ActiveWorkoutLogger
+                    workout={activeWorkout}
+                    exercises={exercises}
+                    screenLockActive={screenLockActive}
+                    onAddExercise={addExercise}
+                    onRemoveExercise={removeExercise}
+                    onReorderExercises={reorderExercises}
+                    onAddSet={addSet}
+                    onUpdateSet={updateSet}
+                    onRemoveSet={removeSet}
+                    onFinish={handleFinishWorkout}
+                    personalRecords={activePersonalRecords}
+                    history={workouts}
+                    bodyWeightKg={bodyWeightKg}
+                    onDiscard={handleDiscardWorkout}
+                    onSaveTemplate={handleSaveTemplate}
+                  />
+                ) : (
+                  <Navigate to="/" replace />
                 )
               }
             />
-            <Route
-              path="progress"
-              element={
-                <ProgressView
-                  workouts={workouts}
-                  exercises={exercises}
-                  bodyWeightKg={bodyWeightKg}
-                  equippedAccessories={equippedAccessories}
-                />
-              }
-            />
-            <Route
-              path="social"
-              element={
-                <SocialPage
-                  account={account}
-                  workouts={workouts}
-                  feedPosts={feed.posts}
-                  feedLoading={feed.loading}
-                  feedError={feed.error}
-                  myUid={uid}
-                  myFriendCode={account?.friendCode}
-                  friendUids={friendUids}
-                  friends={friendsGraph.friends}
-                  incomingRequests={friendsGraph.incomingRequests}
-                  onSendRequest={friendsGraph.sendFriendRequest}
-                  onRespond={friendsGraph.respondToFriendRequest}
-                  onRemove={friendsGraph.removeFriend}
-                  notifications={notifications}
-                  onMarkNotificationRead={markNotificationRead}
-                  onDismissNotification={dismissNotification}
-                />
-              }
-            />
-            <Route
-              path="friends/:friendUid"
-              element={<FriendProfile friends={friendsGraph.friends} onSendNudge={friendsGraph.sendNudge} />}
-            />
-            <Route
-              path="profile"
-              element={
-                <ProfileView
-                  account={account}
-                  profile={profile}
-                  updateDetails={updateDetails}
-                  logBodyWeight={logBodyWeight}
-                  deleteBodyWeightEntry={deleteBodyWeightEntry}
-                  onConnectToTrainer={connectToTrainer}
-                  onDisconnectFromTrainer={disconnectFromTrainer}
-                  onNotifyTrainer={notifyTrainer}
-                />
-              }
-            />
-            <Route
-              path="shop"
-              element={
-                <GymShop
-                  account={account}
-                  onPurchase={purchaseItem}
-                  onEquip={equipItem}
-                    onSetAccessories={setEquippedAccessories}
-                  evolutionStage={currentTier.stage}
-                  tierImage={currentTier.image}
-                />
-              }
-            />
-            <Route
-              path="history"
-              element={<HistoryList workouts={workouts} deleteWorkout={deleteWorkout} />}
-            />
-            <Route
-              path="workouts/:id"
-              element={
-                <WorkoutDetail
-                  workouts={workouts}
-                  updateWorkout={updateWorkout}
-                  deleteWorkout={deleteWorkout}
-                />
-              }
-            />
 
-            {isTrainer && (
-              <>
-                <Route
-                  path="trainees"
-                  element={<TrainerDashboard profile={account} workouts={workouts} onSignOut={signOut} />}
-                />
-                <Route
-                  path="trainees/:traineeId"
-                  element={<TraineeDetail profile={account} onRemoveTrainee={disconnectFromTrainer} />}
-                />
-                <Route
-                  path="trainees/:traineeId/assign"
-                  element={<AssignWorkoutForm profile={account} exercises={exercises} />}
-                />
-                <Route
-                  path="trainees/:traineeId/workouts/:workoutId"
-                  element={<TraineeWorkoutDetail profile={account} />}
-                />
-              </>
-            )}
-          </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+          </Suspense>
+        </div>
 
-          <Route
-            path="workout"
-            element={
-              activeWorkout ? (
-                <ActiveWorkoutLogger
-                  workout={activeWorkout}
-                  exercises={exercises}
-                  screenLockActive={screenLockActive}
-                  onAddExercise={addExercise}
-                  onRemoveExercise={removeExercise}
-                  onReorderExercises={reorderExercises}
-                  onAddSet={addSet}
-                  onUpdateSet={updateSet}
-                  onRemoveSet={removeSet}
-                  onFinish={handleFinishWorkout}
-                  personalRecords={activePersonalRecords}
-                  history={workouts}
-                  bodyWeightKg={bodyWeightKg}
-                  onDiscard={handleDiscardWorkout}
-                  onSaveTemplate={handleSaveTemplate}
-                />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
+        {/* The one-time notification pitch — deliberately held back while a
+            workout is active (mid-set is the worst possible moment to
+            interrupt with an unrelated prompt) even if this is technically
+            someone's very first screen; it'll show the next time they land
+            anywhere else instead of being skipped outright. */}
+        {/* Null fallbacks: these are overlays, so showing nothing for the
+            moment their chunk arrives is exactly the pre-open state. */}
+        {!notifPromptSeen && !activeWorkout && (
+          <Suspense fallback={null}>
+            <NotificationPromptModal uid={uid} onDismiss={() => setNotifPromptSeen(true)} />
+          </Suspense>
+        )}
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        </Suspense>
+        {finishChecklist && (
+          <Suspense fallback={null}>
+            <WorkoutSummaryChecklist
+              exercises={finishChecklist.exercises}
+              onDone={() => {
+                const { reward } = finishChecklist;
+                setFinishChecklist(null);
+                reward();
+              }}
+            />
+          </Suspense>
+        )}
+
+        {lootboxReward && (
+          <Suspense fallback={null}>
+            <SilverLootboxModal
+              reward={lootboxReward}
+              evolutionStage={evolution.current.stage}
+              onClose={() => setLootboxReward(null)}
+            />
+          </Suspense>
+        )}
+
+        {settingsOpen && (
+          <Suspense fallback={null}>
+            <SettingsPanel
+              account={account}
+              profile={profile}
+              uid={uid}
+              onUpdateUsername={updateUsername}
+              onUpdateGoals={updateDetails}
+              onUpdateDetails={updateDetails}
+              onLogBodyWeight={logBodyWeight}
+              onSignOut={signOut}
+              onDeleteAccount={deleteAccount}
+              onUpdateSharePRs={setSharePRs}
+              onClose={() => setSettingsOpen(false)}
+            />
+          </Suspense>
+        )}
       </div>
-
-      {/* The one-time notification pitch — deliberately held back while a
-          workout is active (mid-set is the worst possible moment to
-          interrupt with an unrelated prompt) even if this is technically
-          someone's very first screen; it'll show the next time they land
-          anywhere else instead of being skipped outright. */}
-      {/* Null fallbacks: these are overlays, so showing nothing for the
-          moment their chunk arrives is exactly the pre-open state. */}
-      {!notifPromptSeen && !activeWorkout && (
-        <Suspense fallback={null}>
-          <NotificationPromptModal uid={uid} onDismiss={() => setNotifPromptSeen(true)} />
-        </Suspense>
-      )}
-
-      {finishChecklist && (
-        <Suspense fallback={null}>
-          <WorkoutSummaryChecklist
-            exercises={finishChecklist.exercises}
-            onDone={() => {
-              const { reward } = finishChecklist;
-              setFinishChecklist(null);
-              reward();
-            }}
-          />
-        </Suspense>
-      )}
-
-      {lootboxReward && (
-        <Suspense fallback={null}>
-          <SilverLootboxModal
-            reward={lootboxReward}
-            evolutionStage={evolution.current.stage}
-            onClose={() => setLootboxReward(null)}
-          />
-        </Suspense>
-      )}
-
-      {settingsOpen && (
-        <Suspense fallback={null}>
-          <SettingsPanel
-            account={account}
-            profile={profile}
-            uid={uid}
-            onUpdateUsername={updateUsername}
-            onUpdateGoals={updateDetails}
-            onUpdateDetails={updateDetails}
-            onLogBodyWeight={logBodyWeight}
-            onSignOut={signOut}
-            onDeleteAccount={deleteAccount}
-            onUpdateSharePRs={setSharePRs}
-            onClose={() => setSettingsOpen(false)}
-          />
-        </Suspense>
-      )}
-    </div>
+    </JimmyLookProvider>
   );
 }

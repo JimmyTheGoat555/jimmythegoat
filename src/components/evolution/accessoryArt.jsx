@@ -114,8 +114,16 @@ export const ACCESSORY_ART = {
   // the peak juts out to the right. ACCESSORY_LAYOUT's `left` shifts it so
   // the DOME lands on Jimmy's midline rather than the PNG's.
   'accessory-cap': { slot: 'head', src: '/assets/accessories/cap.png', aspect: 1.765 },
-  'accessory-tank': { slot: 'body', src: '/assets/accessories/tank.png', aspect: 0.624 },
-  'accessory-hoodie': { slot: 'body', src: '/assets/accessories/hoodie.png', aspect: 0.583 },
+  // `behind` is the fraction of the image's HEIGHT that belongs BEHIND the
+  // wearer — the back of the collar, and the hood. Without it a garment is
+  // a sticker: the collar band paints across Jimmy's throat and his neck
+  // looks pasted on top of the shirt rather than coming out of it.
+  // AccessoryLayer draws that strip under the sprite and the rest over it,
+  // so his neck occludes the back of the collar exactly the way a real one
+  // would. For the hoodie the strip is the whole hood, which is why it now
+  // reads as hanging down his back.
+  'accessory-tank': { slot: 'body', src: '/assets/accessories/tank.png', aspect: 0.624, behind: 0.085 },
+  'accessory-hoodie': { slot: 'body', src: '/assets/accessories/hoodie.png', aspect: 0.583, behind: 0.21 },
   // --- still vector, awaiting art ---
   'accessory-crown': { slot: 'head', viewBox: '0 0 100 62', Art: Crown },
   'accessory-chain': { slot: 'neck', viewBox: '0 0 100 46', Art: Chain },

@@ -148,40 +148,40 @@ const ACCESSORY_LAYOUT = {
   // The torso does NOT follow the head's numbers — it is the part of Jimmy
   // that actually changes between tiers, and it changes the other way: the
   // Legend's head is the smallest share of his canvas and his chest the
-  // largest. So body pieces are anchored to their own landmark, the
-  // SHOULDER LINE — the row where the silhouette jumps outward as the arms
-  // begin (goat 27.5% of canvas height, buff 27%, titan and legend 25%) —
-  // and sized off the shoulder span there (goat 67% of canvas width, buff
-  // 68.5%, titan 67.8%, legend 68.4%, taken at 0.82x because the hoodie is
-  // sleeveless and stops inside the deltoid).
+  // largest. So body pieces get their own landmark, the NECK BASE — the narrowest row of the neck
+  // pinch, before the shoulders flare: goat 24.5% of canvas height, buff
+  // 25.5%, titan 23%, legend 21%. The garment's own collar is lined up
+  // with that, which is the difference between Jimmy wearing a shirt and
+  // Jimmy standing behind one. The first cut anchored to the chin and sat
+  // ~6% too low, leaving his neck above the collar instead of through it.
   //
-  // Vertically the anchor is the CHIN, not the shoulder: the hood is drawn
-  // open and tall, and lining its seam up with the anatomical shoulder put
-  // the empty hood interior over Jimmy's jaw on the two smaller tiers —
-  // he looked swallowed. Measured chins (the narrowest row of the neck
-  // pinch) are goat 22% of canvas height, buff 23.5%, titan 21.5%, legend
-  // 20%; the hood's top edge sits ~3% below each. `top` positions the PNG's
-  // CENTRE, hence + half the rendered height on top of that, which is why
-  // these four numbers are not a simple scale of one another.
-  // A tank's shoulder seam is at 3% of its own height (it is all straps up
-  // there), against the hoodie's 20% — so it hangs from the shoulder line
-  // directly, with none of the hoodie's chin correction.
+  // Widths are NOT near-constant across tiers the way the head pieces are.
+  // The first cut assumed they were and dressed every goat in the Goat's
+  // size, which left the Legend's chest hanging out either side of a vest
+  // three sizes too small. They climb ~20% from tier 1 to tier 4 (hoodie
+  // 45 -> 54, tank 43 -> 52), tuned against the render because the
+  // silhouette measurements here are too noisy to trust: the arms are
+  // fused to the torso in the alpha channel at exactly the rows that
+  // matter, and each tier holds them at a different angle.
+  //
+  // See accessoryArt.jsx's `behind` for the other half of looking worn:
+  // the strip of each garment that is drawn UNDER the sprite.
   'accessory-tank': {
     z: 10,
     stages: {
-      1: { top: '41.1%', left: '50.5%', width: '50.0%' },
-      2: { top: '38.5%', left: '48.4%', width: '51.0%' },
-      3: { top: '39.3%', left: '50.0%', width: '50.5%' },
-      4: { top: '42.7%', left: '49.2%', width: '51.0%' },
+      1: { top: '38.5%', left: '50.5%', width: '43%' },
+      2: { top: '38.2%', left: '48.4%', width: '47%' },
+      3: { top: '39.7%', left: '50.0%', width: '49%' },
+      4: { top: '42.6%', left: '49.2%', width: '52%' },
     },
   },
   'accessory-hoodie': {
     z: 10,
     stages: {
-      1: { top: '42.0%', left: '50.5%', width: '55.0%' },
-      2: { top: '40.7%', left: '48.4%', width: '56.0%' },
-      3: { top: '42.6%', left: '50.0%', width: '55.6%' },
-      4: { top: '45.6%', left: '49.2%', width: '56.0%' },
+      1: { top: '36.0%', left: '50.5%', width: '45%' },
+      2: { top: '36.1%', left: '48.4%', width: '50%' },
+      3: { top: '36.9%', left: '50.0%', width: '52%' },
+      4: { top: '38.6%', left: '49.2%', width: '54%' },
     },
   },
 };
@@ -220,7 +220,7 @@ const SPRITE_ASPECT = { 1: 528 / 1466, 2: 438 / 1467, 3: 552 / 1467, 4: 673 / 14
 // least as wide as it is tall. True everywhere Jimmy is drawn (every box
 // is square) and the widest sprite is 0.46:1, but `max-w-full` keeps it
 // from overflowing rather than silently mis-anchoring if that changes.
-export function AccessoryLayer({ evolutionStage, equippedAccessories = [], className = '' }) {
+export function AccessoryLayer({ evolutionStage, equippedAccessories = [], depth = 'front', className = '' }) {
   const stage = getTierByStage(evolutionStage)?.stage ?? 1;
   const equipped = Array.isArray(equippedAccessories)
     ? equippedAccessories
@@ -229,12 +229,16 @@ export function AccessoryLayer({ evolutionStage, equippedAccessories = [], class
   // Fixed slot order, not the order things were equipped, so layering is
   // stable: the hoodie paints before the chain that lies on it, and the
   // lenses paint last.
+  const behindPass = depth === 'behind';
   const worn = ACCESSORY_SLOT_ORDER.flatMap((slot) => {
     const id = equipped.find((itemId) => ACCESSORY_ART[itemId]?.slot === slot);
     if (!id) return [];
+    const art = ACCESSORY_ART[id];
+    // The behind pass draws only the pieces that HAVE a back half.
+    if (behindPass && !art.behind) return [];
     const place = layoutFor(id, stage);
     if (!place) return [];
-    return [{ id, art: ACCESSORY_ART[id], name: getStoreItem(id)?.name ?? id, place }];
+    return [{ id, art, name: getStoreItem(id)?.name ?? id, place }];
   });
 
   if (worn.length === 0) return null;
@@ -243,7 +247,12 @@ export function AccessoryLayer({ evolutionStage, equippedAccessories = [], class
     // Accessories never intercept taps — Jimmy is frequently inside a
     // button (a leaderboard row, a shop card) or is himself tappable (the
     // lobby replays his dance on click).
-    <div className={`pointer-events-none absolute inset-0 flex items-center justify-center ${className}`}>
+    <div
+      className={`pointer-events-none absolute inset-0 flex items-center justify-center ${className}`}
+      // The sprite sits between the two passes, so the back of a collar is
+      // hidden by the neck in front of it.
+      style={{ zIndex: behindPass ? 0 : 10 }}
+    >
       <div
         className="relative h-full max-w-full"
         style={{ aspectRatio: `${SPRITE_ASPECT[stage] ?? SPRITE_ASPECT[1]}` }}
@@ -251,11 +260,24 @@ export function AccessoryLayer({ evolutionStage, equippedAccessories = [], class
         {worn.map(({ id, art, name, place }) => {
           const style = { ...place, transform: 'translate(-50%, -50%)', filter: SHADOW };
           if (art.src) {
+            // A piece with a back half is drawn TWICE, once per pass, each
+            // time with the other half clipped off. Clipping the same image
+            // rather than shipping two files keeps the two halves pixel-
+            // exact neighbours — any seam would be a hairline of background
+            // straight down the middle of Jimmy's chest.
+            if (art.behind) {
+              const cut = `${art.behind * 100}%`;
+              style.clipPath = behindPass ? `inset(0 0 ${100 - art.behind * 100}% 0)` : `inset(${cut} 0 0 0)`;
+              // The back half is behind an opaque goat; a shadow on it can
+              // only leak out around his edges as a grey halo.
+              if (behindPass) delete style.filter;
+            }
             return (
               <img
                 key={id}
                 src={art.src}
-                alt={name}
+                alt={behindPass ? '' : name}
+                aria-hidden={behindPass ? true : undefined}
                 className="pointer-events-none absolute h-auto"
                 style={style}
                 draggable={false}
@@ -283,6 +305,16 @@ export function AccessoryLayer({ evolutionStage, equippedAccessories = [], class
   );
 }
 
+// Named sizes, in px. Jimmy is drawn HEIGHT-first everywhere (the sprite is
+// `h-full w-auto`, so its width follows from whichever tier is on screen),
+// which is what makes one set of accessory coordinates work at every scale:
+// the percentages are of the sprite's own box, so scaling the box scales
+// the gear with it. Nothing here needs to know about accessories at all.
+//
+// `sm` is the leaderboard/feed row, `xl` the Workout lobby hero. Anything
+// in between can pass a number.
+const SIZES = { xs: 28, sm: 40, md: 64, lg: 144, xl: 208 };
+
 export default function JimmyAvatar({
   evolutionStage,
   // Accepts the array, or a whole account/post/summary object — whatever a
@@ -290,6 +322,11 @@ export default function JimmyAvatar({
   // the pre-multi-slot `equippedAccessory` string.
   equippedAccessories = [],
   className = '',
+  // A token from SIZES or a number of px. Sets the HEIGHT — and, when
+  // cropped, the width too, since a head crop is square. Optional: leave it
+  // out and size the avatar from `className` (an `h-full` inside a box you
+  // control, say) exactly as before.
+  size = null,
   // 'head' zooms to the head/collarbone for small round avatars.
   crop = null,
   // Any extra layer to sit under the accessories (the dance animation on
@@ -302,8 +339,18 @@ export default function JimmyAvatar({
   const tier = getTierByStage(evolutionStage);
 
   const cropped = crop === 'head';
+  const px = typeof size === 'number' ? size : SIZES[size] ?? null;
+  // Width only when cropped: uncropped, the sprite's aspect decides it, and
+  // pinning both would letterbox him inside his own box.
+  const sizeStyle = px == null ? undefined : { height: px, ...(cropped ? { width: px } : null) };
   const inner = (
     <div className="relative inline-block h-full">
+      {/* Behind the goat. Positioned elements paint above static ones no
+          matter the DOM order, so the sprite below carries an explicit
+          z-index rather than relying on being written after this. */}
+      {!spriteBroken && (
+        <AccessoryLayer evolutionStage={tier?.stage} equippedAccessories={equippedAccessories} depth="behind" />
+      )}
       {spriteBroken ? (
         <span className="flex h-full items-center justify-center text-[4em] leading-none">{tier?.emoji ?? '🐐'}</span>
       ) : (
@@ -311,7 +358,7 @@ export default function JimmyAvatar({
           src={tier?.image}
           alt={alt ?? tier?.label ?? 'Jimmy'}
           onError={() => setSpriteBroken(true)}
-          className="h-full w-auto object-contain"
+          className="relative z-[5] h-full w-auto object-contain"
           draggable={false}
         />
       )}
@@ -328,10 +375,16 @@ export default function JimmyAvatar({
     </div>
   );
 
-  if (!cropped) return <div className={`inline-block h-full ${className}`}>{inner}</div>;
+  if (!cropped) {
+    return (
+      <div className={`inline-block ${px == null ? 'h-full' : ''} ${className}`} style={sizeStyle}>
+        {inner}
+      </div>
+    );
+  }
 
   return (
-    <div className={`relative overflow-hidden ${className}`}>
+    <div className={`relative overflow-hidden ${className}`} style={sizeStyle}>
       <div
         className="flex h-full w-full items-start justify-center"
         style={{

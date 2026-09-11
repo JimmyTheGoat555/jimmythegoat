@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useJimmyLook } from '../../context/JimmyLook';
 import MissionCard from './MissionCard';
 import HypeSpeechBubble from './HypeSpeechBubble';
 import JimmyAnimation from '../evolution/JimmyAnimation';
@@ -66,8 +67,6 @@ export default function WorkoutHome({
   workouts = [],
   friends = [],
   equippedDance = null,
-  // Worn accessory ids — the shop's gear shows up on the lobby mascot.
-  equippedAccessories = [],
   // During a tier-up celebration (see hooks/useTierUpCelebration.js) this
   // is briefly 100, then null again — the XP bar rushes to full, holds,
   // and snaps back to the real percentage of the newly-reached tier.
@@ -139,6 +138,11 @@ export default function WorkoutHome({
     }, 220);
   };
 
+  // The current user's own look, straight from context — no prop to thread
+  // down from App, and no chance of the lobby mascot drifting out of sync
+  // with the shop that dressed him.
+  const jimmyLook = useJimmyLook();
+
   const startLabel =
     activeMission.type === 'assigned'
       ? 'Start Mission'
@@ -173,8 +177,7 @@ export default function WorkoutHome({
             // this one number scales them together and he stays on his feet
             // on the ellipse — see JimmyAnimation.
             className="w-52 h-52"
-            evolutionStage={current.stage}
-            equippedAccessories={equippedAccessories}
+            {...jimmyLook}
           />
         )}
       </div>

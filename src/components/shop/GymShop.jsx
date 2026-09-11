@@ -8,13 +8,14 @@ import {
 } from '../../data/storeItems';
 import JimmyAnimation from '../evolution/JimmyAnimation';
 import { AccessoryIcon } from '../evolution/accessoryArt';
+import { useJimmyLook } from '../../context/JimmyLook';
 import { danceNumberForItemId, getDancePreviewPath } from '../../utils/danceAnimations';
 
 // A dance's/accessory's cost here is display-only — see storeItems.js.
 // The actual charge always comes from the server's own copy
 // (functions/storeCatalog.js), so this file being stale can only ever make
 // the UI show a wrong price, never let anyone pay a wrong one.
-function ItemCard({ item, owned, equipped, canAfford, busy, onBuy, onEquip, previewSrc, tierImage }) {
+function ItemCard({ item, owned, equipped, canAfford, busy, onBuy, onEquip, previewSrc, tierImage, jimmyLook }) {
   // Rarity colours the frame and the label. Only shown once you own the
   // item — before that the price is the thing that matters, and a loud
   // gold border on something unaffordable is just noise.
@@ -46,6 +47,9 @@ function ItemCard({ item, owned, equipped, canAfford, busy, onBuy, onEquip, prev
         <JimmyAnimation
           animationSrc={previewSrc}
           staticImageSrc={tierImage}
+          // Previewing a dance on the goat you actually have — gear and
+          // all — rather than a stock one. Same look as the lobby.
+          {...jimmyLook}
           alt={item.name}
           className="w-24 h-28"
         />
@@ -113,6 +117,7 @@ export default function GymShop({ account, onPurchase, onEquip, onSetAccessories
   // Tolerates the pre-multi-slot shape, so an existing account's equipped
   // accessory doesn't appear to fall off on the deploy that ships this.
   const equippedAccessories = readEquippedAccessories(account);
+  const jimmyLook = useJimmyLook();
   const isEquipped = (item) =>
     item.type === 'dance' ? account?.equippedDance === item.id : equippedAccessories.includes(item.id);
 
@@ -177,6 +182,7 @@ export default function GymShop({ account, onPurchase, onEquip, onSetAccessories
               busy={busyItemId === item.id}
               previewSrc={getDancePreviewPath(danceNumberForItemId(item.id), evolutionStage)}
               tierImage={tierImage}
+              jimmyLook={jimmyLook}
               onBuy={() => handleBuy(item)}
               onEquip={() => handleEquip(item)}
             />

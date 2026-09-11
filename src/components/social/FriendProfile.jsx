@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import JimmyAvatar from '../evolution/JimmyAvatar';
+import { AccessoryIcon } from '../evolution/accessoryArt';
+import { readEquippedAccessories } from '../../data/storeItems';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
 import { getEvolutionProgress } from '../../utils/evolutionTiers';
@@ -8,18 +11,19 @@ import NudgeModal from './NudgeModal';
 
 const ITEMS_BY_ID = new Map(STORE_ITEMS.map((item) => [item.id, item]));
 
-function Avatar({ tierId, emoji, image }) {
-  const [broken, setBroken] = useState(false);
-  if (broken) {
-    return (
-      <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-4xl">
-        {emoji}
-      </span>
-    );
-  }
+// This one draws SOMEONE ELSE. Deliberately props, never useJimmyLook() —
+// reading the current user's context here would silently put your hat on
+// every friend you visited, and it would look completely plausible.
+function Avatar({ tierId, stage, equippedAccessories }) {
   return (
     <GradientBorder tierId={tierId} shape="circle" fillClassName="rounded-full overflow-hidden" className="shrink-0">
-      <img src={image} alt="" onError={() => setBroken(true)} className="h-20 w-20 object-cover object-top bg-neutral-800" />
+      <JimmyAvatar
+        evolutionStage={stage}
+        equippedAccessories={equippedAccessories}
+        crop="head"
+        size={80}
+        className="bg-neutral-800"
+      />
     </GradientBorder>
   );
 }
@@ -40,6 +44,7 @@ export default function FriendProfile({ friends, onSendNudge }) {
     sharePRs,
     personalRecords,
     equippedAccessory,
+    equippedAccessories,
     loading,
     hasSummary,
   } = useFriendProfile(friendUid);
@@ -50,7 +55,9 @@ export default function FriendProfile({ friends, onSendNudge }) {
   // header while the doc is still loading.
   const name = displayName ?? knownFriend?.displayName ?? 'This friend';
   const { current } = getEvolutionProgress(lifetimeVolume);
-  const accessory = equippedAccessory ? ITEMS_BY_ID.get(equippedAccessory) : null;
+  const worn = readEquippedAccessories({ equippedAccessories, equippedAccessory })
+    .map((id) => ITEMS_BY_ID.get(id))
+    .filter(Boolean);
 
   if (!loading && !hasSummary) {
     // Precisely the person a nudge exists for — someone with nothing to
@@ -89,15 +96,25 @@ export default function FriendProfile({ friends, onSendNudge }) {
       </button>
 
       <div className="flex flex-col items-center gap-3 text-center">
-        <Avatar tierId={current.id} emoji={current.emoji} image={current.image} />
+        <Avatar tierId={current.id} stage={current.stage} equippedAccessories={equippedAccessories} />
         <div>
           <h1 className="text-2xl font-bold text-neutral-50">{name}</h1>
           <p className="text-sm text-neutral-500">{current.label}</p>
         </div>
-        {accessory && (
-          <span className="inline-flex items-center gap-1.5 text-sm text-neutral-400 bg-white/5 border border-white/10 rounded-full px-3 py-1">
-            <span className="text-base">{accessory.emoji}</span> {accessory.name}
-          </span>
+        {/* Was one chip for the single legacy accessory. They are wearing
+            the whole loadout on the avatar above now, so this names all of
+            it — with the same art, not the emoji. */}
+        {worn.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            {worn.map((item) => (
+              <span
+                key={item.id}
+                className="inline-flex items-center gap-1.5 text-sm text-neutral-400 bg-white/5 border border-white/10 rounded-full px-3 py-1"
+              >
+                <AccessoryIcon itemId={item.id} className="h-4 w-4" /> {item.name}
+              </span>
+            ))}
+          </div>
         )}
         <button
           type="button"
