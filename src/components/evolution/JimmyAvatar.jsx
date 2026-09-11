@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { getTierByStage } from '../../utils/evolutionTiers';
 import { ACCESSORY_SLOT_ORDER, getStoreItem, readEquippedAccessories } from '../../data/storeItems';
-import { ACCESSORY_ART } from './accessoryArt';
+import { ACCESSORY_ART, artFor } from './accessoryArt';
 
 // Jimmy with his gear on — one renderer for every place an avatar appears
 // (shop preview, profile, leaderboard row, feed post), so an accessory can
@@ -233,7 +233,7 @@ export function AccessoryLayer({ evolutionStage, equippedAccessories = [], depth
   const worn = ACCESSORY_SLOT_ORDER.flatMap((slot) => {
     const id = equipped.find((itemId) => ACCESSORY_ART[itemId]?.slot === slot);
     if (!id) return [];
-    const art = ACCESSORY_ART[id];
+    const art = artFor(ACCESSORY_ART[id], stage);
     // The behind pass draws only the pieces that HAVE a back half.
     if (behindPass && !art.behind) return [];
     const place = layoutFor(id, stage);

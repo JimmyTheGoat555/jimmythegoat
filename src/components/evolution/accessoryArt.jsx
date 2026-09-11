@@ -99,21 +99,28 @@ function Chain({ id }) {
 // slot + art, one entry per catalog id. Placement lives in JimmyAvatar's
 // ACCESSORY_LAYOUT, because it is per-EVOLUTION-STAGE and this file has no
 // business knowing which goat it is being drawn on.
+//
+// `src` and `aspect` are EITHER a single value used on every tier, OR a
+// {1,2,3,4} map when a piece is drawn per stage. Use the map whenever the
+// same garment scaled four ways stops looking like it fits: a hoodie cut
+// for the Goat stretched onto the Legend reads as a tarpaulin, because the
+// two are not the same body at two sizes. Head and eye pieces rarely need
+// it — a cap is a cap — but anything that drapes over a torso does.
+// `artFor(art, stage)` resolves whichever form an entry uses.
+//
+// cap, headphones, tank and hoodie were extracted from the user's Canva
+// composites (six JPEGs of stage-1 Jimmy, one per accessory, sharing a
+// base render). The bare goat was rebuilt as the per-pixel median of all
+// six — at any pixel at most two of them carry an accessory — and each
+// garment is what differs from it. See the commit message for the two
+// things that made that hard: the exports bake their transparency
+// checkerboard into the JPEG, and a grey hoodie on brown fur barely
+// differs at all.
+//
+// None of these carry `behind`. They don't need it: the source goat's
+// neck was standing in the collar when the composite was made, so the
+// hole it left is genuinely transparent and his neck shows through it.
 export const ACCESSORY_ART = {
-  // --- real artwork ---
-  //
-  // cap, headphones, tank and hoodie were extracted from the user's Canva
-  // composites (six JPEGs of stage-1 Jimmy, one per accessory, sharing a
-  // base render). The bare goat was rebuilt as the per-pixel median of all
-  // six — at any pixel at most two of them carry an accessory — and each
-  // garment is what differs from it. See the commit message for the two
-  // things that made that hard: the exports bake their transparency
-  // checkerboard into the JPEG, and a grey hoodie on brown fur barely
-  // differs at all.
-  //
-  // None of these carry `behind`. They don't need it: the source goat's
-  // neck was standing in the collar when the composite was made, so the
-  // hole it left is genuinely transparent and his neck shows through it.
   'accessory-shades': { slot: 'eyes', src: '/assets/accessories/shades.png', aspect: 2.632 },
   'accessory-headband': { slot: 'head', src: '/assets/accessories/sweatband.png', aspect: 2.609 },
   'accessory-headphones': { slot: 'head', src: '/assets/accessories/headphones.png', aspect: 1.280 },
@@ -125,6 +132,16 @@ export const ACCESSORY_ART = {
   'accessory-chain': { slot: 'neck', viewBox: '0 0 100 46', Art: Chain },
 };
 
+// Resolves an entry's art for one tier. A plain value is used on every
+// tier; a {1,2,3,4} map is looked up, falling back to stage 1 so a
+// half-finished set (say the Goat's hoodie drawn but not the Titan's)
+// degrades to the old behaviour instead of rendering nothing.
+export function artFor(art, stage = 1) {
+  if (!art) return null;
+  const pick = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v[stage] ?? v[1] : v);
+  return { ...art, src: pick(art.src), aspect: pick(art.aspect), behind: pick(art.behind) };
+}
+
 // The same artwork, standalone — for shop cards and anywhere an accessory
 // needs showing off the goat. Renders exactly what gets equipped, so the
 // thing you buy is unmistakably the thing you wear.
@@ -133,8 +150,11 @@ export const ACCESSORY_ART = {
 // different shapes (the shades are 2.6:1, the hoodie 0.58:1) and a shop
 // card is a square, so letting each one fit itself into the box is the only
 // way they all land at a sensible visual weight.
-export function AccessoryIcon({ itemId, className = '' }) {
-  const art = ACCESSORY_ART[itemId];
+export function AccessoryIcon({ itemId, className = '', stage = 1 }) {
+  // The shop card shows stage 1 by default. It is a picture of the ITEM,
+  // not of your goat wearing it, so it should not change under you when
+  // you evolve — and the tier you happen to be is already on screen.
+  const art = artFor(ACCESSORY_ART[itemId], stage);
   if (!art) return null;
 
   if (art.src) {
