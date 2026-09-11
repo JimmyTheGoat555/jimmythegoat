@@ -16,6 +16,7 @@ export const STORE_ITEMS = [
   { id: 'accessory-cap', type: 'accessory', name: 'Backwards Cap', emoji: '🧢', cost: 150, slot: 'head', rarity: 'common' },
   { id: 'accessory-headband', type: 'accessory', name: 'Sweatband', emoji: '🎽', cost: 200, slot: 'head', rarity: 'common' },
   { id: 'accessory-shades', type: 'accessory', name: 'Shades', emoji: '🕶️', cost: 250, slot: 'eyes', rarity: 'common' },
+  { id: 'accessory-tank', type: 'accessory', name: 'Ribbed Tank', emoji: '🎽', cost: 300, slot: 'body', rarity: 'common' },
   { id: 'accessory-hoodie', type: 'accessory', name: 'Cutoff Hoodie', emoji: '🧥', cost: 450, slot: 'body', rarity: 'rare' },
   { id: 'accessory-headphones', type: 'accessory', name: 'Studio Headphones', emoji: '🎧', cost: 700, slot: 'head', rarity: 'rare' },
   { id: 'accessory-chain', type: 'accessory', name: 'Gold Chain', emoji: '⛓️', cost: 350, slot: 'neck', rarity: 'rare' },

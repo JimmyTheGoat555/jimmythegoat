@@ -123,13 +123,17 @@ const ACCESSORY_LAYOUT = {
       4: { top: '5.5%', left: '49.3%', width: '39.8%' },
     },
   },
+  // `left` is NOT the face midline here: the cap is drawn three-quarter-on
+  // with its dome 9.2% of the image width left of the image's centre, so
+  // each of these is the midline pushed right by that much of its own
+  // width. Otherwise the peak balances the dome off Jimmy's ear.
   'accessory-cap': {
     z: 30,
     stages: {
-      1: { top: '8.0%', left: '49.7%', width: '46.0%' },
-      2: { top: '9.6%', left: '48.3%', width: '52.7%' },
-      3: { top: '5.8%', left: '49.6%', width: '46.8%' },
-      4: { top: '6.0%', left: '49.3%', width: '41.6%' },
+      1: { top: '7.2%', left: '53.8%', width: '44.0%' },
+      2: { top: '8.8%', left: '52.9%', width: '50.4%' },
+      3: { top: '5.0%', left: '53.7%', width: '44.8%' },
+      4: { top: '5.1%', left: '53.0%', width: '39.8%' },
     },
   },
   'accessory-chain': {
@@ -159,6 +163,18 @@ const ACCESSORY_LAYOUT = {
   // 20%; the hood's top edge sits ~3% below each. `top` positions the PNG's
   // CENTRE, hence + half the rendered height on top of that, which is why
   // these four numbers are not a simple scale of one another.
+  // A tank's shoulder seam is at 3% of its own height (it is all straps up
+  // there), against the hoodie's 20% — so it hangs from the shoulder line
+  // directly, with none of the hoodie's chin correction.
+  'accessory-tank': {
+    z: 10,
+    stages: {
+      1: { top: '41.1%', left: '50.5%', width: '50.0%' },
+      2: { top: '38.5%', left: '48.4%', width: '51.0%' },
+      3: { top: '39.3%', left: '50.0%', width: '50.5%' },
+      4: { top: '42.7%', left: '49.2%', width: '51.0%' },
+    },
+  },
   'accessory-hoodie': {
     z: 10,
     stages: {
@@ -180,6 +196,93 @@ function layoutFor(itemId, stage) {
   return { ...(entry.stages[stage] ?? entry.stages[1]), zIndex: entry.z };
 }
 
+// Each sprite's canvas aspect (width / height). Needed by AccessoryLayer —
+// see the note there.
+const SPRITE_ASPECT = { 1: 528 / 1466, 2: 438 / 1467, 3: 552 / 1467, 4: 673 / 1462 };
+
+// The worn accessories on their own, sized and placed against Jimmy's
+// sprite — no sprite of its own, so it can be dropped over one that is
+// already being drawn (and animated) by somebody else.
+//
+// The one subtlety is what the percentages are relative to. Every screen
+// that shows Jimmy BIG draws him with `object-contain` inside a fixed
+// square: the Progress card's w-40 h-40, the Workout lobby's w-52 h-52.
+// A portrait sprite in a square box gets letterboxed, so a percentage of
+// that container lands nowhere near the same percentage of the goat — on
+// the Goat sprite the image is only 36% of the box's width. This rebuilds
+// the image's own box (full height, width = height x the sprite's aspect,
+// horizontally centred, which is exactly what object-contain produces for
+// a portrait image in a wider box) and positions inside THAT. One set of
+// coordinates then serves the 36px leaderboard row and the 208px lobby
+// hero alike.
+//
+// It assumes the sprite is height-constrained, i.e. the container is at
+// least as wide as it is tall. True everywhere Jimmy is drawn (every box
+// is square) and the widest sprite is 0.46:1, but `max-w-full` keeps it
+// from overflowing rather than silently mis-anchoring if that changes.
+export function AccessoryLayer({ evolutionStage, equippedAccessories = [], className = '' }) {
+  const stage = getTierByStage(evolutionStage)?.stage ?? 1;
+  const equipped = Array.isArray(equippedAccessories)
+    ? equippedAccessories
+    : readEquippedAccessories(equippedAccessories);
+
+  // Fixed slot order, not the order things were equipped, so layering is
+  // stable: the hoodie paints before the chain that lies on it, and the
+  // lenses paint last.
+  const worn = ACCESSORY_SLOT_ORDER.flatMap((slot) => {
+    const id = equipped.find((itemId) => ACCESSORY_ART[itemId]?.slot === slot);
+    if (!id) return [];
+    const place = layoutFor(id, stage);
+    if (!place) return [];
+    return [{ id, art: ACCESSORY_ART[id], name: getStoreItem(id)?.name ?? id, place }];
+  });
+
+  if (worn.length === 0) return null;
+
+  return (
+    // Accessories never intercept taps — Jimmy is frequently inside a
+    // button (a leaderboard row, a shop card) or is himself tappable (the
+    // lobby replays his dance on click).
+    <div className={`pointer-events-none absolute inset-0 flex items-center justify-center ${className}`}>
+      <div
+        className="relative h-full max-w-full"
+        style={{ aspectRatio: `${SPRITE_ASPECT[stage] ?? SPRITE_ASPECT[1]}` }}
+      >
+        {worn.map(({ id, art, name, place }) => {
+          const style = { ...place, transform: 'translate(-50%, -50%)', filter: SHADOW };
+          if (art.src) {
+            return (
+              <img
+                key={id}
+                src={art.src}
+                alt={name}
+                className="pointer-events-none absolute h-auto"
+                style={style}
+                draggable={false}
+              />
+            );
+          }
+          // Gradient ids are namespaced per item because several avatars
+          // can share a page and duplicate ids would cross-wire the fills.
+          const { Art } = art;
+          return (
+            <svg
+              key={id}
+              viewBox={art.viewBox}
+              role="img"
+              aria-label={name}
+              className="pointer-events-none absolute overflow-visible"
+              style={style}
+            >
+              <Art id={`acc-${id}`} />
+            </svg>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function JimmyAvatar({
   evolutionStage,
   // Accepts the array, or a whole account/post/summary object — whatever a
@@ -197,19 +300,6 @@ export default function JimmyAvatar({
 }) {
   const [spriteBroken, setSpriteBroken] = useState(false);
   const tier = getTierByStage(evolutionStage);
-  const equipped = Array.isArray(equippedAccessories)
-    ? equippedAccessories
-    : readEquippedAccessories(equippedAccessories);
-
-  // Fixed slot order, not the order things were equipped, so layering is
-  // stable: the neck piece paints before anything on the head or eyes.
-  const worn = ACCESSORY_SLOT_ORDER.flatMap((slot) => {
-    const id = equipped.find((itemId) => ACCESSORY_ART[itemId]?.slot === slot);
-    if (!id) return [];
-    const place = layoutFor(id, tier?.stage ?? 1);
-    if (!place) return [];
-    return [{ id, art: ACCESSORY_ART[id], name: getStoreItem(id)?.name ?? id, place }];
-  });
 
   const cropped = crop === 'head';
   const inner = (
@@ -228,39 +318,13 @@ export default function JimmyAvatar({
 
       {children}
 
-      {/* Accessories never intercept taps — the avatar is frequently
-          inside a button (a leaderboard row, a shop card). Gradient ids are
-          namespaced per item because several of these avatars can share a
-          page and duplicate ids would cross-wire their fills. */}
-      {!spriteBroken &&
-        worn.map(({ id, art, name, place }) => {
-          const style = { ...place, transform: 'translate(-50%, -50%)', filter: SHADOW };
-          if (art.src) {
-            return (
-              <img
-                key={id}
-                src={art.src}
-                alt={name}
-                className="pointer-events-none absolute h-auto"
-                style={style}
-                draggable={false}
-              />
-            );
-          }
-          const { Art } = art;
-          return (
-            <svg
-              key={id}
-              viewBox={art.viewBox}
-              role="img"
-              aria-label={name}
-              className="pointer-events-none absolute overflow-visible"
-              style={style}
-            >
-              <Art id={`acc-${id}`} />
-            </svg>
-          );
-        })}
+      {/* The wrapper already shrink-wraps the image, so AccessoryLayer's
+          box reconstruction is a no-op here and resolves to the same
+          rectangle. Sharing it anyway is the point: the coordinates can
+          only ever be calibrated once. */}
+      {!spriteBroken && (
+        <AccessoryLayer evolutionStage={tier?.stage} equippedAccessories={equippedAccessories} />
+      )}
     </div>
   );
 

@@ -96,39 +96,6 @@ function Chain({ id }) {
   );
 }
 
-// Backwards cap: dome facing us, the strap gap at the front and the peak
-// jutting out behind, which is what reads as "worn backwards".
-function Cap({ id }) {
-  return (
-    <>
-      <defs>
-        <linearGradient id={`${id}-blue`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#6ba8ff" />
-          <stop offset="50%" stopColor="#2b6fd6" />
-          <stop offset="100%" stopColor="#17407f" />
-        </linearGradient>
-      </defs>
-      {/* peak, poking out behind the head */}
-      <path d="M22 30 Q50 20 78 30 Q86 34 78 38 Q50 30 22 38 Q14 34 22 30 Z" fill="#17407f" stroke="#0e2a55" strokeWidth="3" strokeLinejoin="round" />
-      {/* crown of the cap */}
-      <path
-        d="M10 40 Q10 6 50 6 Q90 6 90 40 Z"
-        fill={`url(#${id}-blue)`}
-        stroke="#0e2a55"
-        strokeWidth="3"
-        strokeLinejoin="round"
-      />
-      {/* panel seams */}
-      <path d="M50 7 L50 40" stroke="#0e2a55" strokeOpacity="0.55" strokeWidth="2" />
-      <path d="M28 12 Q22 26 22 40" fill="none" stroke="#0e2a55" strokeOpacity="0.45" strokeWidth="2" />
-      <path d="M72 12 Q78 26 78 40" fill="none" stroke="#0e2a55" strokeOpacity="0.45" strokeWidth="2" />
-      {/* adjustable strap band across the front */}
-      <rect x="10" y="38" width="80" height="9" rx="3" fill="#0e2a55" />
-      <circle cx="50" cy="9" r="3.5" fill="#0e2a55" />
-    </>
-  );
-}
-
 // slot + art, one entry per catalog id. Placement lives in JimmyAvatar's
 // ACCESSORY_LAYOUT, because it is per-EVOLUTION-STAGE and this file has no
 // business knowing which goat it is being drawn on.
@@ -143,10 +110,14 @@ export const ACCESSORY_ART = {
   // that is solid band all the way down) moves the cups apart without
   // touching either cup or rescaling anything.
   'accessory-headphones': { slot: 'head', src: '/assets/accessories/headphones.png', aspect: 1.348 },
+  // Drawn three-quarter-on: the dome sits left of the image's centre and
+  // the peak juts out to the right. ACCESSORY_LAYOUT's `left` shifts it so
+  // the DOME lands on Jimmy's midline rather than the PNG's.
+  'accessory-cap': { slot: 'head', src: '/assets/accessories/cap.png', aspect: 1.765 },
+  'accessory-tank': { slot: 'body', src: '/assets/accessories/tank.png', aspect: 0.624 },
   'accessory-hoodie': { slot: 'body', src: '/assets/accessories/hoodie.png', aspect: 0.583 },
   // --- still vector, awaiting art ---
   'accessory-crown': { slot: 'head', viewBox: '0 0 100 62', Art: Crown },
-  'accessory-cap': { slot: 'head', viewBox: '0 0 100 50', Art: Cap },
   'accessory-chain': { slot: 'neck', viewBox: '0 0 100 46', Art: Chain },
 };
 

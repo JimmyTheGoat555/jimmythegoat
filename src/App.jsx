@@ -27,6 +27,7 @@ import { getEvolutionProgress } from './utils/evolutionTiers';
 import { findNewPersonalRecords } from './utils/personalRecords';
 import { lastPerformance, seedSetsFromHistory } from './utils/lastPerformance';
 import { isBodyweightExercise } from './data/exercises';
+import { readEquippedAccessories } from './data/storeItems';
 import { DEFAULT_SETS_PER_EXERCISE } from './hooks/useWorkouts';
 import { getBadge } from './data/badges';
 import { tierCssVars } from './utils/tierTheme';
@@ -576,6 +577,11 @@ export default function App() {
   // person has evolved, tying the rest of the UI back to the AuthScreen
   // showcase. `evolution` is computed up with the hooks above.
   const currentTier = evolution.current;
+  // Read once here rather than at each render site: the Workout lobby, the
+  // Progress card and the Shop all need the same list, and the helper also
+  // folds in the pre-multi-slot `equippedAccessory` string for accounts
+  // that predate slots.
+  const equippedAccessories = readEquippedAccessories(account);
 
   return (
     <div
@@ -646,6 +652,7 @@ export default function App() {
                     // that logic needed zero changes.
                     friends={feed.posts.map((p) => ({ username: p.userName, weeklyTonnage: p.totalVolume }))}
                     equippedDance={account.equippedDance}
+                    equippedAccessories={equippedAccessories}
                     barOverride={tierUp.barOverride}
                     lastWorkoutAt={lastWorkout}
                     bodyWeightKg={bodyWeightKg}
@@ -655,7 +662,14 @@ export default function App() {
             />
             <Route
               path="progress"
-              element={<ProgressView workouts={workouts} exercises={exercises} bodyWeightKg={bodyWeightKg} />}
+              element={
+                <ProgressView
+                  workouts={workouts}
+                  exercises={exercises}
+                  bodyWeightKg={bodyWeightKg}
+                  equippedAccessories={equippedAccessories}
+                />
+              }
             />
             <Route
               path="social"

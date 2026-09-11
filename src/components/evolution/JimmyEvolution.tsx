@@ -4,6 +4,7 @@ import { EVOLUTION_TIERS, getEvolutionProgress, formatTierGoalKg } from '../../u
 import { loadJSON, saveJSON } from '../../lib/storage';
 import { tierGradientCss } from '../../utils/tierTheme';
 import GradientBorder from '../shared/GradientBorder';
+import { AccessoryLayer } from './JimmyAvatar';
 
 // Workouts aren't a typed model anywhere else in this JS codebase yet, so
 // this stays loose rather than inventing a shape nothing else honors.
@@ -11,6 +12,9 @@ type Workout = Record<string, unknown>;
 
 interface JimmyEvolutionProps {
   workouts: Workout[];
+  // What Jimmy is wearing — the ids from the account's `equippedAccessories`.
+  // Bought gear shows up here, not only in the shop preview.
+  equippedAccessories?: string[];
   // Latest logged body weight (0 = none yet) — only scales how the
   // relative tier goal is shown in kg. See utils/evolutionTiers.js.
   bodyWeightKg?: number;
@@ -32,7 +36,7 @@ const LAST_SEEN_KEY = 'last-evolution-tier';
 // sprite to the new one once, then record the new tier as seen. If a
 // sprite file is missing, each layer falls back to the tier's emoji
 // instead of a broken-image icon.
-export default function JimmyEvolution({ workouts, bodyWeightKg = 0 }: JimmyEvolutionProps) {
+export default function JimmyEvolution({ workouts, bodyWeightKg = 0, equippedAccessories = [] }: JimmyEvolutionProps) {
   const totalVolume = lifetimeVolume(workouts);
   const { current, next, percent, isMaxTier, neglected, baseTier } = getEvolutionProgress(totalVolume, {
     lastWorkoutAt: lastWorkoutAt(workouts),
@@ -106,6 +110,12 @@ export default function JimmyEvolution({ workouts, bodyWeightKg = 0 }: JimmyEvol
               className="absolute inset-0 w-full h-full object-contain animate-[goat-evolve_0.8s_ease-out_forwards]"
             />
           ))}
+        {/* Painted last so it sits over both crossfade layers. It is
+            anchored to the CURRENT tier: mid-evolution the outgoing sprite
+            is on screen for 0.8s wearing the new tier's fit, which is the
+            right trade — the alternative is gear that jumps a frame after
+            the crossfade lands. */}
+        <AccessoryLayer evolutionStage={current.stage} equippedAccessories={equippedAccessories} />
       </div>
       {justEvolved && incomingImage && (
         <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--tier-accent)' }}>

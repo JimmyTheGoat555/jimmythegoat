@@ -66,6 +66,8 @@ export default function WorkoutHome({
   workouts = [],
   friends = [],
   equippedDance = null,
+  // Worn accessory ids — the shop's gear shows up on the lobby mascot.
+  equippedAccessories = [],
   // During a tier-up celebration (see hooks/useTierUpCelebration.js) this
   // is briefly 100, then null again — the XP bar rushes to full, holds,
   // and snaps back to the real percentage of the newly-reached tier.
@@ -171,6 +173,8 @@ export default function WorkoutHome({
             // this one number scales them together and he stays on his feet
             // on the ellipse — see JimmyAnimation.
             className="w-52 h-52"
+            evolutionStage={current.stage}
+            equippedAccessories={equippedAccessories}
           />
         )}
       </div>

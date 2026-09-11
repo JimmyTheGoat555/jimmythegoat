@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AccessoryLayer } from './JimmyAvatar';
 
 // Jimmy's hero display: the static tier sprite, swapped for the equipped
 // dance once that dance has loaded. Tap him and he performs it again.
@@ -35,6 +36,10 @@ export default function JimmyAnimation({
   alt,
   className = '',
   onImageError,
+  // Worn gear, drawn over whichever layer is showing. Optional: the shop's
+  // dance previews pass nothing, because there the subject is the dance.
+  evolutionStage,
+  equippedAccessories = [],
 }) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -95,6 +100,17 @@ export default function JimmyAnimation({
           onError={() => setFailed(true)}
           className={`${layer} ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
         />
+      )}
+      {/* Anchored to the SPRITE's box, not the dance's. The two canvases
+          are different shapes (376x660 against the sprites' 528x1466), but
+          they were built to put Jimmy in the same place: laid out here,
+          the settled dance frame's head lands within ~2px of the sprite's
+          at lobby size, measured. Mid-move he leans and the gear does not
+          follow him — the honest fix would be per-frame anchors, which an
+          animated WebP gives no way to read. He holds his opening pose for
+          all but the couple of seconds a dance is actually playing. */}
+      {evolutionStage != null && (
+        <AccessoryLayer evolutionStage={evolutionStage} equippedAccessories={equippedAccessories} />
       )}
     </div>
   );
