@@ -45,6 +45,9 @@ exports.notifyTrainer = notifyTrainer;
 const { claimReferral } = require('./referral');
 exports.claimReferral = claimReferral;
 
+const { completeOnboardingProfile } = require('./onboarding');
+exports.completeOnboardingProfile = completeOnboardingProfile;
+
 const { setSharePRs } = require('./publicProfile');
 exports.setSharePRs = setSharePRs;
 

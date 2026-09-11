@@ -169,7 +169,27 @@ service cloud.firestore {
     match /friendCodes/{code} {
       allow read: if signedIn();
       allow create: if isOwner(request.resource.data.uid);
-      allow update, delete: if false;
+      // An owner may refresh their OWN entry — `uid` is immutable (it must
+      // already be yours AND stay yours), so this can never repoint
+      // somebody else's code at you, or yours at them; the only field it
+      // actually lets anyone change is the denormalized displayName mirror.
+      //
+      // This started as `allow update: if false`, which turned out to be a
+      // real, silent signup-breaking bug rather than the tighter-is-better
+      // choice it looked like. useAuth.js's self-heal effect re-writes this
+      // entry the moment a profile doc loads — and because Firestore's
+      // offline cache applies the users/{uid} write locally *instantly*,
+      // that effect fires and CREATES this doc before signUp()'s own
+      // friendCodes write (a few lines later in the same function) gets
+      // there. The second write therefore landed as an UPDATE, hit this
+      // `false`, threw permission-denied, and aborted the rest of signUp()
+      // — including the body-weight write — with no visible error, since
+      // the user is already authenticated by then and the sign-up form has
+      // unmounted. Diagnosed from a live device: no meta/profile doc, and
+      // the onboarding callable never even reaching the network.
+      allow update: if isOwner(resource.data.uid) &&
+        request.resource.data.uid == resource.data.uid;
+      allow delete: if false;
     }
 
     // A verified workout's public feed post — see logWorkout() in

@@ -14,7 +14,16 @@ function fmtReps(v) {
 // weight) instead of a working weight — logWorkout folds in the lifter's
 // body weight server-side. Bounds live in utils/units.js and are enforced
 // again in functions/economy.js.
-export default function SetRow({ index, set, isBodyweight = false, lastSet, onChange, onToggleComplete, onRemove }) {
+export default function SetRow({
+  index,
+  set,
+  exerciseId,
+  isBodyweight = false,
+  lastSet,
+  onChange,
+  onToggleComplete,
+  onRemove,
+}) {
   const [sheetOpen, setSheetOpen] = useState(false);
   // A bodyweight set only needs reps (the load is your body weight, added
   // by the server; belt weight defaults to 0). A weighted set needs both.
@@ -74,6 +83,7 @@ export default function SetRow({ index, set, isBodyweight = false, lastSet, onCh
         createPortal(
           <SetEntrySheet
             index={index}
+            exerciseId={exerciseId}
             isBodyweight={isBodyweight}
             weight={set.weight}
             addedWeight={set.addedWeight}

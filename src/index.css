@@ -419,6 +419,12 @@ button.card:hover {
   scroll-snap-type: y mandatory;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  /* Real iOS pickers never register a sideways drag at all — a touch here
+     commits to vertical the instant it starts, so a diagonal swipe never
+     reads as "mushy" or half-horizontal the way a plain scroll container
+     can. `pan-y` tells the browser this element only ever pans vertically,
+     so it doesn't wait to see which way a touch drifts before deciding. */
+  touch-action: pan-y;
   /* NO `scroll-behavior: smooth` here — it turns `el.scrollTop = x`
      (used to park the wheel on its value) into an animated scroll that
      fights the native touch/snap. The component asks for smooth
@@ -438,7 +444,13 @@ button.card:hover {
 }
 .wheel-item {
   scroll-snap-align: center;
-  scroll-snap-stop: always;
+  /* `normal`, NOT `always`. `always` forces the scroll to halt on every
+     single row, which kills momentum entirely — one flick moved the dial
+     exactly one value, so 20 kg -> 80 kg meant ~60 separate swipes. That
+     is what made this feel heavy and unusable next to a real iOS picker,
+     where one flick spins through dozens of values and coasts to a stop.
+     `normal` lets the fling carry and snap wherever it naturally lands. */
+  scroll-snap-stop: normal;
 }
 
 /* ---- OnboardingFlow (src/components/auth/OnboardingFlow.jsx) ---- */

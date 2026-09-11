@@ -114,7 +114,33 @@ export default function WheelPicker({
     if (next !== undefined && next !== valueRef.current) onChangeRef.current(next);
   }, [values]);
 
+  // A real iOS dial ticks once per ROW passing under the selection band —
+  // not once when the spin finally stops — which is what makes a fling
+  // feel like a physical wheel with detents instead of a list that went
+  // quiet and then buzzed. So the tick lives here, on scroll position,
+  // rather than in settle(): one flick across twenty values gives twenty
+  // light ticks, decelerating with the scroll, exactly like the native
+  // picker. Centralized here for every wheel in the app — ScrollWheelPicker,
+  // BodyWeightWheel and HeightFeetWheel each used to keep their own
+  // value-changed copy of this (which could only ever fire once per
+  // settle), and SetEntrySheet's weight/reps dials had none at all.
+  const lastTickIdx = useRef(null);
+  const tickIfRowChanged = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const idx = Math.round(el.scrollTop / ITEM_HEIGHT);
+    if (lastTickIdx.current === null) {
+      lastTickIdx.current = idx; // first paint / programmatic park — no buzz
+      return;
+    }
+    if (idx !== lastTickIdx.current) {
+      lastTickIdx.current = idx;
+      navigator.vibrate?.(5);
+    }
+  };
+
   const handleScroll = () => {
+    tickIfRowChanged();
     window.clearTimeout(settleTimer.current);
     settleTimer.current = window.setTimeout(settle, 110);
   };
@@ -125,6 +151,9 @@ export default function WheelPicker({
     settle();
   };
 
+  // The +/- steppers and arrow keys move the wheel by setting scrollTop,
+  // which fires a scroll event — so the tick above covers these too, and
+  // buzzing here as well would double up.
   const step1 = (delta) => {
     const idx = Math.max(0, Math.min(values.length - 1, activeIdx + delta));
     const next = values[idx];

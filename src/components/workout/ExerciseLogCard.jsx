@@ -42,6 +42,7 @@ export default function ExerciseLogCard({ exercise, lastTime, onAddSet, onUpdate
             key={set.id}
             index={i}
             set={set}
+            exerciseId={exercise.exerciseId}
             isBodyweight={isBodyweight}
             // Seed the set entry sheet from the matching set last time
             // (falling back to that session's final set), so opening it
