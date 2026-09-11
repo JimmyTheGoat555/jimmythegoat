@@ -106,8 +106,12 @@ const ACCESSORY_LAYOUT = {
     stages: {
       1: { top: '12.5%', left: '49.7%', width: '42.0%' },
       2: { top: '13.8%', left: '48.3%', width: '48.1%' },
-      3: { top: '10.6%', left: '49.6%', width: '42.8%' },
-      4: { top: '11.2%', left: '49.3%', width: '38.0%' },
+      // Titan and Legend are hand-corrected off the derived value (10.6 and
+      // 11.2): a band's real landmark is the brow ridge, and on those two
+      // it sits lower relative to the eyes than the derivation assumes, so
+      // the derived number floated the band clear of the forehead.
+      3: { top: '12.4%', left: '49.6%', width: '42.8%' },
+      4: { top: '13.0%', left: '49.3%', width: '38.0%' },
     },
   },
   'accessory-crown': {
