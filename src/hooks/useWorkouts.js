@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useLocalStorage } from './useLocalStorage';
 import { useWakeLock } from './useWakeLock';
+import { isBodyweightExercise } from '../data/exercises';
 
 // Finished workout history — the source of truth for Dashboard/Progress.
 export function useWorkoutHistory() {
@@ -46,6 +47,8 @@ function emptyWorkout(presetExercises, assignedWorkoutId) {
       exerciseId: exercise.exerciseId,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
+      // Seed list decides this — an assigned routine only carries ids.
+      isBodyweight: isBodyweightExercise(exercise.exerciseId),
       sets: [{ id: crypto.randomUUID(), weight: '', reps: '', completed: false }],
     })),
     assignedWorkoutId: assignedWorkoutId ?? null,
@@ -93,6 +96,9 @@ export function useActiveWorkout(uid) {
               exerciseId: exercise.id,
               name: exercise.name,
               muscleGroup: exercise.muscleGroup,
+              // From the exercise definition (seed list has the flag;
+              // custom exercises don't carry it → treated as weighted).
+              isBodyweight: exercise.isBodyweight === true,
               sets: [{ id: crypto.randomUUID(), weight: '', reps: '', completed: false }],
             },
           ],

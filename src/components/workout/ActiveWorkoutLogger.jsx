@@ -7,6 +7,7 @@ import WorkoutSummaryModal from './WorkoutSummaryModal';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import { useRestTimer } from '../../hooks/useRestTimer';
 import { lastPerformance } from '../../utils/lastPerformance';
+import { randomGymQuote } from '../../data/gymQuotes';
 
 export default function ActiveWorkoutLogger({
   workout,
@@ -20,12 +21,16 @@ export default function ActiveWorkoutLogger({
   onFinish,
   personalRecords = [],
   history = [],
+  bodyWeightKg = 0,
   onDiscard,
   onSaveTemplate,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  // Fresh gym-bro line each time a workout starts (this component mounts);
+  // tapping it rolls another, never the same one twice running.
+  const [quote, setQuote] = useState(() => randomGymQuote());
   const rest = useRestTimer();
 
   const completedSets = workout.exercises.reduce(
@@ -66,6 +71,15 @@ export default function ActiveWorkoutLogger({
           Cancel
         </button>
       </header>
+
+      <button
+        type="button"
+        onClick={() => setQuote((q) => randomGymQuote(q))}
+        aria-label="Next quote"
+        className="-mt-1 w-full text-center text-sm font-semibold uppercase tracking-wide text-[var(--tier-accent)] px-3 py-1 active:scale-[0.98] transition"
+      >
+        &ldquo;{quote}&rdquo;
+      </button>
 
       {workout.exercises.length === 0 ? (
         <div className="card p-8 text-center flex flex-col items-center gap-4">
@@ -133,6 +147,7 @@ export default function ActiveWorkoutLogger({
           workout={workout}
           onSaveTemplate={onSaveTemplate}
           personalRecords={personalRecords}
+          bodyWeightKg={bodyWeightKg}
           onDone={onFinish}
           onBack={() => setShowSummary(false)}
         />

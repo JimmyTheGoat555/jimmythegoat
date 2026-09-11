@@ -5,6 +5,7 @@ import SetRow from './SetRow';
 export default function ExerciseLogCard({ exercise, lastTime, onAddSet, onUpdateSet, onRemoveSet, onRemoveExercise }) {
   const group = getMuscleGroup(exercise.muscleGroup);
   const completedCount = exercise.sets.filter((s) => s.completed).length;
+  const isBodyweight = exercise.isBodyweight === true;
 
   return (
     <div className="card overflow-hidden">
@@ -31,7 +32,7 @@ export default function ExerciseLogCard({ exercise, lastTime, onAddSet, onUpdate
       <div className="px-4 pb-1 flex flex-col gap-1">
         <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 px-1 text-xs text-neutral-600">
           <span className="w-5" />
-          <span className="text-center">Weight</span>
+          <span className="text-center">{isBodyweight ? 'Load' : 'Weight'}</span>
           <span className="text-center">Reps</span>
           <span className="w-11" />
           <span className="w-11" />
@@ -41,6 +42,11 @@ export default function ExerciseLogCard({ exercise, lastTime, onAddSet, onUpdate
             key={set.id}
             index={i}
             set={set}
+            isBodyweight={isBodyweight}
+            // Seed the set entry sheet from the matching set last time
+            // (falling back to that session's final set), so opening it
+            // pre-fills a sensible guess instead of a blank wheel.
+            lastSet={lastTime?.sets?.[i] ?? lastTime?.sets?.at(-1) ?? null}
             onChange={(patch) => onUpdateSet(set.id, patch)}
             onToggleComplete={() => onUpdateSet(set.id, { completed: !set.completed })}
             onRemove={() => onRemoveSet(set.id)}

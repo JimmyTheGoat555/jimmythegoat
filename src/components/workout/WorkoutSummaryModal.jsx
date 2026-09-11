@@ -18,6 +18,7 @@ function defaultTemplateName(workout) {
 export default function WorkoutSummaryModal({
   workout,
   personalRecords = [],
+  bodyWeightKg = 0,
   onSaveTemplate,
   onDone,
   onBack,
@@ -38,7 +39,9 @@ export default function WorkoutSummaryModal({
   const [error, setError] = useState(null);
 
   const sets = workoutSetCount(workout);
-  const volume = workoutVolume(workout);
+  // Approximate — the server recomputes it authoritatively (and re-scores
+  // bodyweight sets from the latest logged body weight).
+  const volume = workoutVolume(workout, bodyWeightKg);
 
   const handleFinish = async () => {
     setError(null);

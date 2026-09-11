@@ -11,17 +11,24 @@ export const MUSCLE_GROUPS = [
   { id: 'core', label: 'Core', color: '#14b8a6' },
 ];
 
+// `isBodyweight: true` means the load is the lifter's own body weight
+// (plus anything on a belt) rather than a number they enter. logWorkout
+// scores these as (bodyWeight + addedWeight) * reps — see
+// functions/economy.js, which keeps its own copy of the id list
+// (functions/exercises.js) since it can't import this ESM module.
 export const EXERCISES = [
   // Chest
   { id: 'bench-press', name: 'Barbell Bench Press', muscleGroup: 'chest' },
   { id: 'incline-db-press', name: 'Incline Dumbbell Press', muscleGroup: 'chest' },
   { id: 'chest-fly', name: 'Chest Fly', muscleGroup: 'chest' },
-  { id: 'dips', name: 'Dips', muscleGroup: 'chest' },
+  { id: 'push-up', name: 'Push-Up', muscleGroup: 'chest', isBodyweight: true },
+  { id: 'dips', name: 'Dips', muscleGroup: 'chest', isBodyweight: true },
   { id: 'cable-crossover', name: 'Cable Crossover', muscleGroup: 'chest' },
 
   // Back
   { id: 'deadlift', name: 'Deadlift', muscleGroup: 'back' },
-  { id: 'pull-up', name: 'Pull-Up', muscleGroup: 'back' },
+  { id: 'pull-up', name: 'Pull-Up', muscleGroup: 'back', isBodyweight: true },
+  { id: 'chin-up', name: 'Chin-Up', muscleGroup: 'back', isBodyweight: true },
   { id: 'barbell-row', name: 'Barbell Row', muscleGroup: 'back' },
   { id: 'lat-pulldown', name: 'Lat Pulldown', muscleGroup: 'back' },
   { id: 'seated-cable-row', name: 'Seated Cable Row', muscleGroup: 'back' },
@@ -51,11 +58,11 @@ export const EXERCISES = [
   { id: 'triceps-pushdown', name: 'Triceps Pushdown', muscleGroup: 'triceps' },
   { id: 'skull-crusher', name: 'Skull Crusher', muscleGroup: 'triceps' },
   { id: 'close-grip-bench', name: 'Close-Grip Bench Press', muscleGroup: 'triceps' },
-  { id: 'triceps-dip', name: 'Triceps Dip', muscleGroup: 'triceps' },
+  { id: 'triceps-dip', name: 'Triceps Dip', muscleGroup: 'triceps', isBodyweight: true },
 
   // Core
   { id: 'plank', name: 'Plank', muscleGroup: 'core' },
-  { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscleGroup: 'core' },
+  { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscleGroup: 'core', isBodyweight: true },
   { id: 'cable-crunch', name: 'Cable Crunch', muscleGroup: 'core' },
   { id: 'russian-twist', name: 'Russian Twist', muscleGroup: 'core' },
 ];
@@ -66,6 +73,12 @@ export function exercisesByGroup(groupId) {
 
 export function getExercise(id) {
   return EXERCISES.find((exercise) => exercise.id === id);
+}
+
+// Seed-list only — a user's custom exercise can't be flagged bodyweight
+// yet, so it's logged with an entered weight like any other.
+export function isBodyweightExercise(id) {
+  return getExercise(id)?.isBodyweight === true;
 }
 
 export function getMuscleGroup(id) {

@@ -1,22 +1,32 @@
-// Same bounds the server (functions/economy.js) enforces for real — these
-// are just immediate feedback so a typo doesn't get discovered only after
-// tapping "Finish Workout" and having the whole thing rejected. Clamped on
-// blur rather than on every keystroke so typing "25" for 250 doesn't get
-// stomped down to the max the instant the "2" alone would exceed nothing
-// but momentarily reads as a 1-2kg entry.
-const MIN_WEIGHT_KG = 1;
-const MAX_WEIGHT_KG = 250;
-const MIN_REPS = 1;
-const MAX_REPS = 30;
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
+import SetEntrySheet from './SetEntrySheet';
+import { formatWorkingWeight } from '../../utils/units';
 
-function clamp(value, min, max) {
-  if (value === '') return value;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return value;
-  return String(Math.min(max, Math.max(min, n)));
+const isSet = (v) => v !== '' && v !== null && v !== undefined && Number.isFinite(Number(v));
+
+function fmtReps(v) {
+  return isSet(v) ? String(Math.round(Number(v))) : '—';
 }
 
-export default function SetRow({ index, set, onChange, onToggleComplete, onRemove }) {
+// A logged set. Weight/reps are chips that open SetEntrySheet's scroll
+// wheels. For a bodyweight exercise the first chip shows "BW" (+ any belt
+// weight) instead of a working weight — logWorkout folds in the lifter's
+// body weight server-side. Bounds live in utils/units.js and are enforced
+// again in functions/economy.js.
+export default function SetRow({ index, set, isBodyweight = false, lastSet, onChange, onToggleComplete, onRemove }) {
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // A bodyweight set only needs reps (the load is your body weight, added
+  // by the server; belt weight defaults to 0). A weighted set needs both.
+  const ready = isSet(set.reps) && (isBodyweight || isSet(set.weight));
+
+  const chipClass =
+    'w-full bg-neutral-800 rounded-xl px-2 py-3 flex flex-col items-center leading-none active:scale-[0.97] transition';
+
+  const added = Number(set.addedWeight) || 0;
+  const loadTop = isBodyweight ? (added > 0 ? `BW +${formatWorkingWeight(added)}` : 'BW') : isSet(set.weight) ? formatWorkingWeight(set.weight) : '—';
+  const loadLabel = isBodyweight ? 'body' : 'kg';
+
   return (
     <div
       className={`grid grid-cols-[auto_1fr_1fr_auto_auto] items-center gap-2 py-1.5 rounded-2xl transition ${
@@ -25,35 +35,22 @@ export default function SetRow({ index, set, onChange, onToggleComplete, onRemov
     >
       <span className="text-sm text-neutral-500 w-5 text-center tabular-nums">{index + 1}</span>
 
-      <input
-        type="number"
-        inputMode="decimal"
-        placeholder="kg"
-        min={MIN_WEIGHT_KG}
-        max={MAX_WEIGHT_KG}
-        value={set.weight}
-        onChange={(e) => onChange({ weight: e.target.value })}
-        onBlur={(e) => onChange({ weight: clamp(e.target.value, MIN_WEIGHT_KG, MAX_WEIGHT_KG) })}
-        className="w-full bg-neutral-800 rounded-xl px-2 py-3 text-center text-base text-neutral-100 focus:outline-none focus:ring-2 focus:ring-[var(--ember)]"
-      />
+      <button type="button" onClick={() => setSheetOpen(true)} className={chipClass} aria-label={`Set ${index + 1} weight`}>
+        <span className="text-base font-semibold text-neutral-100 tabular-nums">{loadTop}</span>
+        <span className="text-[10px] uppercase tracking-wide text-neutral-500 mt-0.5">{loadLabel}</span>
+      </button>
 
-      <input
-        type="number"
-        inputMode="numeric"
-        placeholder="reps"
-        min={MIN_REPS}
-        max={MAX_REPS}
-        value={set.reps}
-        onChange={(e) => onChange({ reps: e.target.value })}
-        onBlur={(e) => onChange({ reps: clamp(e.target.value, MIN_REPS, MAX_REPS) })}
-        className="w-full bg-neutral-800 rounded-xl px-2 py-3 text-center text-base text-neutral-100 focus:outline-none focus:ring-2 focus:ring-[var(--ember)]"
-      />
+      <button type="button" onClick={() => setSheetOpen(true)} className={chipClass} aria-label={`Set ${index + 1} reps`}>
+        <span className="text-base font-semibold text-neutral-100 tabular-nums">{fmtReps(set.reps)}</span>
+        <span className="text-[10px] uppercase tracking-wide text-neutral-500 mt-0.5">reps</span>
+      </button>
 
       <button
         type="button"
         onClick={onToggleComplete}
+        disabled={!set.completed && !ready}
         aria-label="Mark set complete"
-        className={`w-11 h-11 rounded-full flex items-center justify-center text-lg font-bold transition active:scale-95 ${
+        className={`w-11 h-11 rounded-full flex items-center justify-center text-lg font-bold transition active:scale-95 disabled:opacity-40 disabled:active:scale-100 ${
           set.completed ? 'bg-[var(--success)] text-white' : 'bg-neutral-800 text-neutral-500'
         }`}
       >
@@ -68,6 +65,25 @@ export default function SetRow({ index, set, onChange, onToggleComplete, onRemov
       >
         ✕
       </button>
+
+      {/* Portalled to <body>: the enclosing ExerciseLogCard's `.card` has a
+          filter (drop-shadow glow), which would otherwise make it the
+          containing block for the sheet's `position: fixed` and trap it
+          inside the card instead of covering the screen. */}
+      {sheetOpen &&
+        createPortal(
+          <SetEntrySheet
+            index={index}
+            isBodyweight={isBodyweight}
+            weight={set.weight}
+            addedWeight={set.addedWeight}
+            reps={set.reps}
+            lastSet={lastSet}
+            onChange={onChange}
+            onClose={() => setSheetOpen(false)}
+          />,
+          document.body,
+        )}
     </div>
   );
 }
