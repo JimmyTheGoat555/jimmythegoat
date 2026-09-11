@@ -14,6 +14,7 @@ export const STORE_ITEMS = [
   { id: 'dance-victory', type: 'dance', name: 'Victory Lap', emoji: '🏆', cost: 1100, videoDanceNumber: 3 },
   { id: 'dance-moonwalk', type: 'dance', name: 'Moonwalk', emoji: '🌙', cost: 1500, videoDanceNumber: 4 },
   { id: 'accessory-cap', type: 'accessory', name: 'Backwards Cap', emoji: '🧢', cost: 150, slot: 'head', rarity: 'common' },
+  { id: 'accessory-headband', type: 'accessory', name: 'Red Sweatband', emoji: '🎽', cost: 200, slot: 'head', rarity: 'common' },
   { id: 'accessory-shades', type: 'accessory', name: 'Shades', emoji: '🕶️', cost: 250, slot: 'eyes', rarity: 'common' },
   { id: 'accessory-chain', type: 'accessory', name: 'Gold Chain', emoji: '⛓️', cost: 350, slot: 'neck', rarity: 'rare' },
   { id: 'accessory-crown', type: 'accessory', name: 'Crown', emoji: '👑', cost: 900, slot: 'head', rarity: 'legendary' },

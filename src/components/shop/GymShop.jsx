@@ -7,6 +7,7 @@ import {
   readEquippedAccessories,
 } from '../../data/storeItems';
 import JimmyAnimation from '../evolution/JimmyAnimation';
+import { AccessoryIcon } from '../evolution/accessoryArt';
 import { danceNumberForItemId, getDancePreviewPath } from '../../utils/danceAnimations';
 
 // A dance's/accessory's cost here is display-only — see storeItems.js.
@@ -50,7 +51,11 @@ function ItemCard({ item, owned, equipped, canAfford, busy, onBuy, onEquip, prev
         />
       ) : (
         <>
-          <span className="text-4xl">{item.emoji}</span>
+          {/* The real vector art, not the emoji — what you see here is
+              exactly what lands on Jimmy. */}
+          <span className="flex h-12 w-full items-center justify-center px-2">
+            <AccessoryIcon itemId={item.id} className="h-full w-auto max-w-[70%]" />
+          </span>
           <p className="text-sm font-semibold text-neutral-100">{item.name}</p>
         </>
       )}

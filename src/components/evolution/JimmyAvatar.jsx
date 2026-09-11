@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { getTierByStage } from '../../utils/evolutionTiers';
 import { ACCESSORY_SLOT_ORDER, getStoreItem, readEquippedAccessories } from '../../data/storeItems';
+import { ACCESSORY_ART } from './accessoryArt';
 
 // Jimmy with his gear on — one renderer for every place an avatar appears
 // (shop preview, profile, leaderboard row, feed post), so an accessory can
@@ -20,22 +21,11 @@ import { ACCESSORY_SLOT_ORDER, getStoreItem, readEquippedAccessories } from '../
 //      (shoulders). So head/eyes/neck land at roughly the same percentage
 //      of canvas height on all four tiers.
 //
-// Each accessory is an emoji inside a viewBox'd <svg> rather than a styled
-// <span>: the SVG scales its glyph with the box automatically, so one set
-// of percentages works at a 40px leaderboard avatar and a 300px profile
-// hero without a font-size calculation at every call site. Swapping in real
-// artwork later means changing the <text> to an <image> and nothing else.
-//
-// `rotate` is a slot property, not an item one: anything worn at the neck
-// drapes horizontally across the collarbone, and the ⛓️ glyph is drawn
-// vertically, so without this it renders as a chain hanging down Jimmy's
-// face. Real artwork would arrive pre-oriented and this becomes 0.
-const ACCESSORY_SLOTS = {
-  head: { top: '7%', width: '46%', rotate: 0 },
-  eyes: { top: '16.5%', width: '33%', rotate: 0 },
-  neck: { top: '26.5%', width: '34%', rotate: 90 },
-};
-
+// Accessory artwork is inline SVG (see accessoryArt.jsx), not emoji and
+// not PNGs: it stays sharp from a 36px leaderboard row to a full-screen
+// hero, costs a couple of KB, and each piece carries its own viewBox and
+// placement so a sweatband and a crown can have honestly different
+// proportions instead of being forced through one box.
 // A leaderboard row or feed post shows a ~40px round avatar, and a
 // full-body goat at that size is mostly legs. `crop="head"` zooms to the
 // region the gear actually occupies. The transform wraps the image AND the
@@ -72,13 +62,12 @@ export default function JimmyAvatar({
     ? equippedAccessories
     : readEquippedAccessories(equippedAccessories);
 
-  // Draw in a fixed slot order, not the order things were equipped, so the
-  // layering is stable: neck behind the head/eyes gear.
-  const worn = ACCESSORY_SLOT_ORDER.map((slot) => {
-    const id = equipped.find((itemId) => getStoreItem(itemId)?.slot === slot);
-    const item = id ? getStoreItem(id) : null;
-    return item ? { slot, item } : null;
-  }).filter(Boolean);
+  // Fixed slot order, not the order things were equipped, so layering is
+  // stable: the neck piece paints before anything on the head or eyes.
+  const worn = ACCESSORY_SLOT_ORDER.flatMap((slot) => {
+    const id = equipped.find((itemId) => ACCESSORY_ART[itemId]?.slot === slot);
+    return id ? [{ id, art: ACCESSORY_ART[id], name: getStoreItem(id)?.name ?? id }] : [];
+  });
 
   const cropped = crop === 'head';
   const inner = (
@@ -97,35 +86,29 @@ export default function JimmyAvatar({
 
       {children}
 
-      {/* Accessories never intercept taps — the avatar is frequently inside
-          a button (a leaderboard row, a shop card). */}
+      {/* Accessories never intercept taps — the avatar is frequently
+          inside a button (a leaderboard row, a shop card). Gradient ids are
+          namespaced per item because several of these avatars can share a
+          page and duplicate ids would cross-wire their fills. */}
       {!spriteBroken &&
-        worn.map(({ slot, item }) => {
-          const pos = ACCESSORY_SLOTS[slot];
+        worn.map(({ id, art, name }) => {
+          const { Art } = art;
           return (
             <svg
-              key={slot}
-              viewBox="0 0 100 100"
+              key={id}
+              viewBox={art.viewBox}
               role="img"
-              aria-label={item.name}
-              className="pointer-events-none absolute"
+              aria-label={name}
+              className="pointer-events-none absolute overflow-visible"
               style={{
                 left: '50%',
-                top: pos.top,
-                width: pos.width,
-                transform: `translate(-50%, -50%) rotate(${pos.rotate ?? 0}deg)`,
+                top: art.top,
+                width: art.width,
+                transform: 'translate(-50%, -50%)',
+                filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.45))',
               }}
             >
-              <text
-                x="50"
-                y="50"
-                textAnchor="middle"
-                dominantBaseline="central"
-                fontSize="86"
-                style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.45))' }}
-              >
-                {item.emoji}
-              </text>
+              <Art id={`acc-${id}`} />
             </svg>
           );
         })}
