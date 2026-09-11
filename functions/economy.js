@@ -485,6 +485,11 @@ exports.logWorkout = onCall(async (request) => {
         // Kept as raw kg for the feed card — "500 kg this week" reads
         // better on a friend's card than a relative score would.
         totalVolume: totalVolumeKg,
+        // The poster's lifetime total AFTER this workout — lets the feed
+        // card draw them at the evolution tier they were actually at when
+        // they posted, rather than guessing a stage. Cheap: already
+        // computed for records, and the card needs it to pick a sprite.
+        lifetimeVolume: nextRecords.lifetimeVolume ?? 0,
         // Relative Strength Volume for this workout — what the weekly
         // leaderboard now ranks on, so a lighter lifter isn't buried by a
         // heavier friend's raw tonnage. Written with the same
@@ -494,7 +499,19 @@ exports.logWorkout = onCall(async (request) => {
         score: isRecovery ? 0 : totalScore,
         coinsEarned: effectiveCoins,
         equippedDance: userData.equippedDance ?? null,
+        // Legacy single-slot field, still written so anything not yet
+        // reading the array keeps working.
         equippedAccessory: userData.equippedAccessory ?? null,
+        // The multi-slot loadout (head/eyes/neck) the avatar actually
+        // renders from — see src/components/evolution/JimmyAvatar.jsx.
+        // Falls back to the legacy field so an account that hasn't
+        // re-equipped since the migration still shows its accessory on the
+        // feed and leaderboard.
+        equippedAccessories: Array.isArray(userData.equippedAccessories)
+          ? userData.equippedAccessories
+          : userData.equippedAccessory
+            ? [userData.equippedAccessory]
+            : [],
         personalRecords: sharePersonalRecords === true ? personalRecords : [],
         timestamp: finishedAtIso,
       });

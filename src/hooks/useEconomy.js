@@ -56,5 +56,26 @@ export function useEconomy(uid) {
     [uid],
   );
 
-  return { logWorkout, purchaseItem, equipItem };
+  // Accessories are multi-slot (head/eyes/neck — see data/storeItems.js),
+  // so unlike a dance this writes a whole array rather than one id. The
+  // slot rule itself lives in equipAccessory/unequipAccessory as pure
+  // functions over that array, so "a second hat replaces the first" is
+  // decided in one testable place rather than inside a click handler.
+  //
+  // Same plain-client-write model as equipItem above, for the same reason:
+  // firestore.rules' equippedFieldsValid() enforces that every id in the
+  // array is actually owned, which an owner-gated update can check on its
+  // own. Nothing here can mint or spend.
+  const setEquippedAccessories = useCallback(
+    async (nextIds) => {
+      await updateDoc(doc(db, 'users', uid), { equippedAccessories: nextIds });
+      // Best-effort mirror so a friend's profile/leaderboard row and the
+      // feed reflect the change immediately — same swallow-on-failure
+      // reasoning as equipItem's mirror above.
+      updateDoc(doc(db, 'users', uid, 'public', 'summary'), { equippedAccessories: nextIds }).catch(() => {});
+    },
+    [uid],
+  );
+
+  return { logWorkout, purchaseItem, equipItem, setEquippedAccessories };
 }

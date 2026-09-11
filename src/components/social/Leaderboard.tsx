@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { lifetimeVolume, weeklyScore } from '../../utils/workoutStats';
 import { getEvolutionProgress } from '../../utils/evolutionTiers';
 import GradientBorder from '../shared/GradientBorder';
+import JimmyAvatar from '../evolution/JimmyAvatar';
+import { readEquippedAccessories } from '../../data/storeItems';
 
 interface FeedPost {
   userId: string;
@@ -20,6 +22,9 @@ interface FeedPost {
 interface LeaderboardProps {
   workouts: Record<string, unknown>[];
   feedPosts: FeedPost[];
+  // The signed-in user's own loadout — friends' gear rides along on their
+  // feed posts, but yours has to be handed in since you have no post here.
+  equippedAccessories?: string[];
 }
 
 interface Rankable {
@@ -30,6 +35,9 @@ interface Rankable {
   // lighter lifter ranks on the same scale as a heavier friend.
   weeklyScore: number;
   isYou: boolean;
+  // Multi-slot loadout, so the row shows the gear they're actually
+  // wearing (see components/evolution/JimmyAvatar.jsx).
+  equippedAccessories?: string[];
 }
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -69,36 +77,33 @@ function weeklyFriendTotals(feedPosts: FeedPost[]): Rankable[] {
     if (existing) {
       existing.weeklyScore += value;
     } else {
-      // No cheap way to know a friend's LIFETIME volume from feed posts
-      // alone (that would need their full history) — left at 0, which
-      // just means their tier badge here defaults to the base "Goat"
-      // rather than reflecting their real evolution progress. A cosmetic
-      // approximation only; nothing security- or economy-relevant reads
-      // this value.
+      // logWorkout now stamps the poster's running lifetime total onto
+      // each feed post, so a friend's tier no longer has to default to the
+      // base one here. Older posts predate that field and fall back to 0,
+      // which still just means "base tier" — cosmetic either way, nothing
+      // security- or economy-relevant reads it.
       totals.set(post.userId, {
         id: post.userId,
         username: post.userName,
-        lifetimeVolume: 0,
+        lifetimeVolume: post.lifetimeVolume ?? 0,
         weeklyScore: value,
         isYou: false,
+        equippedAccessories: readEquippedAccessories(post),
       });
     }
   }
   return [...totals.values()];
 }
 
-function Avatar({ tierId, emoji, image }: { tierId: string; emoji: string; image: string }) {
-  const [broken, setBroken] = useState(false);
-  if (broken) {
-    return (
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xl">
-        {emoji}
-      </span>
-    );
-  }
+// Head-cropped so the equipped gear is actually legible at 36px — a
+// full-body goat this small is mostly legs. JimmyAvatar owns the sprite
+// fallback, so there's no broken-image state to track here any more.
+function Avatar({ tierId, stage, accessories }: { tierId: string; stage: number; accessories: string[] }) {
   return (
     <GradientBorder tierId={tierId} shape="circle" fillClassName="rounded-full overflow-hidden" glow={false} className="shrink-0">
-      <img src={image} alt="" onError={() => setBroken(true)} className="h-9 w-9 object-cover object-top bg-neutral-800" />
+      <div className="h-9 w-9 bg-neutral-800">
+        <JimmyAvatar evolutionStage={stage} equippedAccessories={accessories} crop="head" className="h-full w-full" />
+      </div>
     </GradientBorder>
   );
 }
@@ -111,13 +116,7 @@ function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
       <span className="w-6 text-center text-lg font-semibold text-neutral-500">
         {MEDALS[rank] ?? `#${rank + 1}`}
       </span>
-      {entry.isYou ? (
-        <Avatar tierId={current.id} emoji={current.emoji} image={current.image} />
-      ) : (
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xl">
-          {current.emoji}
-        </span>
-      )}
+      <Avatar tierId={current.id} stage={current.stage} accessories={entry.equippedAccessories ?? []} />
       <div className="flex-1 min-w-0">
         <p className="text-base font-semibold text-neutral-100 truncate">
           {entry.isYou ? 'You' : entry.username}
@@ -149,10 +148,11 @@ function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
 // "see what friends are up to" surface; this card is just the at-a-glance
 // "where do I stand this week" number. Ranked on Relative Strength Volume
 // so bodyweight matters, not raw tonnage.
-export default function Leaderboard({ workouts, feedPosts }: LeaderboardProps) {
+export default function Leaderboard({ workouts, feedPosts, equippedAccessories = [] }: LeaderboardProps) {
   const you: Rankable = {
     id: 'me',
     username: 'You',
+    equippedAccessories,
     lifetimeVolume: lifetimeVolume(workouts),
     weeklyScore: weeklyScore(workouts),
     isYou: true,

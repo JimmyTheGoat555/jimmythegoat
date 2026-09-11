@@ -79,6 +79,11 @@ export function useFriendProfile(friendUid) {
     // the feed post is only ever as fresh as their last logged workout.
     equippedDance: summary?.equippedDance ?? latestPost?.equippedDance ?? null,
     equippedAccessory: summary?.equippedAccessory ?? latestPost?.equippedAccessory ?? null,
+    // Multi-slot loadout, preferring the summary then the newest feed
+    // post; readEquippedAccessories at the render site folds in the legacy
+    // single field for accounts that predate this.
+    equippedAccessories:
+      summary?.equippedAccessories ?? latestPost?.equippedAccessories ?? null,
     loading: summaryLoading || postLoading,
     // A profile that truly doesn't exist (bad uid, or they've deleted their
     // account) vs. one that's just never logged a workout yet — the latter

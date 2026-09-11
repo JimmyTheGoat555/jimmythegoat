@@ -213,6 +213,8 @@ export function useAuth() {
         friends: [],
         equippedDance: null,
         equippedAccessory: null,
+        // Multi-slot loadout — see data/storeItems.js.
+        equippedAccessories: [],
         createdAt: new Date().toISOString(),
         // Settings' one-time username change — see firestore.rules'
         // usernameChangeValid(), the actual enforcement (this is just the

@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import { STORE_ITEMS } from '../../data/storeItems';
+import {
+  STORE_ITEMS,
+  RARITY_STYLES,
+  equipAccessory,
+  unequipAccessory,
+  readEquippedAccessories,
+} from '../../data/storeItems';
 import JimmyAnimation from '../evolution/JimmyAnimation';
 import { danceNumberForItemId, getDancePreviewPath } from '../../utils/danceAnimations';
 
@@ -8,8 +14,28 @@ import { danceNumberForItemId, getDancePreviewPath } from '../../utils/danceAnim
 // (functions/storeCatalog.js), so this file being stale can only ever make
 // the UI show a wrong price, never let anyone pay a wrong one.
 function ItemCard({ item, owned, equipped, canAfford, busy, onBuy, onEquip, previewSrc, tierImage }) {
+  // Rarity colours the frame and the label. Only shown once you own the
+  // item — before that the price is the thing that matters, and a loud
+  // gold border on something unaffordable is just noise.
+  const rarity = RARITY_STYLES[item.rarity] ?? null;
+  const frame = equipped
+    ? { '--tw-ring-color': 'var(--ember)' }
+    : rarity && owned
+      ? { '--tw-ring-color': rarity.color }
+      : undefined;
   return (
-    <div className={`card p-4 flex flex-col items-center gap-2 text-center ${equipped ? 'ring-2' : ''}`} style={equipped ? { '--tw-ring-color': 'var(--ember)' } : undefined}>
+    <div
+      className={`card p-4 flex flex-col items-center gap-2 text-center ${equipped || (rarity && owned) ? 'ring-2' : ''}`}
+      style={frame}
+    >
+      {rarity && (
+        <span
+          className="text-[9px] font-bold uppercase tracking-[0.18em]"
+          style={{ color: rarity.color }}
+        >
+          {rarity.label}
+        </span>
+      )}
       {previewSrc ? (
         // The dance itself is the label — you can see what you're buying,
         // which "Moonwalk" never told anyone. Shown as the CURRENT
@@ -29,15 +55,18 @@ function ItemCard({ item, owned, equipped, canAfford, busy, onBuy, onEquip, prev
         </>
       )}
       {owned ? (
+        // Accessories toggle (multi-slot, so taking one off is a real
+        // action); a dance is single-choice, so an equipped one stays
+        // disabled — there's nothing to toggle it to.
         <button
           type="button"
           onClick={onEquip}
-          disabled={equipped}
+          disabled={equipped && item.type === 'dance'}
           className={`w-full mt-1 text-sm font-semibold py-2.5 rounded-xl ${
             equipped ? 'bg-[var(--ember)]/20 text-[var(--ember)]' : 'bg-white/10 text-neutral-200'
           }`}
         >
-          {equipped ? '✓ Equipped' : 'Equip'}
+          {equipped ? (item.type === 'dance' ? '✓ Equipped' : '✓ Unequip') : 'Equip'}
         </button>
       ) : (
         <button
@@ -61,7 +90,7 @@ function ItemCard({ item, owned, equipped, canAfford, busy, onBuy, onEquip, prev
 // — the live account doc IS the state, updated the moment a purchase or
 // equip actually goes through. Whatever's equipped here is what shows up
 // on your NEXT logged workout's feed post — see functions/economy.js.
-export default function GymShop({ account, onPurchase, onEquip, evolutionStage = null, tierImage = null }) {
+export default function GymShop({ account, onPurchase, onEquip, onSetAccessories, evolutionStage = null, tierImage = null }) {
   const [busyItemId, setBusyItemId] = useState(null);
   const [error, setError] = useState(null);
 
@@ -71,8 +100,11 @@ export default function GymShop({ account, onPurchase, onEquip, evolutionStage =
 
   const isOwned = (item) =>
     (item.type === 'dance' ? unlockedDances : unlockedAccessories).includes(item.id);
+  // Tolerates the pre-multi-slot shape, so an existing account's equipped
+  // accessory doesn't appear to fall off on the deploy that ships this.
+  const equippedAccessories = readEquippedAccessories(account);
   const isEquipped = (item) =>
-    (item.type === 'dance' ? account?.equippedDance : account?.equippedAccessory) === item.id;
+    item.type === 'dance' ? account?.equippedDance === item.id : equippedAccessories.includes(item.id);
 
   const handleBuy = async (item) => {
     setError(null);
@@ -89,7 +121,18 @@ export default function GymShop({ account, onPurchase, onEquip, evolutionStage =
   const handleEquip = async (item) => {
     setError(null);
     try {
-      await onEquip(item.type === 'dance' ? 'equippedDance' : 'equippedAccessory', item.id);
+      if (item.type === 'dance') {
+        await onEquip('equippedDance', item.id);
+        return;
+      }
+      // The slot rule (a second hat replaces the first) lives in
+      // equipAccessory — see data/storeItems.js — so this handler just
+      // picks which direction to go.
+      const next = isEquipped(item)
+        ? unequipAccessory(equippedAccessories, item.id)
+        : equipAccessory(equippedAccessories, item.id);
+      navigator.vibrate?.([30]);
+      await onSetAccessories(next);
     } catch (err) {
       setError(err.message);
     }

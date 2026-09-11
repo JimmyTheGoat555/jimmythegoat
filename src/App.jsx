@@ -273,7 +273,7 @@ export default function App() {
   // `profile.coins`/`unlockedDances`/`unlockedAccessories` already arrive
   // live via useAuth's own profile listener the instant logWorkout()/
   // purchaseItem() update them server-side.
-  const { logWorkout, purchaseItem, equipItem } = useEconomy(uid);
+  const { logWorkout, purchaseItem, equipItem, setEquippedAccessories } = useEconomy(uid);
   // Social graph + feed — see hooks/useFriendsGraph.js and useFeed.js.
   // `account.friends` (bare uids) is the source of truth; both hooks derive
   // from it rather than holding their own copy.
@@ -661,6 +661,7 @@ export default function App() {
               path="social"
               element={
                 <SocialPage
+                  account={account}
                   workouts={workouts}
                   feedPosts={feed.posts}
                   feedLoading={feed.loading}
@@ -705,6 +706,7 @@ export default function App() {
                   account={account}
                   onPurchase={purchaseItem}
                   onEquip={equipItem}
+                    onSetAccessories={setEquippedAccessories}
                   evolutionStage={currentTier.stage}
                   tierImage={currentTier.image}
                 />

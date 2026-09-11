@@ -1,5 +1,7 @@
 import { usePostLikes } from '../../hooks/useFeed';
-import { STORE_ITEMS } from '../../data/storeItems';
+import { STORE_ITEMS, readEquippedAccessories } from '../../data/storeItems';
+import { getEvolutionProgress } from '../../utils/evolutionTiers';
+import JimmyAvatar from '../evolution/JimmyAvatar';
 
 const ITEMS_BY_ID = new Map(STORE_ITEMS.map((item) => [item.id, item]));
 
@@ -23,14 +25,24 @@ function relativeTime(iso) {
 export default function FeedPostCard({ post, myUid }) {
   const { count, likedByMe, toggleLike } = usePostLikes(post.id, myUid);
   const dance = post.equippedDance ? ITEMS_BY_ID.get(post.equippedDance) : null;
-  const accessory = post.equippedAccessory ? ITEMS_BY_ID.get(post.equippedAccessory) : null;
+  // Older posts predate lifetimeVolume on the feed doc; 0 just means the
+  // first tier, which is a sane thing to show rather than nothing.
+  const postTier = getEvolutionProgress(post.lifetimeVolume ?? 0).current;
 
   return (
     <div className="card p-4 flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-lg">
-          {accessory?.emoji ?? '🐐'}
-        </span>
+        {/* The poster as they actually look — head-cropped so the gear
+            reads at 40px. Stage comes from the volume the post itself
+            carries, so an old post keeps showing who they were then. */}
+        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-neutral-800">
+          <JimmyAvatar
+            evolutionStage={postTier.stage}
+            equippedAccessories={readEquippedAccessories(post)}
+            crop="head"
+            className="h-full w-full"
+          />
+        </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-neutral-100 truncate">{post.userName}</p>
           <p className="text-xs text-neutral-500">{relativeTime(post.timestamp)}</p>

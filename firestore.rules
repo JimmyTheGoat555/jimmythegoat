@@ -29,7 +29,8 @@ service cloud.firestore {
     function userUpdateFieldsAllowed() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['displayName', 'usernameChangedOnce', 'trainerId',
-                  'equippedDance', 'equippedAccessory', 'hasUnreadNudgePush', 'friendCode']);
+                  'equippedDance', 'equippedAccessory', 'equippedAccessories',
+                  'hasUnreadNudgePush', 'friendCode']);
     }
 
     // `trainerId` may only be cleared or pointed at an account that is
@@ -115,7 +116,19 @@ service cloud.firestore {
       return (request.resource.data.get('equippedDance', null) == null ||
           request.resource.data.get('unlockedDances', []).hasAny([request.resource.data.equippedDance])) &&
         (request.resource.data.get('equippedAccessory', null) == null ||
-          request.resource.data.get('unlockedAccessories', []).hasAny([request.resource.data.equippedAccessory]));
+          request.resource.data.get('unlockedAccessories', []).hasAny([request.resource.data.equippedAccessory])) &&
+        // Multi-slot accessories (head/eyes/neck — see data/storeItems.js).
+        // hasAll() the other way round from the singular check above:
+        // every id being worn must appear in the owned list, so one
+        // unowned entry anywhere in the array rejects the whole write.
+        // The size cap is a cheap belt-and-braces bound — there are only
+        // three slots, so anything longer is a malformed or hostile
+        // payload rather than a loadout, and it stops the array being used
+        // as unbounded free storage on a doc everyone can read via
+        // public/summary.
+        (request.resource.data.get('equippedAccessories', []).size() <= 3 &&
+          request.resource.data.get('unlockedAccessories', [])
+            .hasAll(request.resource.data.get('equippedAccessories', [])));
     }
 
     // The Settings panel's "you can only change your username once" is
@@ -412,7 +425,7 @@ service cloud.firestore {
         allow create, delete: if false;
         allow update: if isOwner(uid) &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['equippedDance', 'equippedAccessory']);
+            .hasOnly(['equippedDance', 'equippedAccessory', 'equippedAccessories']);
       }
     }
   }

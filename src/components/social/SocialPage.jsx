@@ -1,4 +1,5 @@
 import Leaderboard from './Leaderboard';
+import { readEquippedAccessories } from '../../data/storeItems';
 import FriendsManager from './FriendsManager';
 import SocialFeed from './SocialFeed';
 import NotificationsList from './NotificationsList';
@@ -12,6 +13,7 @@ import NotificationsList from './NotificationsList';
 // stays its own file since each is independently substantial (mutual
 // friend requests, a live feed with per-post cheering).
 export default function SocialPage({
+  account,
   workouts,
   feedPosts,
   feedLoading,
@@ -50,7 +52,7 @@ export default function SocialPage({
         />
       </section>
 
-      <Leaderboard workouts={workouts} feedPosts={feedPosts} />
+      <Leaderboard workouts={workouts} feedPosts={feedPosts} equippedAccessories={readEquippedAccessories(account)} />
 
       <FriendsManager
         myFriendCode={myFriendCode}

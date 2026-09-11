@@ -129,10 +129,10 @@ const STORE_ITEMS = [
   { id: 'dance-headbang', type: 'dance', name: 'Headbanger', emoji: '🤘', cost: 800 },
   { id: 'dance-victory', type: 'dance', name: 'Victory Lap', emoji: '🏆', cost: 1100 },
   { id: 'dance-moonwalk', type: 'dance', name: 'Moonwalk', emoji: '🌙', cost: 1500 },
-  { id: 'accessory-cap', type: 'accessory', name: 'Backwards Cap', emoji: '🧢', cost: 150 },
-  { id: 'accessory-shades', type: 'accessory', name: 'Shades', emoji: '🕶️', cost: 250 },
-  { id: 'accessory-chain', type: 'accessory', name: 'Gold Chain', emoji: '⛓️', cost: 350 },
-  { id: 'accessory-crown', type: 'accessory', name: 'Crown', emoji: '👑', cost: 900 },
+  { id: 'accessory-cap', type: 'accessory', name: 'Backwards Cap', emoji: '🧢', cost: 150, slot: 'head', rarity: 'common' },
+  { id: 'accessory-shades', type: 'accessory', name: 'Shades', emoji: '🕶️', cost: 250, slot: 'eyes', rarity: 'common' },
+  { id: 'accessory-chain', type: 'accessory', name: 'Gold Chain', emoji: '⛓️', cost: 350, slot: 'neck', rarity: 'rare' },
+  { id: 'accessory-crown', type: 'accessory', name: 'Crown', emoji: '👑', cost: 900, slot: 'head', rarity: 'legendary' },
 ];
 
 const STORE_ITEMS_BY_ID = new Map(STORE_ITEMS.map((item) => [item.id, item]));
