@@ -25,6 +25,9 @@ import { firebaseConfigured } from './lib/firebase';
 import { lifetimeVolume, lastWorkoutAt } from './utils/workoutStats';
 import { getEvolutionProgress } from './utils/evolutionTiers';
 import { findNewPersonalRecords } from './utils/personalRecords';
+import { lastPerformance, seedSetsFromHistory } from './utils/lastPerformance';
+import { isBodyweightExercise } from './data/exercises';
+import { DEFAULT_SETS_PER_EXERCISE } from './hooks/useWorkouts';
 import { getBadge } from './data/badges';
 import { tierCssVars } from './utils/tierTheme';
 
@@ -337,13 +340,29 @@ export default function App() {
   // why: App never remounts on account switch).
   const [notifPromptSeen, setNotifPromptSeen] = useLocalStorage(`notif-prompt-seen:${uid ?? 'anon'}`, false);
 
+  // Pre-fills a routine's exercises from the last time each was performed,
+  // so loading "Push Day" comes up with real numbers instead of a wall of
+  // blanks. Same helper the mid-workout add path uses (see
+  // ActiveWorkoutLogger's handleAdd) — without this, adding an exercise by
+  // hand would pre-fill but loading a saved routine wouldn't, which is
+  // exactly the kind of inconsistency nobody can explain to a user.
+  // `workouts` is the already-cached history list; no extra reads.
+  const withSeededSets = (presetExercises) =>
+    (presetExercises ?? []).map((exercise) => ({
+      ...exercise,
+      seedSets: seedSetsFromHistory(lastPerformance(exercise.exerciseId, workouts), {
+        count: DEFAULT_SETS_PER_EXERCISE,
+        isBodyweight: isBodyweightExercise(exercise.exerciseId),
+      }),
+    }));
+
   const handleStartWorkout = () => {
     startWorkout();
     navigate('/workout');
   };
 
   const handleStartAssigned = (assignment) => {
-    startWorkout(assignment.exercises, assignment.id);
+    startWorkout(withSeededSets(assignment.exercises), assignment.id);
     navigate('/workout');
   };
 
@@ -351,7 +370,7 @@ export default function App() {
   // muscleGroup} shape) but with no assignedWorkoutId — loading a template
   // never marks any trainer assignment complete.
   const handleStartTemplate = (template) => {
-    startWorkout(template.exercises);
+    startWorkout(withSeededSets(template.exercises));
     navigate('/workout');
   };
 

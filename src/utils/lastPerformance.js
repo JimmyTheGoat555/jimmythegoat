@@ -13,7 +13,17 @@
 function tidySets(exercise) {
   return (exercise?.sets ?? [])
     .filter((s) => s.completed !== false)
-    .map((s) => ({ weight: Number(s.weight), reps: Number(s.reps) }))
+    .map((s) => ({
+      weight: Number(s.weight),
+      reps: Number(s.reps),
+      // Carried through for auto-fill (see seedSetsFromHistory). For a
+      // bodyweight movement the stored `weight` is the EFFECTIVE load the
+      // server computed — body weight plus belt — so it's the right number
+      // for the "Last time · 82×8" line but completely the wrong one to
+      // put back in the belt field. `addedWeight` is the only part that
+      // was actually the lifter's choice, so that's what gets re-seeded.
+      addedWeight: Number(s.addedWeight) || 0,
+    }))
     // weight >= 0 (not > 0): a bodyweight movement legitimately logs 0 kg.
     // reps > 0 drops the blank "typed but never filled in" rows.
     .filter((s) => Number.isFinite(s.weight) && s.weight >= 0 && Number.isFinite(s.reps) && s.reps > 0);
@@ -35,4 +45,33 @@ export function lastPerformance(exerciseId, workouts) {
 // each entry so five sets still fit one line.
 export function formatSets(sets) {
   return (sets ?? []).map((s) => `${s.weight}×${s.reps}`).join(' · ');
+}
+
+// Builds the starting sets for an exercise being added to a workout,
+// pre-filled from the last time it was performed so someone repeating the
+// same weights types nothing at all.
+//
+// Position-matched, not summarised: set 1 gets last session's set 1, set 2
+// gets set 2, and so on. That preserves a descending or ramping scheme
+// (80×8, 80×7, 75×8) instead of flattening it to one number, which is the
+// whole reason this is worth doing.
+//
+// Counts differ gracefully in both directions — 4 sets last time fills the
+// 3 slots and drops the rest; 2 sets last time fills two and leaves the
+// third blank to grow into. No history means blanks, exactly as before.
+//
+// `completed` is ALWAYS false. These are a suggestion, not a claim that
+// the work happened: the lifter still checks each set off to earn its
+// volume, which is the only thing that makes the numbers mean anything.
+export function seedSetsFromHistory(last, { count, isBodyweight = false } = {}) {
+  return Array.from({ length: count }, (_, i) => {
+    const historical = last?.sets?.[i];
+    const base = { id: crypto.randomUUID(), weight: '', reps: '', completed: false };
+    if (!historical) return base;
+    return isBodyweight
+      ? // The load is the lifter's body weight (folded in server-side), so
+        // only the belt and the reps are theirs to repeat.
+        { ...base, addedWeight: historical.addedWeight, reps: historical.reps }
+      : { ...base, weight: historical.weight, reps: historical.reps };
+  });
 }

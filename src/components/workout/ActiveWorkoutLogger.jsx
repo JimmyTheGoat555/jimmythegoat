@@ -7,8 +7,9 @@ import ReorderableList from './ReorderableList';
 import WorkoutSummaryModal from './WorkoutSummaryModal';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import { useRestTimer } from '../../hooks/useRestTimer';
+import { DEFAULT_SETS_PER_EXERCISE } from '../../hooks/useWorkouts';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
-import { lastPerformance } from '../../utils/lastPerformance';
+import { lastPerformance, seedSetsFromHistory } from '../../utils/lastPerformance';
 import { sortExercisesByPriority, isPrioritySorted } from '../../utils/exerciseSorting';
 import { randomGymQuote } from '../../data/gymQuotes';
 
@@ -111,8 +112,20 @@ export default function ActiveWorkoutLogger({
   // Picking an exercise no longer closes the sheet — you stay inside it to
   // keep adding more, same as picking several muscle groups in a row. It
   // only closes via the explicit ✕ or a tap on the backdrop (onClose).
+  //
+  // The added exercise arrives pre-filled with whatever was done last time
+  // (see utils/lastPerformance.js). `history` is the already-cached cloud
+  // workout list this component is given for its "Last time ·" line, so
+  // this is a scan of data in memory — no extra Firestore read per add.
   const handleAdd = (exercise) => {
-    onAddExercise(exercise);
+    const last = lastPerformance(exercise.id, history);
+    onAddExercise(
+      exercise,
+      seedSetsFromHistory(last, {
+        count: DEFAULT_SETS_PER_EXERCISE,
+        isBodyweight: exercise.isBodyweight === true,
+      }),
+    );
   };
 
   // Checking a set off pops the rest timer full-screen; un-checking it or

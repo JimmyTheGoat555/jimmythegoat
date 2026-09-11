@@ -73,7 +73,9 @@ function emptyWorkout(presetExercises, assignedWorkoutId) {
       muscleGroup: exercise.muscleGroup,
       // Seed list decides this — an assigned routine only carries ids.
       isBodyweight: isBodyweightExercise(exercise.exerciseId),
-      sets: emptySets(),
+      // Pre-filled from history by the caller when it has it (App.jsx's
+      // withSeededSets); blanks otherwise.
+      sets: exercise.seedSets?.length ? exercise.seedSets : emptySets(),
     })),
     assignedWorkoutId: assignedWorkoutId ?? null,
   };
@@ -107,8 +109,16 @@ export function useActiveWorkout(uid) {
     screenLock.release();
   }, [setActiveWorkout, screenLock.release]);
 
+  // `seedSets` (optional) pre-fills the new exercise from the lifter's last
+  // performance of it — built by the caller via
+  // utils/lastPerformance.js's seedSetsFromHistory, because THIS hook owns
+  // the shape of an in-progress workout and deliberately knows nothing
+  // about where history comes from. ActiveWorkoutLogger already holds the
+  // cached `history` list for its "Last time ·" line, so the lookup costs
+  // no extra read; passing the result in keeps that data dependency at the
+  // edge instead of dragging it into workout state.
   const addExercise = useCallback(
-    (exercise) => {
+    (exercise, seedSets) => {
       setActiveWorkout((prev) => {
         if (!prev) return prev;
         if (prev.exercises.some((e) => e.exerciseId === exercise.id)) return prev;
@@ -123,7 +133,7 @@ export function useActiveWorkout(uid) {
               // From the exercise definition (seed list has the flag;
               // custom exercises don't carry it → treated as weighted).
               isBodyweight: exercise.isBodyweight === true,
-              sets: emptySets(),
+              sets: seedSets?.length ? seedSets : emptySets(),
             },
           ],
         };
