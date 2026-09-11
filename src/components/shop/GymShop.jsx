@@ -7,7 +7,13 @@ import {
   readEquippedAccessories,
 } from '../../data/storeItems';
 import JimmyAnimation from '../evolution/JimmyAnimation';
-import { AccessoryIcon } from '../evolution/accessoryArt';
+import JimmyAvatar from '../evolution/JimmyAvatar';
+
+// Head and eye pieces are tiny on a full-body goat at card size — a pair of
+// shades ends up eight pixels wide. Those get the head crop; anything that
+// covers the torso or below is shown full length, because its whole point is
+// how far down it goes.
+const PORTRAIT_SLOTS = new Set(['head', 'eyes', 'neck']);
 import { useJimmyLook } from '../../context/JimmyLook';
 import { danceNumberForItemId, getDancePreviewPath } from '../../utils/danceAnimations';
 
@@ -55,15 +61,23 @@ function ItemCard({ item, owned, equipped, canAfford, busy, onBuy, onEquip, prev
         />
       ) : (
         <>
-          {/* The real artwork, not the emoji — what you see here is exactly
-              what lands on Jimmy. One fixed box for every accessory with
-              the art fitted inside it (object-contain for the PNGs, the
-              default preserveAspectRatio for the SVGs), because these are
-              wildly different shapes: the shades are 2.6:1 and the hoodie
-              0.58:1, and anything that pins one dimension makes one of
-              them either a smear or a stamp. */}
-          <span className="flex h-20 w-full items-center justify-center px-2">
-            <AccessoryIcon itemId={item.id} className="h-full w-full" />
+          {/* Modelled on YOUR Jimmy, at the tier you are actually on —
+              not a flat cut-out of the garment. Two reasons it has to be
+              the real avatar rather than a product shot: the art is drawn
+              per stage now, so the Legend's hoodie genuinely is not the
+              Goat's, and a garment out of context tells you nothing about
+              how it will sit on the goat you own. Same component as the
+              lobby, so the card cannot drift from what you get.
+              Deliberately ONLY this item — the shop is showing you the
+              thing for sale, not your current outfit with one swap. */}
+          <span className="flex h-28 w-full items-center justify-center">
+            <JimmyAvatar
+              evolutionStage={jimmyLook.evolutionStage}
+              equippedAccessories={[item.id]}
+              crop={PORTRAIT_SLOTS.has(item.slot) ? 'head' : null}
+              size={PORTRAIT_SLOTS.has(item.slot) ? 104 : 112}
+              alt={item.name}
+            />
           </span>
           <p className="text-sm font-semibold text-neutral-100">{item.name}</p>
         </>
