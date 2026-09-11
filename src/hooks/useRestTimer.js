@@ -20,9 +20,17 @@ const SOUND_EFFECTS_KEY = 'sound-effects-enabled';
 // Vibration always fires — haptic feedback isn't really "sound", and
 // muting one shouldn't silently kill the other. Only the WebAudio beep
 // respects the toggle.
+//
+// The audible half of this is now primarily FullScreenTimer's preloaded
+// <audio> element (see utils/restAlarmSound.js — an AudioContext created
+// here, 90 seconds after the last touch, is routinely left suspended on a
+// locked phone). This WebAudio path stays as the fallback for whichever
+// of the two a given browser refuses.
 function alertRestOver(soundEnabled) {
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
-    navigator.vibrate([200, 100, 200]);
+    // Long-short-long-short-longest: a pattern you feel as deliberate
+    // through a pocket or against a bench, not as a stray notification.
+    navigator.vibrate([200, 100, 200, 100, 500]);
   }
   if (!soundEnabled) return;
   try {

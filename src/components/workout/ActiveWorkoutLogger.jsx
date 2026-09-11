@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import ExerciseLogCard from './ExerciseLogCard';
 import ExercisePicker from './ExercisePicker';
 import WorkoutTimer from './WorkoutTimer';
-import RestTimer from './RestTimer';
+import FullScreenTimer from './FullScreenTimer';
 import WorkoutSummaryModal from './WorkoutSummaryModal';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import { useRestTimer } from '../../hooks/useRestTimer';
@@ -32,6 +32,7 @@ export default function ActiveWorkoutLogger({
   // tapping it rolls another, never the same one twice running.
   const [quote, setQuote] = useState(() => randomGymQuote());
   const rest = useRestTimer();
+  const [timerMinimized, setTimerMinimized] = useState(false);
 
   const completedSets = workout.exercises.reduce(
     (sum, e) => sum + e.sets.filter((s) => s.completed).length,
@@ -46,17 +47,27 @@ export default function ActiveWorkoutLogger({
     onAddExercise(exercise);
   };
 
-  // Checking a set off pops the rest timer; un-checking it or editing
-  // weight/reps leaves any running rest alone.
+  // Checking a set off pops the rest timer full-screen; un-checking it or
+  // editing weight/reps leaves any running rest alone.
   const handleUpdateSet = (exerciseId, setId, patch) => {
     onUpdateSet(exerciseId, setId, patch);
     if (patch.completed === true) {
       rest.start();
+      setTimerMinimized(false);
     }
   };
 
+  // Minimising hides the overlay but leaves the clock running (see
+  // FullScreenTimer's header comment). This snaps it back to full-screen
+  // the instant the rest actually ends, so choosing to go back to the
+  // workout mid-rest can never cost someone the alarm — which is the whole
+  // failure this redesign exists to fix.
+  useEffect(() => {
+    if (rest.isDone) setTimerMinimized(false);
+  }, [rest.isDone]);
+
   return (
-    <div className={`flex flex-col gap-4 pt-6 ${rest.isVisible ? 'pb-40' : 'pb-28'}`}>
+    <div className={`flex flex-col gap-4 pt-6 ${rest.isVisible && timerMinimized ? 'pb-40' : 'pb-28'}`}>
       <header className="flex items-center justify-between">
         <div className="flex items-baseline gap-2">
           <h1 className="text-2xl font-bold text-neutral-50">Workout</h1>
@@ -118,16 +129,20 @@ export default function ActiveWorkoutLogger({
 
       <div className="fixed bottom-0 inset-x-0 z-30 bg-neutral-950/92 border-t border-white/10 p-4">
         <div className="max-w-md mx-auto flex flex-col gap-3">
-          {rest.isVisible && (
-            <RestTimer
-              secondsLeft={rest.secondsLeft}
-              isDone={rest.isDone}
-              isOverdue={rest.isOverdue}
-              overdueMessage={rest.overdueMessage}
-              step={rest.step}
-              onAddTime={rest.addTime}
-              onDismiss={rest.dismiss}
-            />
+          {/* Only ever shown while the full-screen timer is deliberately
+              minimised — a way back to it, not a second timer UI. */}
+          {rest.isVisible && timerMinimized && (
+            <button
+              type="button"
+              onClick={() => setTimerMinimized(false)}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-neutral-900/90 py-3 active:scale-[0.98]"
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Resting</span>
+              <span className="text-xl font-bold tabular-nums text-neutral-50">
+                {String(Math.floor(rest.secondsLeft / 60)).padStart(2, '0')}:
+                {String(rest.secondsLeft % 60).padStart(2, '0')}
+              </span>
+            </button>
           )}
           <button
             type="button"
@@ -141,6 +156,18 @@ export default function ActiveWorkoutLogger({
           </button>
         </div>
       </div>
+
+      {rest.isVisible && !timerMinimized && (
+        <FullScreenTimer
+          secondsLeft={rest.secondsLeft}
+          isDone={rest.isDone}
+          isOverdue={rest.isOverdue}
+          overdueMessage={rest.overdueMessage}
+          onAddTime={rest.addTime}
+          onSkip={rest.dismiss}
+          onMinimize={() => setTimerMinimized(true)}
+        />
+      )}
 
       {showSummary && (
         <WorkoutSummaryModal
