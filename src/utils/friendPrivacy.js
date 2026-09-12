@@ -34,6 +34,12 @@ import { readEquippedAccessories } from '../data/storeItems';
 // whole screen exists to avoid, so they never survive — not zeroed, not
 // nulled-but-present, gone. Sets and reps stay, because the point is that
 // a friend can copy the routine.
+//
+// Worth knowing: a template in this app is ALREADY weightless at rest.
+// useWorkoutTemplates stores only exerciseId/name/muscleGroup — no sets,
+// no reps, no loads — so when routines are eventually published there will
+// be no weight here to strip. This function still strips, because it must
+// keep holding if the published shape ever grows richer than that.
 function sanitizeRoutine(routine) {
   if (!routine || typeof routine !== 'object') return null;
   const exercises = Array.isArray(routine.exercises) ? routine.exercises : [];
@@ -50,9 +56,19 @@ function sanitizeRoutine(routine) {
       const low = reps.length ? Math.min(...reps) : null;
       const high = reps.length ? Math.max(...reps) : null;
       return {
-        id: exercise?.id ?? exercise?.exerciseId ?? null,
+        // exerciseId and muscleGroup are what a COPY needs to rebuild this
+        // routine in your own library (see useWorkoutTemplates.saveTemplate).
+        // Neither is personal — one is a catalog key, the other a category
+        // like "chest" — and without them the copy button has nothing to
+        // write.
+        exerciseId: exercise?.exerciseId ?? exercise?.id ?? null,
+        muscleGroup: typeof exercise?.muscleGroup === 'string' ? exercise.muscleGroup : null,
         name: typeof exercise?.name === 'string' ? exercise.name : 'Exercise',
-        setCount: sets.length,
+        // Both null for a real template: they are stored structure-only,
+        // with no sets at all (useWorkoutTemplates). These survive for a
+        // richer published shape that does carry them; formatReps in the
+        // view renders an em dash when they don't.
+        setCount: sets.length || null,
         repRange: low == null ? null : { low, high },
       };
     }),

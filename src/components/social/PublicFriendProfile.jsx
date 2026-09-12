@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
 import { sanitizeFriendData } from '../../utils/friendPrivacy';
@@ -50,7 +50,7 @@ function MysteryProgress({ percent, nextTierLabel, isMaxTier, name }) {
   );
 }
 
-function RoutineCard({ routine }) {
+function RoutineCard({ routine, onCopy }) {
   return (
     <div className="card p-4 flex flex-col gap-2">
       <p className="text-sm font-semibold text-neutral-100">{routine.name}</p>
@@ -64,6 +64,7 @@ function RoutineCard({ routine }) {
           </li>
         ))}
       </ul>
+      {onCopy && <CopyRoutineButton routine={routine} onCopy={onCopy} />}
     </div>
   );
 }
@@ -73,7 +74,72 @@ function formatReps(range) {
   return range.low === range.high ? `${range.low}` : `${range.low}-${range.high}`;
 }
 
-export default function PublicFriendProfile({ friends, onSendNudge }) {
+// 'Copied!' holds for this long before the button goes back to being a
+// button. Long enough to read, short enough that a second copy is not
+// blocked behind it.
+const COPIED_HOLD_MS = 2000;
+
+function CopyRoutineButton({ routine, onCopy }) {
+  const [state, setState] = useState('idle'); // idle | saving | copied | failed
+  const timer = useRef(null);
+  // The in-flight latch is a REF, not the state above. State is captured by
+  // the render closure, so two taps in the same frame both read 'idle' and
+  // both write — measured, three synchronous clicks produced three saved
+  // copies. `disabled` does not help either: it is not on the DOM until
+  // React re-renders. A ref updates synchronously, which is the only thing
+  // that closes the window.
+  const inFlight = useRef(false);
+
+  // Two reasons this is scoped to one button rather than lifted: a shared
+  // "which one is copied" id would need clearing on every other press, and
+  // the timeout below has to die with the component that owns it. Leaving
+  // it running would set state on an unmounted card the moment someone taps
+  // Back inside the two seconds.
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const handleCopyWorkout = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setState('saving');
+    try {
+      await onCopy(routine);
+      // Only buzz once the write has actually landed. Confirming a save
+      // that then fails is worse than a slightly later buzz.
+      navigator.vibrate?.([50]);
+      setState('copied');
+    } catch {
+      setState('failed');
+    }
+    inFlight.current = false;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setState('idle'), COPIED_HOLD_MS);
+  };
+
+  const label = { idle: 'Copy to My Workouts', saving: 'Copying…', copied: '✓ Copied!', failed: "Couldn't copy" }[state];
+  const tone =
+    state === 'copied'
+      ? 'bg-[var(--success)]/15 text-[var(--success)] border-[var(--success)]/40'
+      : state === 'failed'
+        ? 'bg-[var(--danger)]/15 text-[var(--danger)] border-[var(--danger)]/40'
+        : 'bg-white/5 text-neutral-300 border-white/10';
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopyWorkout}
+      disabled={state === 'saving'}
+      // Announced rather than only coloured: a checkmark that turns green is
+      // invisible to a screen reader and to anyone who cannot tell the two
+      // greens apart.
+      aria-live="polite"
+      className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm font-semibold transition-colors duration-200 ${tone}`}
+    >
+      {label}
+    </button>
+  );
+}
+
+export default function PublicFriendProfile({ friends, onSendNudge, onSaveTemplate }) {
   const { friendUid } = useParams();
   const navigate = useNavigate();
   const knownFriend = friends.find((f) => f.uid === friendUid);
@@ -115,6 +181,28 @@ export default function PublicFriendProfile({ friends, onSendNudge }) {
   }
 
   const worn = friend.equippedAccessories.map((id) => getStoreItem(id)).filter(Boolean);
+
+  // Copies the STRUCTURE into your own library — the same shape
+  // saveTemplate already writes for your own routines (exerciseId, name,
+  // muscleGroup and nothing else), so a copied routine is indistinguishable
+  // from one you built yourself and carries none of their numbers. It
+  // cannot carry weights even in principle: templates do not store any.
+  //
+  // Attributed in the title because a library of anonymous "Push Day"s is
+  // useless a month later.
+  const handleCopyWorkout = onSaveTemplate
+    ? (routine) =>
+        onSaveTemplate(
+          `${routine.name} — from ${name}`,
+          routine.exercises
+            .filter((e) => e.exerciseId)
+            .map(({ exerciseId, name: exerciseName, muscleGroup }) => ({
+              exerciseId,
+              name: exerciseName,
+              muscleGroup,
+            })),
+        )
+    : null;
 
   return (
     <div className="flex flex-col gap-5 pt-6 pb-24">
@@ -211,7 +299,11 @@ export default function PublicFriendProfile({ friends, onSendNudge }) {
           </p>
           <div className="flex flex-col gap-3">
             {friend.savedRoutines.map((routine, i) => (
-              <RoutineCard key={routine.id ?? `${routine.name}-${i}`} routine={routine} />
+              <RoutineCard
+                key={routine.id ?? `${routine.name}-${i}`}
+                routine={routine}
+                onCopy={handleCopyWorkout}
+              />
             ))}
           </div>
         </section>

@@ -690,7 +690,13 @@ export default function App() {
               />
               <Route
                 path="friends/:friendUid"
-                element={<PublicFriendProfile friends={friendsGraph.friends} onSendNudge={friendsGraph.sendNudge} />}
+                element={
+                  <PublicFriendProfile
+                    friends={friendsGraph.friends}
+                    onSendNudge={friendsGraph.sendNudge}
+                    onSaveTemplate={saveTemplate}
+                  />
+                }
               />
               <Route
                 path="profile"
