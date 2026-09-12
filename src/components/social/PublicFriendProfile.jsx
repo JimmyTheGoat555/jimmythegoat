@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
 import { sanitizeFriendData } from '../../utils/friendPrivacy';
@@ -53,10 +53,16 @@ function MysteryProgress({ percent, nextTierLabel, isMaxTier, name }) {
 
 function RoutineCard({ routine, onCopy, ownerUid, myUid }) {
   return (
-    <div className="card p-4 flex flex-col gap-2">
+    <Cheerable
+      targetId={cheerTargetId(ownerUid, `routine_${routine.id}`)}
+      myUid={myUid}
+      className="card p-4 flex flex-col gap-2"
+    >
+      {(cheer) => (
+        <>
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-neutral-100">{routine.name}</p>
-        <CheerButton targetId={cheerTargetId(ownerUid, `routine_${routine.id}`)} myUid={myUid} />
+        <CheerButton {...cheer} onToggle={cheer.toggleLike} />
       </div>
       <ul className="flex flex-col gap-1">
         {routine.exercises.map((exercise, i) => (
@@ -69,13 +75,80 @@ function RoutineCard({ routine, onCopy, ownerUid, myUid }) {
         ))}
       </ul>
       {onCopy && <CopyRoutineButton routine={routine} onCopy={onCopy} />}
-    </div>
+        </>
+      )}
+    </Cheerable>
   );
 }
 
 function formatReps(range) {
   if (!range) return '—';
   return range.low === range.high ? `${range.low}` : `${range.low}-${range.high}`;
+}
+
+// Double tap to cheer.
+//
+// Timed by hand rather than using onDoubleClick, which is unreliable on
+// touch — Safari in particular treats the second tap as a gesture candidate
+// and does not always emit dblclick. Two ordinary click events inside a
+// short window is the thing that actually happens on every platform.
+//
+// Taps that land on something already interactive are ignored: without this
+// a quick double press on the heart itself would toggle twice AND fire the
+// gesture, and the same on 'Copy to My Workouts' would cheer the routine
+// you were trying to copy.
+const DOUBLE_TAP_MS = 320;
+
+function useDoubleTap(onDoubleTap) {
+  const last = useRef(0);
+  return useCallback(
+    (event) => {
+      if (event.target.closest?.('button, a, input, textarea, select')) return;
+      const now = Date.now();
+      if (now - last.current < DOUBLE_TAP_MS) {
+        last.current = 0;
+        onDoubleTap();
+      } else {
+        last.current = now;
+      }
+    },
+    [onDoubleTap],
+  );
+}
+
+// Wraps one cheerable thing: owns its cheer state, handles the double tap,
+// and renders the burst. The heart button is handed the same state rather
+// than calling the hook again, so the two controls cannot disagree.
+function Cheerable({ targetId, myUid, className = '', children }) {
+  const { count, likedByMe, toggleLike, like } = useCheers(targetId, myUid);
+  const [burst, setBurst] = useState(0);
+  const cheerable = Boolean(targetId && myUid);
+
+  const handleDoubleTap = useCallback(() => {
+    navigator.vibrate?.([30]);
+    setBurst((n) => n + 1);
+    like();
+  }, [like]);
+
+  const onClick = useDoubleTap(handleDoubleTap);
+
+  return (
+    <div className={`relative ${className}`} onClick={cheerable ? onClick : undefined}>
+      {children({ count, likedByMe, toggleLike, cheerable })}
+      {burst > 0 && (
+        <span
+          // Keyed on the counter so a fresh element mounts each time —
+          // re-adding the same class to a live node does not restart a CSS
+          // animation.
+          key={burst}
+          className="cheer-burst pointer-events-none absolute inset-0 flex items-center justify-center text-4xl"
+          aria-hidden="true"
+        >
+          ❤️
+        </span>
+      )}
+    </div>
+  );
 }
 
 // A cheer button: heart, count, pop.
@@ -87,11 +160,9 @@ function formatReps(range) {
 // `animate` is keyed off the like count rather than a boolean, so a fresh
 // animation fires on every toggle — re-adding an identical class name would
 // not restart it, and toggling a boolean off-then-on needs a second render.
-function CheerButton({ targetId, myUid }) {
-  const { count, likedByMe, toggleLike } = useCheers(targetId, myUid);
+function CheerButton({ count, likedByMe, onToggle, cheerable }) {
   const [beat, setBeat] = useState(0);
-
-  if (!targetId || !myUid) return null;
+  if (!cheerable) return null;
 
   const handleToggleLike = () => {
     // Buzz and pop on the tap, not on the write. Unlike copying a routine —
@@ -100,7 +171,7 @@ function CheerButton({ targetId, myUid }) {
     // fails. Waiting here would make the heart feel broken.
     navigator.vibrate?.([30]);
     setBeat((n) => n + 1);
-    toggleLike();
+    onToggle();
   };
 
   return (
@@ -321,14 +392,24 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
               .slice()
               .sort((a, b) => b.weight - a.weight)
               .map((pr) => (
-                <li key={pr.exerciseId ?? pr.name} className="flex items-center justify-between gap-2 text-base">
-                  <span className="text-neutral-300">{pr.name}</span>
-                  <span className="flex items-center gap-2">
-                    <span className="font-semibold text-neutral-100 tabular-nums">
-                      {pr.weight} kg{pr.reps ? ` × ${pr.reps}` : ''}
-                    </span>
-                    <CheerButton targetId={cheerTargetId(friendUid, pr.exerciseId)} myUid={myUid} />
-                  </span>
+                <li key={pr.exerciseId ?? pr.name}>
+                  <Cheerable
+                    targetId={cheerTargetId(friendUid, pr.exerciseId)}
+                    myUid={myUid}
+                    className="flex items-center justify-between gap-2 text-base"
+                  >
+                    {(cheer) => (
+                      <>
+                        <span className="text-neutral-300">{pr.name}</span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-semibold text-neutral-100 tabular-nums">
+                            {pr.weight} kg{pr.reps ? ` × ${pr.reps}` : ''}
+                          </span>
+                          <CheerButton {...cheer} onToggle={cheer.toggleLike} />
+                        </span>
+                      </>
+                    )}
+                  </Cheerable>
                 </li>
               ))}
           </ul>

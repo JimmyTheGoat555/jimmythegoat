@@ -83,10 +83,37 @@ export function useCheers(targetId, myUid) {
     }
   }, [targetId, myUid, server.likedByMe]);
 
+  // Add-only, for double-tap. Instagram's rule, and it is the right one: a
+  // double tap that silently REMOVED a cheer you already left would be a
+  // gesture that does opposite things depending on state you cannot see at
+  // a glance. Already liked means there is simply nothing to write; the
+  // caller still plays the burst, because swallowing the gesture entirely
+  // feels broken.
+  const like = useCallback(async () => {
+    if (!targetId || !myUid) return;
+    if (pendingRef.current ?? server.likedByMe) return;
+    pendingRef.current = true;
+    setPending(true);
+    try {
+      const likeRef = doc(db, 'cheers', targetId, 'likes', myUid);
+      // Note this is only ever reached when we believe no cheer exists: the
+      // guard above is what makes repeated double taps safe, NOT the write
+      // being idempotent. It is not — `allow update: if false` in the rules
+      // means re-writing an existing cheer is denied, not ignored. If a
+      // second device liked it in the split second since the last snapshot,
+      // this throws, the catch rolls the optimistic flip back, and the
+      // snapshot then reports it as liked anyway. Right end state either way.
+      await setDoc(likeRef, { likedAt: new Date().toISOString(), likerUid: myUid });
+    } catch {
+      pendingRef.current = null;
+      setPending(null);
+    }
+  }, [targetId, myUid, server.likedByMe]);
+
   const likedByMe = pending ?? server.likedByMe;
   // Adjust the count by the difference the pending flip implies, so the
   // number moves with the heart instead of lagging a round trip behind it.
   const drift = pending == null || pending === server.likedByMe ? 0 : pending ? 1 : -1;
 
-  return { count: Math.max(0, server.count + drift), likedByMe, toggleLike };
+  return { count: Math.max(0, server.count + drift), likedByMe, toggleLike, like };
 }
