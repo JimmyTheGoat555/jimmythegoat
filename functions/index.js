@@ -59,6 +59,14 @@ exports.removeFriend = removeFriend;
 const { sendFriendNudge } = require('./nudges');
 exports.sendFriendNudge = sendFriendNudge;
 
+// Cheers are written straight from the client (no callable), so the "you
+// were cheered" inbox item has to come from a trigger — the client cannot
+// be given write access to someone else's notifications. Both of these
+// only write the doc; the push below picks it up like any other type.
+const { notifyOnPostCheer, notifyOnItemCheer } = require('./cheerNotifications');
+exports.notifyOnPostCheer = notifyOnPostCheer;
+exports.notifyOnItemCheer = notifyOnItemCheer;
+
 // Turns any newly-written notification doc into a real push, looking up
 // every device token the recipient has registered (a user can have more
 // than one — phone + desktop, say). This is the ONLY function that calls
