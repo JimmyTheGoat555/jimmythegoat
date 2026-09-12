@@ -49,7 +49,7 @@ const SocialPage = lazy(() => import('./components/social/SocialPage'));
 const GymShop = lazy(() => import('./components/shop/GymShop'));
 const ProfileView = lazy(() => import('./components/profile/ProfileView'));
 const HistoryList = lazy(() => import('./components/history/HistoryList'));
-const FriendProfile = lazy(() => import('./components/social/FriendProfile'));
+const PublicFriendProfile = lazy(() => import('./components/social/PublicFriendProfile'));
 const WorkoutDetail = lazy(() => import('./components/history/WorkoutDetail'));
 const ActiveWorkoutLogger = lazy(() => import('./components/workout/ActiveWorkoutLogger'));
 const TrainerDashboard = lazy(() => import('./components/trainer/TrainerDashboard'));
@@ -690,7 +690,7 @@ export default function App() {
               />
               <Route
                 path="friends/:friendUid"
-                element={<FriendProfile friends={friendsGraph.friends} onSendNudge={friendsGraph.sendNudge} />}
+                element={<PublicFriendProfile friends={friendsGraph.friends} onSendNudge={friendsGraph.sendNudge} />}
               />
               <Route
                 path="profile"
