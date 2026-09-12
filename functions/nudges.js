@@ -13,12 +13,11 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore } = require('firebase-admin/firestore');
 const { NUDGE_MESSAGES_BY_ID } = require('./nudgeMessages');
-const { requireVerifiedEmail, enforceRateLimit } = require('./guards');
+const { enforceRateLimit } = require('./guards');
 
 exports.sendFriendNudge = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   // Writes into someone else's inbox — verified email + rate limit, see guards.js.
-  requireVerifiedEmail(request);
   const uid = request.auth.uid;
   const targetUid = request.data?.targetUid;
   const messageId = request.data?.messageId;

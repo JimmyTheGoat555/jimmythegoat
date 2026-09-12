@@ -18,7 +18,7 @@
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore } = require('firebase-admin/firestore');
-const { requireVerifiedEmail, enforceRateLimit } = require('./guards');
+const { enforceRateLimit } = require('./guards');
 
 // A trainee's client calls this after logging a weigh-in so their
 // connected trainer gets an inbox notification (which
@@ -31,7 +31,6 @@ const { requireVerifiedEmail, enforceRateLimit } = require('./guards');
 // actually connected to, rate-limited on top.
 exports.notifyTrainer = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
-  requireVerifiedEmail(request);
   const uid = request.auth.uid;
 
   const weight = Number(request.data?.weight);

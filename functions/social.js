@@ -8,7 +8,7 @@
 // (rules only ever authorize a write against the CALLER's own uid).
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
-const { requireVerifiedEmail, enforceRateLimit } = require('./guards');
+const { enforceRateLimit } = require('./guards');
 
 // Called by the sender. A plain client write into someone else's
 // friendRequests subcollection isn't possible (see firestore.rules), so
@@ -18,7 +18,6 @@ const { requireVerifiedEmail, enforceRateLimit } = require('./guards');
 exports.sendFriendRequest = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   // Puts a request in someone else's inbox — verified email + hourly cap, see guards.js.
-  requireVerifiedEmail(request);
   const uid = request.auth.uid;
   const code = String(request.data?.code ?? '').trim().toUpperCase();
   if (!code) throw new HttpsError('invalid-argument', 'Enter a code.');

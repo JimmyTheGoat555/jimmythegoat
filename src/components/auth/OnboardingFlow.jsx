@@ -400,8 +400,8 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
                 placeholder="you@email.com"
               />
               <p className="text-xs leading-snug text-white/50">
-                Asked once. Jimmy sends a verification link here right after you create the account —
-                click it to unlock friend features.
+                Asked once, so you can get back in if you forget your password. Jimmy sends a
+                confirmation link — worth clicking, but nothing in the app waits for it.
               </p>
             </div>
           )}

@@ -14,10 +14,6 @@ import NotificationsList from './NotificationsList';
 // friend requests, a live feed with per-post cheering).
 export default function SocialPage({
   account,
-  emailVerified,
-  email,
-  onResendVerification,
-  onRecheckVerification,
   workouts,
   feedPosts,
   feedLoading,
@@ -65,10 +61,6 @@ export default function SocialPage({
         onSendRequest={onSendRequest}
         onRespond={onRespond}
         onRemove={onRemove}
-        emailVerified={emailVerified}
-        email={email}
-        onResendVerification={onResendVerification}
-        onRecheckVerification={onRecheckVerification}
       />
 
       <section className="flex flex-col gap-3">

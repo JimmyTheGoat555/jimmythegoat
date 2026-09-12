@@ -1,22 +1,31 @@
 // Shared preconditions for the callables that reach OTHER users — the
-// outbound social actions (friend requests, nudges). These are the surface
-// a scripted client would use to spam or Sybil-flood real people, so they
-// get two extra gates on top of the plain `request.auth` check every
-// callable already does:
+// outbound social actions (friend requests, nudges, the trainee → trainer
+// weigh-in ping). These are the surface a scripted client would use to spam
+// or Sybil-flood real people.
 //
-//   1. requireVerifiedEmail — the account's email address has actually
-//      been confirmed. Solo actions (logging your own workout, buying a
-//      cosmetic) deliberately DON'T require this: they only affect you and
-//      are already rate-limited elsewhere, and gating them would lock out
-//      existing users mid-session. Anything that puts a notification in
-//      someone else's inbox does require it — a throwaway unverified
-//      address shouldn't be able to do that.
+// There used to be a second gate here, requireVerifiedEmail, on the theory
+// that a throwaway unverified address should not be able to put a
+// notification in a stranger's inbox. It was removed at the owner's
+// request. In practice it was not buying what it looked like it bought:
+// sign-up sends exactly one confirmation mail, best-effort, and nothing
+// ever asked again — so 29 of 31 real accounts were unverified and simply
+// locked out of adding friends at all. A gate almost nobody can pass is a
+// broken feature, not a security control.
 //
-//   2. enforceRateLimit — a rolling-window / per-target cooldown counter,
-//      kept in the Admin-only `rateLimits/{uid}` collection (see
-//      firestore.rules: `allow read, write: if false` — the client can
-//      neither read nor reset it). One extra read + write per guarded
-//      call.
+// enforceRateLimit is what actually stops the abuse, and is untouched: a
+// rolling-window / per-target cooldown counter kept in the Admin-only
+// `rateLimits/{uid}` collection (see firestore.rules: `allow read, write:
+// if false` — the client can neither read nor reset it). It caps friend
+// requests at 20/hour, nudges at one per person per hour with a global
+// 15/hour backstop, and it does not care whether an address is confirmed.
+// One extra read + write per guarded call.
+//
+// Note what verification WAS worth, in case this is ever reconsidered: it
+// raised the cost of creating disposable accounts. The rate limits are
+// per-uid, so someone willing to register repeatedly can still fan out
+// across fresh accounts. That is the hole this leaves open, and the honest
+// fix for it is a signup-side control (a captcha, or per-IP registration
+// limits), not a gate on an email nobody receives.
 const { HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore } = require('firebase-admin/firestore');
 
@@ -24,14 +33,6 @@ const { getFirestore } = require('firebase-admin/firestore');
 // accounts `email_verified` is false until the user clicks the link;
 // providers like Google mint it already true, so a bare `=== true` check
 // is correct for every sign-in method without branching on the provider.
-function requireVerifiedEmail(request) {
-  if (request.auth?.token?.email_verified !== true) {
-    throw new HttpsError(
-      'failed-precondition',
-      'Verify your email first — check your inbox for the confirmation link, then try again.',
-    );
-  }
-}
 
 // Prunes anything older than `windowMs` from `timestamps` (an array of
 // epoch-ms numbers) and returns what's left, newest-last.
@@ -137,4 +138,4 @@ async function enforceRateLimit(uid, action, targetUid) {
   });
 }
 
-module.exports = { requireVerifiedEmail, enforceRateLimit };
+module.exports = { enforceRateLimit };
