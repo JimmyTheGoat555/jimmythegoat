@@ -185,6 +185,9 @@ export default function App() {
     notifyTrainer,
     updateUsername,
     resetPassword,
+    emailVerified,
+    resendVerification,
+    refreshEmailVerified,
     deleteAccount,
     setSharePRs,
   } = useAuth();
@@ -670,6 +673,10 @@ export default function App() {
                 element={
                   <SocialPage
                     account={account}
+                    emailVerified={emailVerified}
+                    email={user?.email}
+                    onResendVerification={resendVerification}
+                    onRecheckVerification={refreshEmailVerified}
                     workouts={workouts}
                     feedPosts={feed.posts}
                     feedLoading={feed.loading}

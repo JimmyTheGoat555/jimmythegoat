@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import VerifyEmailNotice from '../auth/VerifyEmailNotice';
 
 // `friends` is useFriendsGraph(...).friends — [{uid, displayName}],
 // resolved from the caller's own users/{uid}.friends array of bare uids
@@ -16,6 +17,13 @@ export default function FriendsManager({
   onSendRequest,
   onRespond,
   onRemove,
+  // Adding a friend is one of the server-gated outbound actions, so an
+  // unverified address fails it every time (functions/guards.js). Better to
+  // say so up front than to let someone type a code and collect a 400.
+  emailVerified = true,
+  email,
+  onResendVerification,
+  onRecheckVerification,
 }) {
   const [open, setOpen] = useState(false);
   const [codeInput, setCodeInput] = useState('');
@@ -72,7 +80,8 @@ export default function FriendsManager({
             </span>
           </p>
 
-          <form onSubmit={handleSend} className="flex gap-2">
+          {emailVerified ? (
+<form onSubmit={handleSend} className="flex gap-2">
             <input
               type="text"
               value={codeInput}
@@ -88,6 +97,13 @@ export default function FriendsManager({
               Add
             </button>
           </form>
+          ) : (
+            <VerifyEmailNotice
+              email={email}
+              onResend={onResendVerification}
+              onRecheck={onRecheckVerification}
+            />
+          )}
 
           {message && <p className="text-sm text-neutral-400">{message}</p>}
 

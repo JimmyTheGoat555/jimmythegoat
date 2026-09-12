@@ -32,6 +32,11 @@ function randomShareCode() {
 // hook in this app follows) and passed down as props.
 export function useAuth() {
   const [user, setUser] = useState(null);
+  // Tracked separately from `user` because reload() MUTATES the existing
+  // User object rather than emitting a new one — onAuthStateChanged never
+  // fires, so nothing derived from `user` would re-render after someone
+  // clicks the link and comes back.
+  const [emailVerified, setEmailVerified] = useState(false);
   const [profile, setProfile] = useState(null);
   const [initializing, setInitializing] = useState(true);
   const [authError, setAuthError] = useState(null);
@@ -49,6 +54,7 @@ export function useAuth() {
     }
     return onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
+      setEmailVerified(firebaseUser?.emailVerified ?? false);
       setInitializing(false);
       if (!firebaseUser) setProfile(null);
     });
@@ -324,6 +330,35 @@ export function useAuth() {
   // to be set at once.
   const resetPassword = useCallback((email) => sendPasswordResetEmail(auth, email), []);
 
+  // Re-send the confirmation link. Sign-up fires one and only one (see
+  // signUp above) and it is best-effort — the .catch there deliberately
+  // swallows failures so a transient send error cannot fail an otherwise
+  // good signup. The consequence is that anyone who lost that mail, or
+  // whose send quietly failed, had no way back: the outbound social
+  // callables reject them (functions/guards.js) and the only feedback was
+  // a 400 telling them to check an inbox that might hold nothing.
+  const resendVerification = useCallback(async () => {
+    if (!auth.currentUser) throw new Error('Sign in first.');
+    await sendEmailVerification(auth.currentUser);
+  }, []);
+
+  // Ask the server whether the address has been confirmed since we last
+  // looked, and — this is the part that matters — force a fresh ID TOKEN.
+  //
+  // Clicking the link flips emailVerified on the Auth record immediately,
+  // but the token this client holds keeps saying false until it rotates,
+  // which is up to an hour. guards.js reads `request.auth.token
+  // .email_verified`, so without the forced refresh someone can verify,
+  // come straight back, and still be told to go and verify.
+  const refreshEmailVerified = useCallback(async () => {
+    const current = auth.currentUser;
+    if (!current) return false;
+    await current.reload();
+    if (current.emailVerified) await current.getIdToken(true);
+    setEmailVerified(current.emailVerified);
+    return current.emailVerified;
+  }, []);
+
   // Erasing an account reaches into other people's documents (their friends
   // arrays, requests this person sent them) and has to remove the Firebase
   // Auth user itself, so all of it lives server-side — see
@@ -414,6 +449,9 @@ export function useAuth() {
     notifyTrainer,
     updateUsername,
     resetPassword,
+    emailVerified,
+    resendVerification,
+    refreshEmailVerified,
     deleteAccount,
     setSharePRs,
   };
