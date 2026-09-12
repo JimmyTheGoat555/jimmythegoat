@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
 import { sanitizeFriendData } from '../../utils/friendPrivacy';
 import { getStoreItem } from '../../data/storeItems';
+import { cheerTargetId, useCheers } from '../../hooks/useCheers';
 import { AccessoryIcon } from '../evolution/accessoryArt';
 import JimmyAvatar from '../evolution/JimmyAvatar';
 import GradientBorder from '../shared/GradientBorder';
@@ -50,10 +51,13 @@ function MysteryProgress({ percent, nextTierLabel, isMaxTier, name }) {
   );
 }
 
-function RoutineCard({ routine, onCopy }) {
+function RoutineCard({ routine, onCopy, ownerUid, myUid }) {
   return (
     <div className="card p-4 flex flex-col gap-2">
-      <p className="text-sm font-semibold text-neutral-100">{routine.name}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-neutral-100">{routine.name}</p>
+        <CheerButton targetId={cheerTargetId(ownerUid, `routine_${routine.id}`)} myUid={myUid} />
+      </div>
       <ul className="flex flex-col gap-1">
         {routine.exercises.map((exercise, i) => (
           <li key={exercise.id ?? `${exercise.name}-${i}`} className="flex items-baseline justify-between gap-3 text-sm">
@@ -72,6 +76,49 @@ function RoutineCard({ routine, onCopy }) {
 function formatReps(range) {
   if (!range) return '—';
   return range.low === range.high ? `${range.low}` : `${range.low}-${range.high}`;
+}
+
+// A cheer button: heart, count, pop.
+//
+// The pop is a CSS keyframe (see index.css). The brief asked for
+// framer-motion; it has never been a dependency in this project, and a
+// 260ms two-keyframe animation does not justify adding a runtime for it.
+//
+// `animate` is keyed off the like count rather than a boolean, so a fresh
+// animation fires on every toggle — re-adding an identical class name would
+// not restart it, and toggling a boolean off-then-on needs a second render.
+function CheerButton({ targetId, myUid }) {
+  const { count, likedByMe, toggleLike } = useCheers(targetId, myUid);
+  const [beat, setBeat] = useState(0);
+
+  if (!targetId || !myUid) return null;
+
+  const handleToggleLike = () => {
+    // Buzz and pop on the tap, not on the write. Unlike copying a routine —
+    // where confirming a save that then fails would be a lie — a cheer is
+    // reversible, already optimistic, and rolls itself back if the write
+    // fails. Waiting here would make the heart feel broken.
+    navigator.vibrate?.([30]);
+    setBeat((n) => n + 1);
+    toggleLike();
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleToggleLike}
+      aria-pressed={likedByMe}
+      aria-label={likedByMe ? `Remove your cheer (${count})` : `Cheer this (${count})`}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold transition-colors duration-200 ${
+        likedByMe ? 'text-[var(--ember)]' : 'text-neutral-500'
+      }`}
+    >
+      <span key={beat} className={beat ? 'cheer-pop' : undefined} aria-hidden="true">
+        {likedByMe ? '❤️' : '🤍'}
+      </span>
+      {count > 0 && <span className="tabular-nums">{count}</span>}
+    </button>
+  );
 }
 
 // 'Copied!' holds for this long before the button goes back to being a
@@ -139,7 +186,7 @@ function CopyRoutineButton({ routine, onCopy }) {
   );
 }
 
-export default function PublicFriendProfile({ friends, onSendNudge, onSaveTemplate }) {
+export default function PublicFriendProfile({ friends, onSendNudge, onSaveTemplate, myUid }) {
   const { friendUid } = useParams();
   const navigate = useNavigate();
   const knownFriend = friends.find((f) => f.uid === friendUid);
@@ -274,10 +321,13 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
               .slice()
               .sort((a, b) => b.weight - a.weight)
               .map((pr) => (
-                <li key={pr.exerciseId ?? pr.name} className="flex items-center justify-between text-base">
+                <li key={pr.exerciseId ?? pr.name} className="flex items-center justify-between gap-2 text-base">
                   <span className="text-neutral-300">{pr.name}</span>
-                  <span className="font-semibold text-neutral-100 tabular-nums">
-                    {pr.weight} kg{pr.reps ? ` × ${pr.reps}` : ''}
+                  <span className="flex items-center gap-2">
+                    <span className="font-semibold text-neutral-100 tabular-nums">
+                      {pr.weight} kg{pr.reps ? ` × ${pr.reps}` : ''}
+                    </span>
+                    <CheerButton targetId={cheerTargetId(friendUid, pr.exerciseId)} myUid={myUid} />
                   </span>
                 </li>
               ))}
@@ -303,6 +353,8 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
                 key={routine.id ?? `${routine.name}-${i}`}
                 routine={routine}
                 onCopy={handleCopyWorkout}
+                ownerUid={friendUid}
+                myUid={myUid}
               />
             ))}
           </div>

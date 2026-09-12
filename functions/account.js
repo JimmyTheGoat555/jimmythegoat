@@ -13,7 +13,7 @@
 // uid and display name scattered across lookup tables and other users' docs.
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue, FieldPath } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 
 // Firestore batches cap at 500 writes; every fan-out here is chunked so a
@@ -61,12 +61,25 @@ exports.deleteAccount = onCall(async (request) => {
     (batch, ref) => batch.delete(ref),
   );
 
-  // 3. Their feed posts, each recursively so the cheers other people left
+  // 3. Cheers other people left on THEIR published items (PRs, routines).
+  //    Step 2 removes cheers this person LEFT; these are the mirror image
+  //    and would otherwise outlive the account. `cheers` doc ids are
+  //    "{ownerUid}__{itemId}", so a documentId() range scan finds exactly
+  //    this owner's targets — \uf8ff being the largest code point Firestore
+  //    will sort, which makes it the standard prefix terminator.
+  const ownCheerTargets = await db
+    .collection('cheers')
+    .where(FieldPath.documentId(), '>=', `${uid}__`)
+    .where(FieldPath.documentId(), '<', `${uid}__\uf8ff`)
+    .get();
+  await Promise.all(ownCheerTargets.docs.map((d) => db.recursiveDelete(d.ref)));
+
+  // 4. Their feed posts, each recursively so the cheers other people left
   //    on them go too rather than being orphaned under a deleted parent.
   const posts = await db.collection('feedPosts').where('userId', '==', uid).get();
   await Promise.all(posts.docs.map((d) => db.recursiveDelete(d.ref)));
 
-  // 4. If they coached anyone, cut those trainees loose. Their own workout
+  // 5. If they coached anyone, cut those trainees loose. Their own workout
   //    history is theirs and stays untouched; they simply stop having a
   //    coach, which is the same state they signed up in.
   if (user.role === 'trainer') {
@@ -78,7 +91,7 @@ exports.deleteAccount = onCall(async (request) => {
     );
   }
 
-  // 5. The share-code lookup tables (map a public code to this uid and
+  // 6. The share-code lookup tables (map a public code to this uid and
   //    display name — leaving them keeps the account findable and
   //    name-resolvable after it is gone) plus the top-level abuse-counter
   //    doc (rateLimits/{uid}, written by functions/guards.js). All three
@@ -89,12 +102,12 @@ exports.deleteAccount = onCall(async (request) => {
   if (user.trainerCode) lookups.push(db.collection('trainerCodes').doc(user.trainerCode));
   await commitInChunks(db, lookups, (batch, ref) => batch.delete(ref));
 
-  // 6. The account itself: recursive, so workouts, templates, notifications,
+  // 7. The account itself: recursive, so workouts, templates, notifications,
   //    fcmTokens, assignedWorkouts, incoming friendRequests and meta/profile
   //    (body weight log, goals) all go with it.
   await db.recursiveDelete(userRef);
 
-  // 7. Last, because it is the only step that cannot be retried: once the
+  // 8. Last, because it is the only step that cannot be retried: once the
   //    Auth user is gone this person can no longer sign in to call us again.
   //    Everything above is idempotent, so a failure part-way through leaves
   //    an account that can simply run the deletion a second time.

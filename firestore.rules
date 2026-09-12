@@ -233,6 +233,34 @@ service cloud.firestore {
       }
     }
 
+    // Cheers on things a friend has published — a personal record, a saved
+    // routine. None of them are documents: a PR is an array entry inside
+    // users/{uid}/public/summary, which only Cloud Functions ever write, so
+    // there is nothing to hang a subcollection off and nothing a cheerer
+    // could safely be granted write access to. Hence a parallel collection
+    // keyed by "{ownerUid}__{itemId}".
+    //
+    // Shape copied deliberately from feedPosts/{id}/likes rather than
+    // invented: one doc per liker with the liker's uid AS the doc id, no
+    // counter field anywhere, the count derived from subcollection size.
+    // That buys three things — a liker can only ever touch their own doc,
+    // there is no total to tamper with, and two people cheering at once
+    // cannot collide. Naming the subcollection `likes` and storing
+    // `likerUid` also means account deletion already sweeps these up: it
+    // runs a collection-group query for exactly that (functions/account.js),
+    // and the index it needs is already in firestore.indexes.json.
+    match /cheers/{targetId} {
+      // The parent is a path segment only; nothing is ever stored on it.
+      allow read: if signedIn();
+      allow write: if false;
+
+      match /likes/{likerUid} {
+        allow read: if signedIn();
+        allow create, delete: if isOwner(likerUid);
+        allow update: if false;
+      }
+    }
+
     // Per-user abuse counters for the outbound social callables — hourly
     // friend-request cap, per-friend nudge cooldown (see functions/guards.js).
     // Written ONLY by the Admin SDK inside those functions; the client can

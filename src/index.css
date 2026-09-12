@@ -364,6 +364,27 @@ button.card:hover {
    keeps it on the compositor; the decaying amplitude reads as an impact
    settling rather than a constant rattle. Duration here is mirrored by
    SHAKE_MS in that hook. */
+/* The cheer pop. Overshoots past 1 and settles back — a straight scale-up
+   reads as a resize, the overshoot reads as a press. Deliberately CSS: the
+   brief asked for framer-motion, which has never been a dependency here,
+   and a 260ms two-keyframe animation is not worth ~40KB of runtime. */
+@keyframes cheer-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  70% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+
+.cheer-pop {
+  animation: cheer-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Anyone who has asked the OS for less motion gets the colour change and
+   the count, and no bouncing. */
+@media (prefers-reduced-motion: reduce) {
+  .cheer-pop { animation: none; }
+}
+
 @keyframes screen-shake {
   0%,
   100% {

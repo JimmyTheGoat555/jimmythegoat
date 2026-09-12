@@ -695,6 +695,7 @@ export default function App() {
                     friends={friendsGraph.friends}
                     onSendNudge={friendsGraph.sendNudge}
                     onSaveTemplate={saveTemplate}
+                    myUid={uid}
                   />
                 }
               />
