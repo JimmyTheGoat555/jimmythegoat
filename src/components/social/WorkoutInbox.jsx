@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getMuscleGroup } from '../../data/exercises';
 
 // The two things that arrive here and need a hand: a workout a friend sent
 // (accept or dismiss) and the receipt for a bounty one of yours just
@@ -22,6 +23,13 @@ function exercisePreview(exercises = []) {
 }
 
 export default function WorkoutInbox({ items = [], onAccept, onDecline }) {
+  // Which routine is opened out in full. "Accept & Save" was previously a
+  // decision made on three exercise names and an ellipsis — fine for a
+  // three-lift push day, useless for anything longer, and the only way to
+  // find out what you had agreed to was to accept it and go look. One at a
+  // time, since two open lists in a stack of cards is a page of exercises
+  // with the buttons pushed off the bottom.
+  const [openId, setOpenId] = useState(null);
   // Which card is mid-write. The row stays on screen until the Firestore
   // snapshot drops it, so without this the button would look inert for the
   // round trip and invite a second tap (the hook latches those out anyway
@@ -94,6 +102,7 @@ export default function WorkoutInbox({ items = [], onAccept, onDecline }) {
           const routine = item.templateData ?? {};
           const exercises = Array.isArray(routine.exercises) ? routine.exercises : [];
           const preview = exercisePreview(exercises);
+          const expanded = openId === item.id;
           const busy = busyHere;
           return (
             <li key={item.id} className="rounded-xl border border-white/10 bg-white/5 px-3.5 py-3">
@@ -109,7 +118,66 @@ export default function WorkoutInbox({ items = [], onAccept, onDecline }) {
                   message can never be mistaken for the app talking. */}
               {item.message && <p className="mt-1 text-xs italic text-neutral-400">“{item.message}”</p>}
 
-              {preview && <p className="mt-1.5 text-xs text-neutral-500">{preview}</p>}
+              {/* The three-name teaser gives way to the real list rather
+                  than sitting above it saying the same thing twice. */}
+              {preview && !expanded && <p className="mt-1.5 text-xs text-neutral-500">{preview}</p>}
+
+              {/* Look before you commit. Inline rather than a sheet on
+                  purpose: the two buttons stay on screen while you read, so
+                  checking the routine is part of deciding rather than a
+                  detour you have to come back from. */}
+              {exercises.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setOpenId((cur) => (cur === item.id ? null : item.id))}
+                    aria-expanded={expanded}
+                    aria-controls={`routine-${item.id}`}
+                    className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-[var(--ember)] transition active:scale-[0.98]"
+                  >
+                    {expanded ? 'Hide' : `See all ${exercises.length} exercise${exercises.length === 1 ? '' : 's'}`}
+                    <span aria-hidden="true" className="text-[10px] leading-none">
+                      {expanded ? '▲' : '▼'}
+                    </span>
+                  </button>
+
+                  {expanded && (
+                    // Scrolls past a handful rather than pushing the
+                    // buttons off the card — a template can carry up to 30
+                    // exercises. overscroll-contain so flicking the end of
+                    // this list does not scroll the whole Social tab.
+                    <ol
+                      id={`routine-${item.id}`}
+                      className="mt-2 flex max-h-48 flex-col gap-1.5 overflow-y-auto overscroll-contain rounded-lg border border-white/5 bg-black/25 px-2.5 py-2"
+                    >
+                      {exercises.map((exercise, i) => {
+                        const group = getMuscleGroup(exercise?.muscleGroup);
+                        return (
+                          <li
+                            key={`${exercise?.exerciseId ?? exercise?.name}-${i}`}
+                            className="flex items-center gap-2 text-xs"
+                          >
+                            <span className="w-3.5 shrink-0 text-right tabular-nums text-neutral-600">{i + 1}</span>
+                            <span
+                              aria-hidden="true"
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: group?.color ?? 'rgba(255,255,255,0.25)' }}
+                            />
+                            <span className="min-w-0 flex-1 truncate text-neutral-200">
+                              {exercise?.name ?? 'Exercise'}
+                            </span>
+                            {group && (
+                              <span className="shrink-0 text-[10px] uppercase tracking-wide text-neutral-600">
+                                {group.label}
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  )}
+                </>
+              )}
 
               <div className="mt-2.5 flex gap-2">
                 <button
