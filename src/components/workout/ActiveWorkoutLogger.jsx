@@ -13,6 +13,45 @@ import { lastPerformance, seedSetsFromHistory } from '../../utils/lastPerformanc
 import { sortExercisesByPriority, isPrioritySorted } from '../../utils/exerciseSorting';
 import { randomGymQuote } from '../../data/gymQuotes';
 
+// One switch row — icon, name, a line of explanation, and the pill. Two
+// settings on this screen wanted exactly this shape, and a second
+// hand-rolled switch is how two switches end up 1px apart in size and
+// sliding at different speeds.
+//
+// ON is the tier accent, OFF is neutral-700, for both. The rest-timer
+// brief asked for green/zinc; green on this screen already means
+// "completed" (a checked set, the Finish button), and a second switch
+// whose ON colour differs from the one above it reads as though the
+// colour means something. It does not — it means on.
+function ToggleRow({ icon, title, subtitle, checked, onChange, label }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900/60 px-4 py-3">
+      <span className="text-lg leading-none" aria-hidden="true">
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-neutral-100">{title}</p>
+        <p className="text-xs text-neutral-500">{subtitle}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+          checked ? 'bg-[var(--tier-accent)]' : 'bg-neutral-700'
+        }`}
+      >
+        <span
+          className="absolute top-1 h-5 w-5 rounded-full bg-white transition-all"
+          style={{ left: checked ? '1.75rem' : '0.25rem' }}
+        />
+      </button>
+    </div>
+  );
+}
+
 // Jimmy's Priority: on, the list is kept in coach order (compound before
 // isolation, big muscles first — see utils/exerciseSorting.js) and dragging
 // is off, because a hand-drag and an automatic sort fighting over the same
@@ -20,36 +59,20 @@ import { randomGymQuote } from '../../data/gymQuotes';
 // and the drag handles appear. One switch, two clearly separate modes.
 function PrioritySortToggle({ enabled, onChange, alreadyOptimal }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900/60 px-4 py-3">
-      <span className="text-lg leading-none" aria-hidden="true">
-        🐐
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-neutral-100">Jimmy&rsquo;s Priority</p>
-        <p className="text-xs text-neutral-500">
-          {enabled
-            ? alreadyOptimal
-              ? 'Already in the optimal order'
-              : 'Big lifts first, arms and core last'
-            : 'Off — drag the handles to set your own order'}
-        </p>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label="Jimmy's Priority sorting"
-        onClick={() => onChange(!enabled)}
-        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
-          enabled ? 'bg-[var(--tier-accent)]' : 'bg-neutral-700'
-        }`}
-      >
-        <span
-          className="absolute top-1 h-5 w-5 rounded-full bg-white transition-all"
-          style={{ left: enabled ? '1.75rem' : '0.25rem' }}
-        />
-      </button>
-    </div>
+    <ToggleRow
+      icon="🐐"
+      title="Jimmy's Priority"
+      subtitle={
+        enabled
+          ? alreadyOptimal
+            ? 'Already in the optimal order'
+            : 'Big lifts first, arms and core last'
+          : 'Off — drag the handles to set your own order'
+      }
+      checked={enabled}
+      onChange={onChange}
+      label="Jimmy's Priority sorting"
+    />
   );
 }
 
@@ -140,6 +163,26 @@ export default function ActiveWorkoutLogger({
   // Remembered across workouts — someone who lifts to Jimmy's order wants
   // it every session, and someone who arranges their own does too.
   const [priorityOn, setPriorityOn] = useLocalStorage('jimmys-priority-sort', false);
+  // Whether checking a set starts a rest countdown at all.
+  //
+  // PERSISTED rather than component state, for two reasons that pull the
+  // same way. An active workout survives a refresh (useWorkouts keeps it in
+  // localStorage), so plain state would resurrect a timer somebody had
+  // deliberately switched off, mid-session, with no explanation. And the
+  // two people this is for — someone who never tracks rest, and someone
+  // typing up a session they finished an hour ago — both want the answer
+  // to outlive one screen. Same treatment as the priority sort above.
+  const [restTimerEnabled, setRestTimerEnabled] = useLocalStorage('rest-timer-enabled', true);
+
+  const handleRestTimerToggle = (next) => {
+    setRestTimerEnabled(next);
+    navigator.vibrate?.([30]);
+    // Switching it off mid-rest kills the running countdown. Leaving it to
+    // finish would make the switch look broken for the next 90 seconds —
+    // and the one moment somebody reaches for this control is while an
+    // alarm they did not want is counting down at them.
+    if (!next) rest.dismiss();
+  };
 
   // Applying the sort is a one-shot rewrite of the real order, not a
   // display-only view: the workout that eventually gets logged should be
@@ -226,7 +269,10 @@ export default function ActiveWorkoutLogger({
   // editing weight/reps leaves any running rest alone.
   const handleUpdateSet = (exerciseId, setId, patch) => {
     onUpdateSet(exerciseId, setId, patch);
-    if (patch.completed === true && shouldRestAfter(exerciseId, setId)) {
+    // The set is marked done either way — the only thing the switch
+    // decides is whether a countdown follows it. Nothing else about
+    // logging changes, which is what makes it safe to leave off.
+    if (restTimerEnabled && patch.completed === true && shouldRestAfter(exerciseId, setId)) {
       rest.start();
       setTimerMinimized(false);
     }
@@ -344,6 +390,22 @@ export default function ActiveWorkoutLogger({
           >
             + Add Another Exercise
           </button>
+
+          {/* Bottom of the list, not the top: this is a setting, and a
+              setting placed above the work reads as a step you have to
+              deal with before starting. Down here it is where you go
+              looking once a timer has annoyed you — or, for a retroactive
+              log, right after you have added the first exercise. */}
+          <ToggleRow
+            icon="⏱️"
+            title="Auto-Rest Timer"
+            subtitle={
+              restTimerEnabled ? 'Turn off for retroactive logging' : 'Off — sets are marked done, no countdown'
+            }
+            checked={restTimerEnabled}
+            onChange={handleRestTimerToggle}
+            label="Auto-rest timer"
+          />
         </div>
       )}
 

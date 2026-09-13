@@ -265,6 +265,16 @@ export const MAX_FEATURED_BADGES = 3;
 // ordering the picker.
 const TIER_RANK = { gold: 3, silver: 2, bronze: 1 };
 
+// Gold first, then silver, then bronze — the one definition of that
+// ordering, shared by every surface that shows more than one badge at
+// once (the picker's list, the profile ribbon's default, and the
+// post-workout celebration). Ties keep the caller's order, since
+// Array.prototype.sort is stable: clearing three tiers of one lift in a
+// single session should still read bench-then-squat, not shuffled.
+export function byTierDesc(a, b) {
+  return (TIER_RANK[b?.tier] ?? 0) - (TIER_RANK[a?.tier] ?? 0);
+}
+
 // One entry per category the user has ANY tier in, holding their best.
 // The picker offers these rather than all 33 ids: "Bench Press · Bronze"
 // is not a thing to choose when you already hold gold in that category.
@@ -273,7 +283,7 @@ export function earnedCategoryBests(earned) {
     .filter(Boolean)
     .map((t) => getBadge(t.id))
     .filter(Boolean)
-    .sort((a, b) => (TIER_RANK[b.tier] ?? 0) - (TIER_RANK[a.tier] ?? 0));
+    .sort(byTierDesc);
 }
 
 // What to show when the user has never chosen: their best three, gold

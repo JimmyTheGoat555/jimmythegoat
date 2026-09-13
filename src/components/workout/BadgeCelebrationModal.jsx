@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { getBadge, TIER_STYLE } from '../../data/badges';
+import { byTierDesc, getBadge, TIER_STYLE } from '../../data/badges';
 import BadgeMedallion from '../profile/BadgeMedallion';
 
 // "You earned a trophy." The middle step of the post-workout cascade:
@@ -12,7 +12,12 @@ import BadgeMedallion from '../profile/BadgeMedallion';
 // puts it over this modal (z-[68]); `disableForReducedMotion` is the
 // library's own opt-out and is respected here rather than reimplemented.
 export default function BadgeCelebrationModal({ badgeIds = [], onClaim }) {
-  const badges = badgeIds.map((id) => getBadge(id)).filter(Boolean);
+  // Gold on top, always. The server hands these over in whatever order it
+  // evaluated the ladders in, which puts bronze first whenever a session
+  // clears all three tiers of a lift at once — so the biggest thing you
+  // just won would scroll in last, under two lesser versions of itself.
+  // byTierDesc is the same ordering the picker and the profile ribbon use.
+  const badges = badgeIds.map((id) => getBadge(id)).filter(Boolean).sort(byTierDesc);
 
   useEffect(() => {
     if (badges.length === 0) return;
