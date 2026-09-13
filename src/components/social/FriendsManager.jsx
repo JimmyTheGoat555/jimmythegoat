@@ -17,8 +17,13 @@ export default function FriendsManager({
   onSendRequest,
   onSendRequestByUid,
   onRespond,
+  // Rendered inside FriendManagementModal rather than on the page: the
+  // accordion header goes away and the content is always open, because a
+  // disclosure inside a sheet you deliberately opened is one tap of
+  // nothing. The card chrome goes too — the sheet is already the card.
+  embedded = false,
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(embedded);
   const [codeInput, setCodeInput] = useState('');
   const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -50,21 +55,23 @@ export default function FriendsManager({
 
   return (
     <div className="flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="text-sm font-medium text-neutral-500 self-start"
-      >
-        {open ? 'Hide friends ▲' : 'Friends & requests ▼'}
-        {incomingRequests.length > 0 && !open && (
-          <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--ember)] px-1.5 text-xs font-bold text-white">
-            {incomingRequests.length}
-          </span>
-        )}
-      </button>
+      {!embedded && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="text-sm font-medium text-neutral-500 self-start"
+        >
+          {open ? 'Hide friends ▲' : 'Friends & requests ▼'}
+          {incomingRequests.length > 0 && !open && (
+            <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--ember)] px-1.5 text-xs font-bold text-white">
+              {incomingRequests.length}
+            </span>
+          )}
+        </button>
+      )}
 
       {open && (
-        <section className="card p-5 flex flex-col gap-4">
+        <section className={embedded ? 'flex flex-col gap-4' : 'card p-5 flex flex-col gap-4'}>
           <p className="text-sm text-neutral-500">
             Your code: <span className="text-neutral-100 font-semibold tracking-widest">{myFriendCode}</span>{' '}
             — share it so friends can add you.{' '}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { friendlyAuthError } from '../../utils/authErrors';
 import { fullEvolutionGradient } from '../../utils/tierTheme';
 import { PRIVACY_POLICY_SECTIONS, TERMS_OF_SERVICE_SECTIONS, LAST_UPDATED } from '../../content/legalContent';
 import LegalDocument from '../legal/LegalDocument';
@@ -63,7 +64,7 @@ export default function AuthScreen({ onSignUp, onSignIn, onResetPassword }) {
       await onResetPassword(email.trim());
       setResetStatus('sent');
     } catch (err) {
-      setResetStatus({ error: err.message.replace(/^Firebase:\s*/, '') });
+      setResetStatus({ error: friendlyAuthError(err, "Couldn't send the reset link — try again.") });
     }
   };
 
@@ -74,7 +75,7 @@ export default function AuthScreen({ onSignUp, onSignIn, onResetPassword }) {
     try {
       await onSignIn(email, password);
     } catch (err) {
-      setError(err.message.replace(/^Firebase:\s*/, ''));
+      setError(friendlyAuthError(err, "Couldn't sign you in — try again."));
     } finally {
       setBusy(false);
     }
@@ -135,7 +136,9 @@ export default function AuthScreen({ onSignUp, onSignIn, onResetPassword }) {
 
           <div className="text-right -mt-1.5">
             {resetStatus === 'sent' ? (
-              <p className="text-xs text-emerald-300">Check your inbox for a reset link.</p>
+              <p className="text-xs text-emerald-300">
+                A password reset link has been sent to your email. Check spam if it is not there in a minute.
+              </p>
             ) : (
               <button
                 type="button"

@@ -42,11 +42,44 @@ export default function ExerciseLogCard({
   // Shown only when there IS a next exercise to link to.
   onLinkNext = null,
   onUnlink = null,
+  // Reorder mode: the card collapses to a single draggable row. See
+  // ActiveWorkoutLogger, which owns the mode.
+  compact = false,
 }) {
   const group = getMuscleGroup(exercise.muscleGroup);
   const completedCount = exercise.sets.filter((s) => s.completed).length;
   const isBodyweight = exercise.isBodyweight === true;
   const inSuperset = supersetPosition !== null;
+
+  // ── Compact (reorder) row ───────────────────────────────────────────
+  //
+  // Dragging a five-set card means dragging something taller than half
+  // the screen: you cannot see where it is going, and the list under your
+  // thumb is mostly weight chips you are trying not to hit. Collapsed,
+  // the whole workout fits on one screen and a reorder is two seconds.
+  //
+  // Everything that acts on a set is GONE rather than disabled — a row
+  // you are about to drag should have nothing on it worth tapping. The
+  // superset rail stays, because a group's members must not look
+  // separable when the whole point of the screen is moving them around.
+  if (compact) {
+    return (
+      <div
+        className={`flex items-center gap-2 rounded-xl border bg-neutral-800/80 py-3 pl-1 pr-3.5 shadow-sm transition ${
+          isDragging ? 'border-white/30 shadow-lg' : 'border-white/10'
+        } ${inSuperset ? 'border-l-4 border-l-[var(--ember)]' : ''}`}
+      >
+        {dragHandleProps && <DragHandle {...dragHandleProps} label={exercise.name} className="h-9 w-8" />}
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: group?.color }} />
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-neutral-100">{exercise.name}</span>
+        <span className="shrink-0 text-xs tabular-nums text-neutral-500">
+          {completedCount > 0
+            ? `${completedCount}/${exercise.sets.length} sets`
+            : `${exercise.sets.length} set${exercise.sets.length === 1 ? '' : 's'}`}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div

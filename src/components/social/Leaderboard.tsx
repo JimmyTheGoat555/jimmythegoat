@@ -33,6 +33,10 @@ interface LeaderboardProps {
   // Same reason: no post of yours is in this list to carry it.
   currentStreak?: number;
   minStage?: number;
+  // How many rows to show. Your own row is always kept, even when you
+  // rank below the cut — a board that hides you is a board you stop
+  // looking at.
+  limit?: number;
 }
 
 interface Rankable {
@@ -118,7 +122,7 @@ function weeklyFriendTotals(feedPosts: FeedPost[]): Rankable[] {
 function Avatar({ tierId, stage, accessories, showFire }: { tierId: string; stage: number; accessories: string[]; showFire: boolean }) {
   return (
     <GradientBorder tierId={tierId} shape="circle" fillClassName="rounded-full overflow-hidden" glow={false} className="shrink-0">
-      <div className="h-9 w-9 bg-neutral-800">
+      <div className="h-11 w-11 bg-neutral-800">
         <JimmyAvatar evolutionStage={stage} equippedAccessories={accessories} showFire={showFire} crop="head" className="h-full w-full" />
       </div>
     </GradientBorder>
@@ -129,8 +133,8 @@ function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
   const { current } = getEvolutionProgress(entry.lifetimeVolume, { minStage: entry.minStage ?? 1 });
 
   const row = (
-    <div className="card flex items-center gap-3 p-4">
-      <span className="w-6 text-center text-lg font-semibold text-neutral-500">
+    <div className="card flex items-center gap-3.5 p-5">
+      <span className="w-7 text-center text-xl font-bold text-neutral-500">
         {MEDALS[rank] ?? `#${rank + 1}`}
       </span>
       <Avatar
@@ -140,13 +144,13 @@ function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
         showFire={isOnFire(entry.currentStreak)}
       />
       <div className="flex-1 min-w-0">
-        <p className="text-base font-semibold text-neutral-100 truncate">
+        <p className="text-lg font-bold text-neutral-100 truncate">
           {entry.isYou ? 'You' : entry.username}
         </p>
         <p className="text-sm text-neutral-500">{current.label}</p>
       </div>
       <div className="text-right shrink-0">
-        <p className="text-base font-semibold text-neutral-100 tabular-nums">
+        <p className="text-xl font-bold text-neutral-100 tabular-nums">
           {Math.round(entry.weeklyScore).toLocaleString('en-US')}
         </p>
         <p className="text-xs text-neutral-500">pts this wk</p>
@@ -200,6 +204,7 @@ export default function Leaderboard({
   equippedAccessories = [],
   currentStreak = 0,
   minStage = 1,
+  limit,
 }: LeaderboardProps) {
   const you: Rankable = {
     id: 'me',
@@ -216,10 +221,23 @@ export default function Leaderboard({
     (a, b) => b.weeklyScore - a.weeklyScore,
   );
 
+  // Rank is the position on the FULL board, carried through the cut, so a
+  // kept "You" row still says #9 rather than being renumbered into the
+  // top five it did not make.
+  const withRank = ranked.map((entry, index) => ({ entry, rank: index }));
+  const shown =
+    typeof limit === 'number' && withRank.length > limit
+      ? (() => {
+          const head = withRank.slice(0, limit);
+          const you = withRank.find((r) => r.entry.isYou);
+          return you && !head.includes(you) ? [...head, you] : head;
+        })()
+      : withRank;
+
   return (
-    <div className="flex flex-col gap-2">
-      {ranked.map((entry, index) => (
-        <AvatarRow key={entry.id} entry={entry} rank={index} />
+    <div className="flex flex-col gap-2.5">
+      {shown.map(({ entry, rank }) => (
+        <AvatarRow key={entry.id} entry={entry} rank={rank} />
       ))}
     </div>
   );

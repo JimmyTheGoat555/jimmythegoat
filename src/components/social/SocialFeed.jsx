@@ -8,7 +8,7 @@ export default function SocialFeed({ posts, loading, error, hasFriends, myUid })
   if (!hasFriends) {
     return (
       <p className="text-sm text-neutral-500 px-1">
-        Add a friend above to see their workouts here.
+        Add a friend with the 👤+ button up top to see their workouts here.
       </p>
     );
   }

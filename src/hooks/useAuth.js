@@ -149,7 +149,16 @@ export function useAuth() {
       // because re-enabling the gate later needs the data to already exist.
       // It is entirely optional for the user; ignoring it costs them
       // nothing.
-      sendEmailVerification(cred.user).catch(() => {});
+      // Awaited now rather than fire-and-forget. It is still best-effort —
+      // a failure here must not undo an account that already exists — but
+      // swallowing it silently meant the one case that matters (the send
+      // did not happen, so no link is coming) looked exactly like success.
+      let verificationSent = true;
+      try {
+        await sendEmailVerification(cred.user);
+      } catch {
+        verificationSent = false;
+      }
 
       // Resolving the trainer code is best-effort, NOT a precondition for
       // finishing signup — createUserWithEmailAndPassword above already
@@ -303,7 +312,7 @@ export function useAuth() {
       // Surfaced by AuthScreen as a one-line heads-up on the app itself
       // (the sign-up form is gone by the time this resolves — see above),
       // rather than as an error, since the account really did succeed.
-      return { user: cred.user, warning: trainerCodeWarning };
+      return { user: cred.user, warning: trainerCodeWarning, verificationSent };
     } catch (err) {
       setAuthError(err.message);
       throw err;
@@ -329,6 +338,51 @@ export function useAuth() {
   // error banner, so the two can never visually collide if both happened
   // to be set at once.
   const resetPassword = useCallback((email) => sendPasswordResetEmail(auth, email), []);
+
+  // ── Email verification ────────────────────────────────────────────────
+  //
+  // `user.emailVerified` is a property of a token that was minted when the
+  // user signed in, and clicking the link in the email does not push a new
+  // one down — so this stays false in a running app until something calls
+  // reload(). Hence both halves below: a reload whenever the tab comes
+  // back to the foreground (you clicked the link in your mail app and came
+  // back), and a state flag the banner can watch, since mutating
+  // `auth.currentUser` does not re-render anything on its own.
+  const [emailVerified, setEmailVerified] = useState(() => auth?.currentUser?.emailVerified ?? true);
+
+  useEffect(() => {
+    if (!user) {
+      setEmailVerified(true);
+      return undefined;
+    }
+    let cancelled = false;
+    const check = async () => {
+      try {
+        await user.reload();
+      } catch {
+        // Offline, or the token expired — either way, keep whatever we
+        // last knew rather than accusing someone of being unverified.
+        return;
+      }
+      if (!cancelled) setEmailVerified(auth.currentUser?.emailVerified ?? true);
+    };
+    check();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user]);
+
+  // Throws on failure (rate limiting is the common one) so the banner can
+  // say what happened instead of pretending a second link is on its way.
+  const resendVerification = useCallback(async () => {
+    if (!auth.currentUser) throw new Error('Sign in first.');
+    await sendEmailVerification(auth.currentUser);
+  }, []);
 
 
 
@@ -422,6 +476,8 @@ export function useAuth() {
     notifyTrainer,
     updateUsername,
     resetPassword,
+    emailVerified,
+    resendVerification,
     deleteAccount,
     setSharePRs,
   };

@@ -4,6 +4,7 @@ import WorkoutHome from './components/workout/WorkoutHome';
 import BottomNav from './components/layout/BottomNav';
 import { TAB_PATHS, TRAINER_TAB_PATH } from './components/layout/tabPaths';
 import AuthScreen from './components/auth/AuthScreen';
+import UnverifiedEmailBanner from './components/auth/UnverifiedEmailBanner';
 import FirebaseSetupNeeded from './components/auth/FirebaseSetupNeeded';
 import TopHud from './components/layout/TopHud';
 import { useCloudWorkoutHistory } from './hooks/useCloudWorkouts';
@@ -209,6 +210,8 @@ export default function App() {
     notifyTrainer,
     updateUsername,
     resetPassword,
+    emailVerified,
+    resendVerification,
     deleteAccount,
     setSharePRs,
   } = useAuth();
@@ -236,8 +239,23 @@ export default function App() {
   // the two moments land in sequence instead of on top of each other.
   const [finishChecklist, setFinishChecklist] = useState(null);
   const handleSignUp = async (data) => {
-    const { warning } = await signUp(data);
+    const { warning, verificationSent } = await signUp(data);
+    // The trainer-code warning wins the one notice slot when both apply:
+    // it says something went wrong, and the verification line is only
+    // ever a nudge. The banner below carries the verification message
+    // anyway until the address is confirmed, so nothing is lost.
     if (warning) setAppNotice({ message: warning, tone: 'warning' });
+    else if (verificationSent) {
+      setAppNotice({
+        message: 'Account created! Check your inbox to verify your email.',
+        tone: 'success',
+      });
+    } else {
+      setAppNotice({
+        message: "Account created — but we couldn't send the verification email. Use Resend below.",
+        tone: 'warning',
+      });
+    }
   };
 
   // The gear icon in TopHud opens this — see SettingsPanel.jsx. Plain local
@@ -706,6 +724,16 @@ export default function App() {
         <div className="ambient-bg" />
         <div className="ambient-scrim" />
         <div className="max-w-md mx-auto px-4">
+          {/* Above the notice and every screen, because it is about the
+              account rather than about whatever tab you happen to be on.
+              Only ever rendered for a signed-in user whose address is
+              actually unconfirmed — see useAuth's emailVerified, which
+              reloads the Firebase user when the tab regains focus so
+              clicking the link in another app clears this on return. */}
+          {!emailVerified && (
+            <UnverifiedEmailBanner email={user?.email} onResend={resendVerification} />
+          )}
+
           {appNotice && (
             <div
               className={`relative z-10 mt-4 px-4 py-3 rounded-2xl border text-sm flex items-start gap-2 ${

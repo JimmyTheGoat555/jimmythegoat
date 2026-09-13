@@ -13,6 +13,27 @@ import { lastPerformance, seedSetsFromHistory } from '../../utils/lastPerformanc
 import { sortExercisesByPriority, isPrioritySorted } from '../../utils/exerciseSorting';
 import { randomGymQuote } from '../../data/gymQuotes';
 
+// Up/down arrows. Inline SVG rather than an emoji for the same reason
+// ExerciseLogCard's chain is: it inherits currentColor and keeps its
+// weight across platforms.
+function UpDownArrows() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path d="M7 4v16M7 4 4 7M7 4l3 3" />
+      <path d="M17 20V4m0 16 3-3m-3 3-3-3" />
+    </svg>
+  );
+}
+
 // One switch row — icon, name, a line of explanation, and the pill. Two
 // settings on this screen wanted exactly this shape, and a second
 // hand-rolled switch is how two switches end up 1px apart in size and
@@ -173,6 +194,11 @@ export default function ActiveWorkoutLogger({
   // typing up a session they finished an hour ago — both want the answer
   // to outlive one screen. Same treatment as the priority sort above.
   const [restTimerEnabled, setRestTimerEnabled] = useLocalStorage('rest-timer-enabled', true);
+  // Reorder mode collapses every card to a draggable row. Deliberately NOT
+  // persisted, unlike the two switches above: this is a thing you are
+  // doing for the next ten seconds, not a preference. Coming back to a
+  // workout to find every set hidden would read as data loss.
+  const [isReordering, setIsReordering] = useState(false);
 
   const handleRestTimerToggle = (next) => {
     setRestTimerEnabled(next);
@@ -204,6 +230,16 @@ export default function ActiveWorkoutLogger({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priorityOn, exerciseCount]);
+
+  // Two ways the mode stops being meaningful while you are in it: the list
+  // drops below two exercises (nothing left to reorder), or Jimmy's
+  // Priority takes the order over and switches dragging off. Either one
+  // would otherwise strand someone in a collapsed list with no visible way
+  // back, since the exit button lives in the same block that disappears.
+  const canReorder = exerciseCount > 1 && !priorityOn;
+  useEffect(() => {
+    if (!canReorder) setIsReordering(false);
+  }, [canReorder]);
 
   const completedSets = workout.exercises.reduce(
     (sum, e) => sum + e.sets.filter((s) => s.completed).length,
@@ -326,11 +362,41 @@ export default function ActiveWorkoutLogger({
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <PrioritySortToggle
-            enabled={priorityOn}
-            onChange={handlePriorityToggle}
-            alreadyOptimal={priorityOn && isPrioritySorted(workout.exercises)}
-          />
+          {!isReordering && (
+            <PrioritySortToggle
+              enabled={priorityOn}
+              onChange={handlePriorityToggle}
+              alreadyOptimal={priorityOn && isPrioritySorted(workout.exercises)}
+            />
+          )}
+
+          {/* Above the list, because it changes what the list IS. Hidden
+              when there is nothing to reorder (one exercise) or when
+              Jimmy's Priority owns the order anyway — a button that opens
+              a mode where dragging is switched off is just a dead end. */}
+          {canReorder && (
+            <button
+              type="button"
+              onClick={() => {
+                navigator.vibrate?.([20]);
+                setIsReordering((on) => !on);
+              }}
+              aria-pressed={isReordering}
+              className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold transition active:scale-[0.98] ${
+                isReordering
+                  ? 'bg-[var(--success)] text-white'
+                  : 'border border-white/10 bg-neutral-900/60 text-neutral-300'
+              }`}
+            >
+              {isReordering ? (
+                '✓ Done Reordering'
+              ) : (
+                <>
+                  <UpDownArrows /> Reorder Exercises
+                </>
+              )}
+            </button>
+          )}
 
           <ReorderableList
             items={workout.exercises}
@@ -374,6 +440,7 @@ export default function ActiveWorkoutLogger({
                   onUnlink={
                     supersetPosition === 'first' ? () => onUnlinkSuperset(exercise.exerciseId) : null
                   }
+                  compact={isReordering}
                   onAddSet={() => onAddSet(exercise.exerciseId)}
                   onUpdateSet={(setId, patch) => handleUpdateSet(exercise.exerciseId, setId, patch)}
                   onRemoveSet={(setId) => onRemoveSet(exercise.exerciseId, setId)}
@@ -383,13 +450,18 @@ export default function ActiveWorkoutLogger({
             }}
           />
 
-          <button
-            type="button"
-            onClick={() => setPickerOpen(true)}
-            className="w-full py-4 text-base font-medium text-neutral-300 bg-neutral-900 rounded-2xl"
-          >
-            + Add Another Exercise
-          </button>
+          {/* Gone, not disabled, while reordering: a new card appearing
+              mid-gesture would invalidate the layout ReorderableList
+              measured on pick-up. */}
+          {!isReordering && (
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="w-full py-4 text-base font-medium text-neutral-300 bg-neutral-900 rounded-2xl"
+            >
+              + Add Another Exercise
+            </button>
+          )}
 
           {/* Bottom of the list, not the top: this is a setting, and a
               setting placed above the work reads as a step you have to

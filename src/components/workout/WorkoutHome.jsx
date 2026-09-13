@@ -13,7 +13,6 @@ import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAn
 // `clipPath: 'inherit'`) so the press-burst overlay is reliably clipped
 // to the exact same slanted shape regardless of inheritance quirks.
 const ARCADE_BUTTON_CLIP = 'polygon(16px 0, 100% 0, calc(100% - 16px) 100%, 0 100%)';
-const TAB_CLIP = 'polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%)';
 
 // The app's "lobby" — Jimmy front and center on a glowing launchpad,
 // framed by the mission-select strip and stat bar like a game HUD, with
@@ -82,18 +81,60 @@ export default function WorkoutHome({
   // already falls back to the plain static sprite for it — see there.
   const danceAnimationPath = getDanceAnimationPath(danceNumberForItemId(equippedDance), current.stage);
 
+  // The two (sometimes three) ways into a session, as full-width action
+  // cards rather than the folder tabs this used to be. Tabs said
+  // "Freestyle" and "Templates" — accurate words that assume you already
+  // know what the app means by them. A card has room to say what actually
+  // happens when you press it, which is the whole reason for the change.
+  //
+  // COLOUR CLASSES ARE WRITTEN OUT IN FULL, never assembled from pieces:
+  // Tailwind scans source text for complete class names and an
+  // interpolated one is silently never generated (see BadgeMedallion for
+  // the same note, and the same scar).
   const categories = useMemo(() => {
     const cats = [];
-    if (assignments.length > 0) cats.push({ id: 'assigned', label: 'Assigned', icon: '🎯' });
-    if (templates.length > 0) cats.push({ id: 'templates', label: 'Templates', icon: '📋' });
-    cats.push({ id: 'freestyle', label: 'Freestyle', icon: '🔥' });
+    // Trainer work first when it exists. It is the only one of the three
+    // somebody else is waiting on.
+    if (assignments.length > 0) {
+      cats.push({
+        id: 'assigned',
+        icon: '🎯',
+        title: 'Assigned Missions',
+        subtitle: `${assignments.length} routine${assignments.length === 1 ? '' : 's'} from your trainer`,
+        border: 'border-violet-500/70',
+        glow: 'ring-1 ring-violet-400/40 shadow-[0_0_26px_-8px_rgba(167,139,250,0.85)]',
+      });
+    }
+    cats.push({
+      id: 'freestyle',
+      icon: '⚡',
+      title: 'Create a New Workout',
+      subtitle: 'Start an empty session and add exercises on the go',
+      border: 'border-cyan-500/70',
+      glow: 'ring-1 ring-cyan-400/40 shadow-[0_0_26px_-8px_rgba(34,211,238,0.85)]',
+    });
+    if (templates.length > 0) {
+      cats.push({
+        id: 'templates',
+        icon: '📋',
+        title: 'My Workouts',
+        subtitle: "Load a saved routine or a friend's workout",
+        border: 'border-amber-500/70',
+        glow: 'ring-1 ring-amber-400/40 shadow-[0_0_26px_-8px_rgba(251,191,36,0.85)]',
+      });
+    }
     return cats;
   }, [assignments.length, templates.length]);
 
   // Falls back to the first available category whenever the manually-
   // picked one no longer has content (e.g. the last template got deleted
   // while that tab was open) instead of rendering a dead tab.
-  const effectiveTab = categories.some((c) => c.id === activeTab) ? activeTab : categories[0].id;
+  // Ordering the CARDS put Create above My Workouts, but the default
+  // selection is a separate question and the old answer was the right
+  // one: land on the thing with content in it. Someone with a library
+  // opened this screen to use it.
+  const defaultTab = categories.find((c) => c.id !== 'freestyle')?.id ?? 'freestyle';
+  const effectiveTab = categories.some((c) => c.id === activeTab) ? activeTab : defaultTab;
   const clampedAssignedIdx = Math.min(assignedIdx, Math.max(assignments.length - 1, 0));
   const clampedTemplateIdx = Math.min(templateIdx, Math.max(templates.length - 1, 0));
 
@@ -134,7 +175,14 @@ export default function WorkoutHome({
         : 'Enter the Arena';
 
   return (
-    <div className="flex flex-col items-center gap-5 pt-8 pb-6 min-h-[calc(100vh-6rem)]">
+    // pb-24 + a min-height 4.5rem taller than the old pair, which is one
+    // change rather than two: the extra bottom padding clears the fixed
+    // nav now that this screen genuinely scrolls (the action cards made it
+    // taller than a phone), and the matching growth in min-height keeps
+    // mt-auto landing the start button in exactly the same place it did
+    // when the page still fit. Change them together or the button either
+    // floats or hides under the tab bar.
+    <div className="flex flex-col items-center gap-5 pt-8 pb-24 min-h-[calc(100vh-1.5rem)]">
       <div className="relative flex flex-col items-center justify-end mt-1 h-52 w-full">
         {/* The lobby launchpad — sits behind the mascot by DOM order alone
             (a local stacking group, not the app-wide fixed ambient layers
@@ -223,73 +271,71 @@ export default function WorkoutHome({
           each card). Hiding it took all of that away for four hours,
           which punished the wrong thing — resting is not a reason to lose
           access to your own templates. */}
-      <div className="w-full flex flex-col gap-2">
-        {categories.length > 1 && (
-          <div className="flex gap-2 px-0.5">
-            {categories.map((cat) => {
-              const active = cat.id === effectiveTab;
-              return (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setActiveTab(cat.id)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold uppercase tracking-wide transition ${
-                    active ? 'text-black' : 'text-neutral-400 bg-white/5 border border-white/10'
-                  }`}
-                  style={{
-                    clipPath: TAB_CLIP,
-                    background: active ? tierGradientCss(current.id) : undefined,
-                  }}
-                >
-                  <span>{cat.icon}</span> {cat.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
+      <div className="w-full flex flex-col gap-4">
+        {categories.map((cat) => {
+          const active = cat.id === effectiveTab;
+          return (
+            <div key={cat.id} className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveTab(cat.id)}
+                aria-pressed={active}
+                className={`flex items-center gap-4 rounded-2xl border-2 bg-slate-900/80 p-4 text-left transition-all duration-200 hover:shadow-lg hover:brightness-110 active:scale-95 ${
+                  cat.border
+                } ${active ? cat.glow : 'opacity-60'}`}
+              >
+                <span aria-hidden="true" className="text-3xl leading-none">
+                  {cat.icon}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-lg font-bold leading-tight text-neutral-50">{cat.title}</span>
+                  <span className="mt-0.5 block text-xs leading-snug text-neutral-400">{cat.subtitle}</span>
+                </span>
+              </button>
 
-        <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-4 px-4">
-          {effectiveTab === 'assigned' &&
-            assignments.map((assignment, i) => (
-              <MissionCard
-                key={assignment.id}
-                icon="🎯"
-                title={assignment.title}
-                subtitle={assignment.assignedByName ? `From ${assignment.assignedByName}` : 'Assigned workout'}
-                meta={`${assignment.exercises.length} exercise${assignment.exercises.length === 1 ? '' : 's'}`}
-                selected={i === clampedAssignedIdx}
-                tierId={current.id}
-                onClick={() => setAssignedIdx(i)}
-              />
-            ))}
+              {/* The routines live UNDER their own card rather than below
+                  all three, so opening one reads as that card expanding
+                  instead of a list appearing somewhere else on the page.
+                  Freestyle has nothing to pick — the card is the whole
+                  choice — which is why it never grows one. */}
+              {active && cat.id === 'assigned' && (
+                <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-4 px-4">
+                  {assignments.map((assignment, i) => (
+                    <MissionCard
+                      key={assignment.id}
+                      icon="🎯"
+                      title={assignment.title}
+                      subtitle={assignment.assignedByName ? `From ${assignment.assignedByName}` : 'Assigned workout'}
+                      meta={`${assignment.exercises.length} exercise${assignment.exercises.length === 1 ? '' : 's'}`}
+                      selected={i === clampedAssignedIdx}
+                      tierId={current.id}
+                      onClick={() => setAssignedIdx(i)}
+                    />
+                  ))}
+                </div>
+              )}
 
-          {effectiveTab === 'templates' &&
-            templates.map((template, i) => (
-              <MissionCard
-                key={template.id}
-                icon="📋"
-                title={template.title}
-                subtitle="Saved template"
-                meta={`${template.exercises.length} exercise${template.exercises.length === 1 ? '' : 's'}`}
-                selected={i === clampedTemplateIdx}
-                tierId={current.id}
-                onClick={() => setTemplateIdx(i)}
-                onDelete={onDeleteTemplate ? () => onDeleteTemplate(template.id) : undefined}
-                onRecommend={onRecommendTemplate ? () => onRecommendTemplate(template) : undefined}
-              />
-            ))}
-
-          {effectiveTab === 'freestyle' && (
-            <MissionCard
-              icon="🔥"
-              title="Freestyle Workout"
-              subtitle="Log whatever you want"
-              selected
-              tierId={current.id}
-              onClick={() => {}}
-            />
-          )}
-        </div>
+              {active && cat.id === 'templates' && (
+                <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-4 px-4">
+                  {templates.map((template, i) => (
+                    <MissionCard
+                      key={template.id}
+                      icon="📋"
+                      title={template.title}
+                      subtitle="Saved template"
+                      meta={`${template.exercises.length} exercise${template.exercises.length === 1 ? '' : 's'}`}
+                      selected={i === clampedTemplateIdx}
+                      tierId={current.id}
+                      onClick={() => setTemplateIdx(i)}
+                      onDelete={onDeleteTemplate ? () => onDeleteTemplate(template.id) : undefined}
+                      onRecommend={onRecommendTemplate ? () => onRecommendTemplate(template) : undefined}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {/* Under the carousel, not inside it: this does not start
             anything, so it must not read as a fourth mission you could

@@ -3,10 +3,51 @@ import { usePostLikes } from '../../hooks/useFeed';
 import { STORE_ITEMS, readEquippedAccessories } from '../../data/storeItems';
 import { getEvolutionProgress } from '../../utils/evolutionTiers';
 import JimmyAvatar from '../evolution/JimmyAvatar';
+import GradientBorder from '../shared/GradientBorder';
 import { formatRecordLoad } from '../../utils/personalRecords';
 import { isOnFire } from '../../utils/streak';
 
 const ITEMS_BY_ID = new Map(STORE_ITEMS.map((item) => [item.id, item]));
+
+// How heavy a session was, expressed as how loud its card is.
+//
+// Thresholds are in raw kg, which is the number ON the card — deliberately
+// not the relative score the leaderboard ranks on. This is decoration, and
+// decoration should agree with the figure the reader can see. A quiet card
+// is the default; the glow is for the session that made you put the phone
+// down, and it stays rare enough to mean something.
+//
+// Applied as INLINE STYLE, not Tailwind border classes, and that is not a
+// shortcut: `.card` (index.css) already declares `border: 2px solid
+// var(--tier-accent)` from an unlayered rule, which beats every layered
+// utility Tailwind emits — a `border-amber-400/40` here is silently
+// nothing. Recolouring the border the card already has also keeps the
+// arcade silhouette intact instead of drawing a second edge inside it.
+//
+// The glow is a `filter: drop-shadow`, not a box-shadow, for a related
+// reason: `.card` is clip-path'd with cut corners, and a box-shadow is
+// clipped away with everything else outside that polygon. A filter runs
+// on the clipped result, so the glow traces the notched shape.
+const HEAVY_KG = 8000;
+const SOLID_KG = 3000;
+
+function volumeStyle(kg) {
+  if (kg >= HEAVY_KG) {
+    return {
+      style: {
+        borderColor: 'rgba(251,191,36,0.95)',
+        filter: 'drop-shadow(0 0 14px rgba(251,191,36,0.35))',
+      },
+      tag: 'text-amber-300',
+      label: 'Heavy session',
+    };
+  }
+  // Mid-weight keeps the card's own tier accent — the default IS a state,
+  // and overriding it here would leave nothing for the quiet end to be
+  // quieter than.
+  if (kg >= SOLID_KG) return { style: undefined, tag: 'text-[var(--ember)]', label: null };
+  return { style: { borderColor: 'rgba(255,255,255,0.12)' }, tag: 'text-neutral-400', label: null };
+}
 
 // The record this one beat, in the same units the new one is shown in.
 // Returns null when there is nothing worth printing.
@@ -43,9 +84,10 @@ export default function FeedPostCard({ post, myUid }) {
   const postTier = getEvolutionProgress(post.lifetimeVolume ?? 0, {
     minStage: Number(post.minStage) || 1,
   }).current;
+  const heat = volumeStyle(Number(post.totalVolume) || 0);
 
   return (
-    <div className="card p-4 flex flex-col gap-2">
+    <div className="card p-4 flex flex-col gap-2" style={heat.style}>
       <div className="flex items-center gap-2">
         {/* The poster as they actually look — head-cropped so the gear
             reads at 40px. Stage comes from the volume the post itself
@@ -64,17 +106,29 @@ export default function FeedPostCard({ post, myUid }) {
           aria-label={`Open ${post.userId === myUid ? 'your' : `${post.userName}'s`} profile`}
           className="flex min-w-0 flex-1 items-center gap-2 transition-transform duration-150 active:scale-[0.98]"
         >
-          <span className="block h-10 w-10 shrink-0 overflow-hidden rounded-full bg-neutral-800">
-            <JimmyAvatar
-              evolutionStage={postTier.stage}
-              equippedAccessories={readEquippedAccessories(post)}
-              // Snapshotted on the post, like the stage above it, so an
-              // old card keeps showing the run they were on at the time.
-              showFire={isOnFire(post.currentStreak)}
-              crop="head"
-              className="h-full w-full"
-            />
-          </span>
+          {/* Ringed in the poster's own tier gradient — the same
+              treatment the leaderboard gives its rows, so a face means the
+              same thing on both screens and the avatar stops disappearing
+              into the card. */}
+          <GradientBorder
+            tierId={postTier.id}
+            shape="circle"
+            fillClassName="rounded-full overflow-hidden"
+            glow={false}
+            className="shrink-0"
+          >
+            <span className="block h-11 w-11 bg-neutral-800">
+              <JimmyAvatar
+                evolutionStage={postTier.stage}
+                equippedAccessories={readEquippedAccessories(post)}
+                // Snapshotted on the post, like the stage above it, so an
+                // old card keeps showing the run they were on at the time.
+                showFire={isOnFire(post.currentStreak)}
+                crop="head"
+                className="h-full w-full"
+              />
+            </span>
+          </GradientBorder>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-neutral-100">{post.userName}</span>
             <span className="block text-xs text-neutral-500">{relativeTime(post.timestamp)}</span>
@@ -89,7 +143,14 @@ export default function FeedPostCard({ post, myUid }) {
 
       <p className="text-base text-neutral-200">
         {post.headline} · <span className="tabular-nums">{post.totalSets}</span> sets ·{' '}
-        <span className="tabular-nums">{post.totalVolume.toLocaleString('en-US')}</span> kg
+        <span className={`font-semibold tabular-nums ${heat.tag}`}>
+          {post.totalVolume.toLocaleString('en-US')} kg
+        </span>
+        {heat.label && (
+          <span className="ml-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">
+            {heat.label}
+          </span>
+        )}
       </p>
 
       {/* Only present when they chose to share it — the server writes an
@@ -112,18 +173,21 @@ export default function FeedPostCard({ post, myUid }) {
         </div>
       )}
 
-      <div className="flex items-center gap-3 mt-1">
+      {/* Reward on the left, the one thing you can DO on the right — the
+          corner a thumb rests in, and the same corner on every card in the
+          feed, so cheering never becomes a hunt. */}
+      <div className="mt-1 flex items-center justify-between gap-3">
+        <span className="text-xs text-neutral-600">🪙 +{post.coinsEarned}</span>
         <button
           type="button"
           onClick={toggleLike}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition ${
+          className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold transition active:scale-95 ${
             likedByMe ? 'bg-[var(--ember)]/20 text-[var(--ember)]' : 'bg-white/10 text-neutral-300'
           }`}
         >
           <span>{likedByMe ? '🔥' : '👏'}</span> {likedByMe ? 'Cheered' : 'Cheer'}
           {count > 0 && <span className="tabular-nums">· {count}</span>}
         </button>
-        <span className="text-xs text-neutral-600">🪙 +{post.coinsEarned}</span>
       </div>
     </div>
   );
