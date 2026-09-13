@@ -65,14 +65,30 @@ const RECOVERY_MIN_SCORE = 20;
 // exclusion on the wildcard meta/{docId} rule for why a client can't just
 // reset this itself (a real, exploited-in-audit hole before that existed).
 //
-// A rolling 24h window, not a UTC-midnight reset: "2 in the last 24 hours"
-// means exactly that at any moment, not "2 since midnight" (which would let
-// someone log at 23:59 and again at 00:01, ninety seconds apart). MIN_GAP_MS
-// is the spacing required between any two consecutive logs — with the cap
-// at 2, that is simply the gap between the pair.
-const WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours, rolling
-const MIN_GAP_MS = 60 * 60 * 1000; // 1 hour between consecutive logs
-const MAX_WORKOUTS_PER_WINDOW = 2;
+// ONE rule now: four hours between logged workouts. Nothing else.
+//
+// What this replaced, and why the change is a simplification rather than a
+// loosening: a 1-hour gap PLUS a hard cap of 2 per rolling 24 hours. The
+// cap was the part that hurt. Six hours after training twice you were
+// simply locked out for the rest of the day, with no way to see it coming
+// — and the two rules disagreed about what they were for, one spacing
+// sessions and the other rationing them.
+//
+// A single 4h gap does the same job the cap was really doing (it bounds a
+// day at six sessions, which no human reaches by accident) while staying
+// explainable in one sentence and, crucially, PREDICTABLE: there is
+// exactly one number to show a countdown against, which is what makes the
+// client-side lock on the Workout tab honest — see
+// src/hooks/useWorkoutCooldown.js, whose COOLDOWN_MS must match this.
+const WORKOUT_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours between logs
+
+// How long a log entry is kept in users/{uid}/meta/economy.recentWorkoutLogs,
+// and the hard bound on that array. Only the newest entry decides the
+// cooldown; the rest are kept as a short trail (the client reads this doc
+// to render its countdown) and pruned so the array cannot grow without
+// bound over a lifetime of training.
+const LOG_HISTORY_MS = 24 * 60 * 60 * 1000;
+const MAX_LOG_HISTORY = 12;
 
 // ---- Neglect / comeback mechanic ----
 // If this many days (or more) have passed since the user's last logged
@@ -170,9 +186,9 @@ module.exports = {
   MAX_SETS_PER_WORKOUT,
   MAX_EXERCISES_PER_WORKOUT,
   MAX_STARTED_AT_AGE_MS,
-  WINDOW_MS,
-  MIN_GAP_MS,
-  MAX_WORKOUTS_PER_WINDOW,
+  WORKOUT_COOLDOWN_MS,
+  LOG_HISTORY_MS,
+  MAX_LOG_HISTORY,
   NEGLECT_RECOVERY_DAYS,
   NEGLECT_RECOVERY_MS,
   RECOVERY_MIN_SCORE,

@@ -27,9 +27,9 @@ const {
   MAX_SETS_PER_WORKOUT,
   MAX_EXERCISES_PER_WORKOUT,
   MAX_STARTED_AT_AGE_MS,
-  WINDOW_MS,
-  MIN_GAP_MS,
-  MAX_WORKOUTS_PER_WINDOW,
+  WORKOUT_COOLDOWN_MS,
+  LOG_HISTORY_MS,
+  MAX_LOG_HISTORY,
   NEGLECT_RECOVERY_MS,
   RECOVERY_MIN_SCORE,
   COINS_PER_RELATIVE_POINT,
@@ -365,36 +365,29 @@ exports.logWorkout = onCall(async (request) => {
       }
     }
 
-    // Rolling window, not a UTC-midnight reset: stored as the timestamps of
-    // recent logs rather than a count, because "2 in the last 24 hours"
-    // has to be checked at the moment of THIS request, not since some fixed
-    // clock boundary — a counter that resets at midnight would let someone
-    // log at 23:59 and again at 00:01, ninety seconds apart. Kept sorted
-    // oldest-first, which is also the order they're written back in below.
+    // A short trail of recent log times, kept sorted oldest-first — the
+    // same order they are written back in below. Only the newest one is
+    // load-bearing (the cooldown is measured from it); the rest are
+    // history, pruned to LOG_HISTORY_MS.
     const economy = economySnap.exists ? economySnap.data() : {};
     const stored = Array.isArray(economy.recentWorkoutLogs) ? economy.recentWorkoutLogs : [];
     const recent = stored
       .map((iso) => Date.parse(iso))
-      .filter((ms) => Number.isFinite(ms) && now - ms < WINDOW_MS)
+      .filter((ms) => Number.isFinite(ms) && now - ms < LOG_HISTORY_MS)
       .sort((a, b) => a - b);
 
+    // The one rule. Still enforced here even though the Workout tab now
+    // refuses to START a session during a cooldown (useWorkoutCooldown):
+    // that lock is a courtesy so nobody loses a logged session to a
+    // rejection, and a courtesy is not a boundary — this is.
     if (recent.length > 0) {
       const sinceLast = now - recent[recent.length - 1];
-      if (sinceLast < MIN_GAP_MS) {
+      if (sinceLast < WORKOUT_COOLDOWN_MS) {
         throw new HttpsError(
           'resource-exhausted',
-          `Take a breather — you can log another workout in ${formatWait(MIN_GAP_MS - sinceLast)}.`,
+          `Take a breather — you can log another workout in ${formatWait(WORKOUT_COOLDOWN_MS - sinceLast)}.`,
         );
       }
-    }
-    if (recent.length >= MAX_WORKOUTS_PER_WINDOW) {
-      // The window frees up one slot at a time, as each old entry ages
-      // past 24h — the oldest is always next to go.
-      const freesInMs = recent[0] + WINDOW_MS - now;
-      throw new HttpsError(
-        'resource-exhausted',
-        `You've logged ${MAX_WORKOUTS_PER_WINDOW} workouts in the last 24 hours — the next slot opens in ${formatWait(freesInMs)}.`,
-      );
     }
 
     const finishedAtIso = new Date(now).toISOString();
@@ -485,14 +478,12 @@ exports.logWorkout = onCall(async (request) => {
     });
 
     const economyUpdate = {
-      // .slice(-MAX_WORKOUTS_PER_WINDOW): `recent` is already filtered to
-      // the live window and gated at < MAX_WORKOUTS_PER_WINDOW above, so
-      // this never actually trims anything today — it is a deliberate
-      // second line of defense that keeps the array from growing without
-      // bound if this constant is ever raised later without a migration.
-      // Appended regardless of neglectPenaltyLifted — the rate limit still
-      // applies to a below-the-bar recovery attempt.
-      recentWorkoutLogs: [...recent, now].slice(-MAX_WORKOUTS_PER_WINDOW).map((ms) => new Date(ms).toISOString()),
+      // Appended regardless of neglectPenaltyLifted — the cooldown still
+      // applies to a below-the-bar recovery attempt. Sliced to a hard
+      // bound as well as an age filter: with no per-day cap any more, a
+      // determined user can put six entries a day in here, and only the
+      // newest matters.
+      recentWorkoutLogs: [...recent, now].slice(-MAX_LOG_HISTORY).map((ms) => new Date(ms).toISOString()),
     };
     // The authoritative "when did this user last train" — only advanced
     // when neglectPenaltyLifted, so an under-the-bar recovery attempt

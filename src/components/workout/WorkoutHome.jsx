@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useJimmyLook } from '../../context/JimmyLook';
 import MissionCard from './MissionCard';
+import RestAndRecover from './RestAndRecover';
 import BadgeRibbon from '../profile/BadgeRibbon';
 import JimmyAnimation from '../evolution/JimmyAnimation';
 import { lifetimeVolume } from '../../utils/workoutStats';
@@ -40,6 +41,10 @@ export default function WorkoutHome({
   // so this screen never needs to know the friends list or the callable.
   onRecommendTemplate,
   onPlanWorkout,
+  // useWorkoutCooldown's result. The server refuses a workout logged
+  // inside the cooldown window; this is what stops someone reaching that
+  // refusal with a session's worth of sets already typed in.
+  cooldown = { loading: false, isCoolingDown: false, remaining: '', unlocksAt: null },
   // users/{uid}.badges — the same array the Profile shelf renders.
   badges,
   featuredBadges,
@@ -212,6 +217,18 @@ export default function WorkoutHome({
           it already say what this is, and a label over a picker that is
           the only thing on the screen is a caption on a photograph of
           itself. */}
+      {/* Everything that could START a session is replaced while the
+          cooldown runs — the picker included, since choosing a mission you
+          cannot begin is just a menu that does nothing. Planning survives
+          it (see RestAndRecover), which is the point. */}
+      {cooldown.isCoolingDown ? (
+        <RestAndRecover
+          remaining={cooldown.remaining}
+          unlocksAt={cooldown.unlocksAt}
+          onPlanWorkout={onPlanWorkout}
+        />
+      ) : (
+        <>
       <div className="w-full flex flex-col gap-2">
         {categories.length > 1 && (
           <div className="flex gap-2 px-0.5">
@@ -298,7 +315,13 @@ export default function WorkoutHome({
       <button
         type="button"
         onClick={handleStart}
-        className="btn-arcade relative w-full max-w-xs mt-auto text-2xl py-7 overflow-hidden"
+        // Until the economy doc has been read we do not know whether this
+        // account is inside a cooldown. Disabled rather than hidden for
+        // that instant: hiding the primary action makes the screen look
+        // broken, and enabling it would let a fast tap start the exact
+        // session this whole feature exists to prevent.
+        disabled={cooldown.loading}
+        className="btn-arcade relative w-full max-w-xs mt-auto text-2xl py-7 overflow-hidden disabled:opacity-60"
       >
         {startLabel}
         {pressed && (
@@ -311,6 +334,8 @@ export default function WorkoutHome({
           />
         )}
       </button>
+        </>
+      )}
     </div>
   );
 }

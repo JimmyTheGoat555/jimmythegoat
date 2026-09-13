@@ -29,7 +29,6 @@ export default function SocialPage({
   onSendRequest,
   onSendRequestByUid,
   onRespond,
-  onRemove,
   notifications,
   onMarkNotificationRead,
   onDismissNotification,
@@ -97,7 +96,6 @@ export default function SocialPage({
         incomingRequests={incomingRequests}
         onSendRequest={onSendRequest}
         onRespond={onRespond}
-        onRemove={onRemove}
       />
 
       <section className="flex flex-col gap-3">

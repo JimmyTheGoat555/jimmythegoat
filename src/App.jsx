@@ -20,6 +20,7 @@ import { useLazyGoatNudge } from './hooks/useLazyGoatNudge';
 import { useAssignedWorkouts } from './hooks/useAssignedWorkouts';
 import { useWorkoutTemplates } from './hooks/useWorkoutTemplates';
 import { useWorkoutInbox } from './hooks/useWorkoutInbox';
+import { useWorkoutCooldown } from './hooks/useWorkoutCooldown';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useTabSwipe } from './hooks/useTabSwipe';
 import { firebaseConfigured } from './lib/firebase';
@@ -356,6 +357,11 @@ export default function App() {
   // the two ends of this loop are on different tabs: you send from the
   // template carousel on the landing screen and receive on Social.
   const workoutInbox = useWorkoutInbox(uid);
+
+  // Whether a workout can be STARTED right now. The server has always
+  // refused one logged inside the cooldown window; this is what moves that
+  // refusal to before the first set instead of after the last.
+  const workoutCooldown = useWorkoutCooldown(uid);
   const [recommendingTemplate, setRecommendingTemplate] = useState(null);
   // Jimmy's evolution tier from lifetime tonnage — computed once here and
   // reused for the app-wide accent theme (below) and the tier-up
@@ -745,6 +751,7 @@ export default function App() {
                       onDeleteTemplate={deleteTemplate}
                       onRecommendTemplate={setRecommendingTemplate}
                       onPlanWorkout={() => setPlanningWorkout(true)}
+                      cooldown={workoutCooldown}
                       badges={account?.badges}
                       featuredBadges={account?.featuredBadges}
                       assignments={assignments}
@@ -786,7 +793,6 @@ export default function App() {
                     onSendRequest={friendsGraph.sendFriendRequest}
                     onSendRequestByUid={friendsGraph.sendFriendRequestByUid}
                     onRespond={friendsGraph.respondToFriendRequest}
-                    onRemove={friendsGraph.removeFriend}
                     notifications={notifications}
                     onMarkNotificationRead={markNotificationRead}
                     onDismissNotification={dismissNotification}

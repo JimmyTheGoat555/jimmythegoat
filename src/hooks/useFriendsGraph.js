@@ -91,10 +91,11 @@ export function useFriendsGraph(uid, friendUids) {
     return data; // { accepted }
   }, []);
 
-  const removeFriend = useCallback(async (friendUid) => {
-    const { data } = await httpsCallable(functions, 'removeFriend')({ friendUid });
-    return data; // { removed }
-  }, []);
+  // No removeFriend wrapper any more — the unfriend ✕ was taken off the
+  // friends list, and an exported call with no caller is a trap for the
+  // next person who assumes something still uses it. The callable itself
+  // is still deployed (functions/social.js); wiring a new entry point to
+  // it is a one-liner if unfriending ever comes back.
 
   // See functions/nudges.js. Only ever writes to the target's inbox —
   // whether it actually pushes is decided server-side by
@@ -120,7 +121,6 @@ export function useFriendsGraph(uid, friendUids) {
     sendFriendRequest,
     sendFriendRequestByUid,
     respondToFriendRequest,
-    removeFriend,
     sendNudge,
     recommendWorkout,
   };

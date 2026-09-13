@@ -17,7 +17,6 @@ export default function FriendsManager({
   onSendRequest,
   onSendRequestByUid,
   onRespond,
-  onRemove,
 }) {
   const [open, setOpen] = useState(false);
   const [codeInput, setCodeInput] = useState('');
@@ -143,17 +142,16 @@ export default function FriendsManager({
                     key={friend.uid}
                     className="flex items-center justify-between text-base bg-white/10 border border-white/10 rounded-xl px-3.5 py-2.5"
                   >
+                    {/* No unfriend control. A ✕ sitting one thumb-width
+                        from a name, with no confirmation, deleted a
+                        mutual relationship on both sides — the friend was
+                        not asked and was not told. Removed at the owner's
+                        request; the removeFriend callable still exists
+                        server-side (account deletion uses that path), so
+                        this is a UI decision, not a lost capability. */}
                     <Link to={`/friends/${friend.uid}`} className="text-neutral-300 flex-1 min-w-0 truncate">
                       {friend.displayName}
                     </Link>
-                    <button
-                      type="button"
-                      onClick={() => onRemove(friend.uid)}
-                      className="text-neutral-600 px-1 shrink-0"
-                      aria-label={`Remove ${friend.displayName}`}
-                    >
-                      ✕
-                    </button>
                   </li>
                 ))}
               </ul>
