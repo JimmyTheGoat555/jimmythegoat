@@ -5,7 +5,6 @@ import { sanitizeFriendData } from '../../utils/friendPrivacy';
 import { getStoreItem } from '../../data/storeItems';
 import { formatRecordLoad, recordSortKey } from '../../utils/personalRecords';
 import { cheerTargetId, useCheers } from '../../hooks/useCheers';
-import { AccessoryIcon } from '../evolution/accessoryArt';
 import JimmyAnimation from '../evolution/JimmyAnimation';
 import { getTierByStage } from '../../utils/evolutionTiers';
 import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAnimations';
@@ -314,8 +313,6 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
     );
   }
 
-  const worn = friend.equippedAccessories.map((id) => getStoreItem(id)).filter(Boolean);
-
   const friendTier = getTierByStage(friend.evolutionStage);
   const danceNumber = danceNumberForItemId(friend.equippedDance);
   const danceName = getStoreItem(friend.equippedDance)?.name ?? 'move';
@@ -434,19 +431,6 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
           <h1 className="text-2xl font-bold text-neutral-50">{name}</h1>
           <p className="text-sm text-neutral-500">{friend.tierLabel}</p>
         </div>
-
-        {worn.length > 0 && (
-          <div className="flex flex-wrap items-center justify-center gap-1.5">
-            {worn.map((item) => (
-              <span
-                key={item.id}
-                className="inline-flex items-center gap-1.5 text-sm text-neutral-400 bg-white/5 border border-white/10 rounded-full px-3 py-1"
-              >
-                <AccessoryIcon itemId={item.id} className="h-4 w-4" /> {item.name}
-              </span>
-            ))}
-          </div>
-        )}
 
         <button
           type="button"
