@@ -6,6 +6,7 @@ import {
   earnedCategoryBests,
   resolveFeaturedBadges,
 } from '../../data/badges';
+import BadgeMedallion from './BadgeMedallion';
 
 // Choose which three badges your profile shows.
 //
@@ -79,9 +80,7 @@ export default function BadgePickerModal({ badges, featured, onSave, onClose }) 
                       : { borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)' }
                   }
                 >
-                  <span className="text-2xl leading-none" aria-hidden="true">
-                    {badge.icon}
-                  </span>
+                  <BadgeMedallion badge={badge} size="md" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold" style={{ color: style.color }}>
                       {badge.name}

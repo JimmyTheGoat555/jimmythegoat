@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { TIER_STYLE, earnedBadgeMap, resolveFeaturedBadges } from '../../data/badges';
+import { earnedBadgeMap, resolveFeaturedBadges } from '../../data/badges';
+import BadgeMedallion from './BadgeMedallion';
 import BadgeDetailSheet from './BadgeDetailSheet';
 
 // Up to three earned badges as small tier-coloured pills.
@@ -33,28 +34,19 @@ export default function BadgeRibbon({ badges, featured, onEdit, emptyHint = null
   return (
     <>
       <div className="flex flex-wrap items-center justify-center gap-1.5">
-        {shown.map((badge) => {
-          const style = TIER_STYLE[badge.tier] ?? TIER_STYLE.gold;
-          return (
-            <button
-              key={badge.id}
-              type="button"
-              onClick={() => setDetail(badge)}
-              aria-label={`${badge.name} — ${badge.howEarned}`}
-              // The tier reads three ways at once — border, wash and text —
-              // so bronze and gold stay apart on a dim phone screen
-              // outdoors, where a single hue against dark grey is
-              // genuinely hard to call.
-              className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition active:scale-95"
-              style={{ borderColor: `${style.color}66`, background: `${style.color}14`, color: style.color }}
-            >
-              <span aria-hidden="true" className="text-sm leading-none">
-                {badge.icon}
-              </span>
-              {badge.categoryName}
-            </button>
-          );
-        })}
+        {shown.map((badge) => (
+          <button
+            key={badge.id}
+            type="button"
+            onClick={() => setDetail(badge)}
+            aria-label={`${badge.name} — ${badge.howEarned}`}
+            className="rounded-full transition active:scale-95"
+          >
+            {/* Fully filled in its metal rather than a tinted outline —
+                the tier is the object, not a hint about it. */}
+            <BadgeMedallion badge={badge} size="chip" />
+          </button>
+        ))}
       </div>
 
       {detail && (

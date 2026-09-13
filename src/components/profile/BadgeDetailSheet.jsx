@@ -1,4 +1,5 @@
 import { TIER_STYLE } from '../../data/badges';
+import BadgeMedallion from './BadgeMedallion';
 
 function formatEarned(iso) {
   if (!iso) return null;
@@ -32,13 +33,7 @@ export default function BadgeDetailSheet({ badge, earnedAt, onEdit, onClose }) {
         aria-label={badge.name}
       >
         <div className="flex flex-col items-center gap-3 text-center">
-          <span
-            className="text-6xl leading-none"
-            style={{ filter: `drop-shadow(0 0 18px ${style.glow})` }}
-            aria-hidden="true"
-          >
-            {badge.icon}
-          </span>
+          <BadgeMedallion badge={badge} size="lg" />
 
           <div>
             <p className="text-xl font-bold" style={{ color: style.color }}>

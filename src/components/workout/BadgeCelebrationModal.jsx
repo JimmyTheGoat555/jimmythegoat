@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { getBadge, TIER_STYLE } from '../../data/badges';
+import BadgeMedallion from '../profile/BadgeMedallion';
 
 // "You earned a trophy." The middle step of the post-workout cascade:
 // the tick-list animation hands over to this, and this hands over to the
@@ -73,15 +74,15 @@ export default function BadgeCelebrationModal({ badgeIds = [], onClaim }) {
       >
         {badges.map((badge) => (
           <li key={badge.id} className="flex flex-col items-center gap-2 text-center">
-            {/* badge-celebrate is the pop-in + hard glow (index.css). */}
+            {/* The same struck medal the profile shows, so the thing you
+                win and the thing you then wear are one object rather than
+                two drawings of it. badge-celebrate is the pop-in
+                (index.css); the metal glow lives on the medallion. */}
             <span
-              className={`badge-celebrate leading-none ${many ? 'text-5xl' : 'text-7xl'}`}
-              // Glow in the metal that was actually won, so bronze does
-              // not arrive dressed as gold.
+              className="badge-celebrate inline-block"
               style={{ filter: `drop-shadow(0 0 22px ${(TIER_STYLE[badge.tier] ?? TIER_STYLE.gold).glow})` }}
-              aria-hidden="true"
             >
-              {badge.icon}
+              <BadgeMedallion badge={badge} size={many ? 'md' : 'lg'} />
             </span>
             <span
               className={`font-bold ${many ? 'text-base' : 'text-xl'}`}
