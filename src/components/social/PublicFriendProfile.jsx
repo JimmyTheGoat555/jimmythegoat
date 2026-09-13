@@ -9,7 +9,6 @@ import JimmyAnimation from '../evolution/JimmyAnimation';
 import { getTierByStage } from '../../utils/evolutionTiers';
 import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAnimations';
 import NudgeModal from './NudgeModal';
-import FriendDancesModal from './FriendDancesModal';
 
 // Someone else's profile. Read-only by construction — there is nothing here
 // to edit, and nothing here that they have not published.
@@ -273,7 +272,6 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
   const navigate = useNavigate();
   const knownFriend = friends.find((f) => f.uid === friendUid);
   const [nudging, setNudging] = useState(false);
-  const [showingDances, setShowingDances] = useState(false);
   // How many times the visitor has asked to see the emote. 0 means the
   // clip has never been requested — and therefore never fetched.
   const [avatarPlays, setAvatarPlays] = useState(0);
@@ -325,13 +323,14 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
   const avatarAnimationSrc =
     avatarPlays === 0 || !dancePath ? null : avatarPlays === 1 ? dancePath : `${dancePath}#${avatarPlays}`;
 
-  // No equipped dance means there is nothing to play in place, so the tap
-  // falls through to the showcase — which at least tells them what this
-  // person owns, rather than doing nothing at all.
+  // Only the EQUIPPED emote is ever shown — what someone else owns but is
+  // not wearing is not this screen's business. Someone with nothing
+  // equipped therefore has nothing to play, and the tap does nothing
+  // rather than opening a browser of their wardrobe.
   const handleAvatarTap = () => {
+    if (!dancePath) return;
     navigator.vibrate?.([30]);
-    if (dancePath) setAvatarPlays((n) => n + 1);
-    else setShowingDances(true);
+    setAvatarPlays((n) => n + 1);
   };
 
   // Copies the STRUCTURE into your own library — the same shape
@@ -410,15 +409,6 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
             />
           </span>
         </button>
-        {friend.unlockedDances.length > 1 && (
-          <button
-            type="button"
-            onClick={() => setShowingDances(true)}
-            className="-mt-1 text-xs font-semibold text-[var(--ember)] active:scale-95 transition"
-          >
-            See all {friend.unlockedDances.length} moves
-          </button>
-        )}
 
         <div>
           <h1 className="text-2xl font-bold text-neutral-50">{name}</h1>
@@ -514,18 +504,6 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
           friendName={name}
           onSend={(messageId) => onSendNudge(friendUid, messageId)}
           onClose={() => setNudging(false)}
-        />
-      )}
-
-      {showingDances && (
-        <FriendDancesModal
-          friendName={name}
-          evolutionStage={friend.evolutionStage}
-          equippedAccessories={friend.equippedAccessories}
-          unlockedDances={friend.unlockedDances}
-          equippedDance={friend.equippedDance}
-          dancesPublished={friend.dancesPublished}
-          onClose={() => setShowingDances(false)}
         />
       )}
     </div>
