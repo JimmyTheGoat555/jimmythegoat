@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../lib/firebase';
 
 // Things other people have sent you that are waiting on an answer —
 // today, a friend's workout recommendation (functions/recommendWorkout.js
@@ -13,11 +14,19 @@ import { db } from '../lib/firebase';
 // list can safely cap itself at 12 rows and let a stray ✕ delete anything,
 // and this one cannot.
 //
-// Accepting COPIES the routine into your own templates collection and then
-// removes the item — the copy is the point, so a sender deleting their
-// original (or their whole account) can never take back a routine you
-// already saved.
-export function useWorkoutInbox(uid, saveTemplate) {
+// Two kinds of item land here now: a workout a friend sent
+// (`workout_recommendation`, answered with accept or dismiss) and the
+// receipt when one of yours was completed and paid you a bounty
+// (`reward_bounty`, only ever dismissed).
+//
+// Accepting is a CALLABLE, not the three client writes it started as. It
+// copies the routine into your own templates — the copy is the point, so a
+// sender deleting their original can never take a routine back — but it
+// also records, server-side and out of the client's reach, who sent it, so
+// finishing that workout can pay them (functions/acceptRecommendation.js).
+// The moment coins hang off provenance, the copy cannot be made by the
+// party who benefits from lying about it.
+export function useWorkoutInbox(uid) {
   const [items, setItems] = useState([]);
 
   useEffect(() => {
@@ -65,22 +74,17 @@ export function useWorkoutInbox(uid, saveTemplate) {
       if (!uid || inFlight.current.has(item.id)) return;
       inFlight.current.add(item.id);
       try {
-        const routine = item.templateData ?? {};
-        await saveTemplate(
-          // Attributed in the title, the same convention copying a routine
-          // off a friend's profile already uses (PublicFriendProfile) — a
-          // library of anonymous "Push Day"s is useless a month later.
-          `${item.senderName ?? 'A friend'}'s ${routine.title ?? 'Workout'}`,
-          Array.isArray(routine.exercises) ? routine.exercises : [],
-        );
-        // Only after the copy has landed. Deleting first and failing the
-        // save would lose the routine outright, with nothing to retry.
-        await clear(item);
+        // One call does all of it — write the template, record the
+        // provenance, delete this item and the bell row that announced it
+        // — in a single batch, so a half-accepted state (a routine saved
+        // with the card still sitting there, or the reverse) is not
+        // reachable. The snapshot above removes the card when it lands.
+        await httpsCallable(functions, 'acceptRecommendation')({ itemId: item.id });
       } finally {
         inFlight.current.delete(item.id);
       }
     },
-    [uid, saveTemplate, clear],
+    [uid],
   );
 
   const decline = useCallback(

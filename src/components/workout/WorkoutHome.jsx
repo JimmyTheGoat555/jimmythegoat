@@ -208,9 +208,11 @@ export default function WorkoutHome({
         )}
       </div>
 
+      {/* No "Choose your mission" heading: the tab row and the cards under
+          it already say what this is, and a label over a picker that is
+          the only thing on the screen is a caption on a photograph of
+          itself. */}
       <div className="w-full flex flex-col gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400 px-0.5">Choose your mission</p>
-
         {categories.length > 1 && (
           <div className="flex gap-2 px-0.5">
             {categories.map((cat) => {

@@ -72,6 +72,12 @@ exports.sendFriendNudge = sendFriendNudge;
 const { recommendWorkout } = require('./recommendWorkout');
 exports.recommendWorkout = recommendWorkout;
 
+// The other end of that loop. A callable rather than the three client
+// writes it started as, because accepting is now what establishes who gets
+// paid when the routine is trained — see the file header.
+const { acceptRecommendation } = require('./acceptRecommendation');
+exports.acceptRecommendation = acceptRecommendation;
+
 // Cheers are written straight from the client (no callable), so the "you
 // were cheered" inbox item has to come from a trigger — the client cannot
 // be given write access to someone else's notifications. Both of these

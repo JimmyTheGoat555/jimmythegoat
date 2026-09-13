@@ -100,6 +100,13 @@ const NEGLECT_RECOVERY_MS = NEGLECT_RECOVERY_DAYS * 24 * 60 * 60 * 1000;
 // in-bounds session can't outpace training consistently.
 const COINS_PER_RELATIVE_POINT = 2.0;
 const MAX_COINS_PER_WORKOUT = 500;
+// Paid to the FRIEND who recommended a routine, the first time the person
+// who accepted it actually trains it (economy.js). Deliberately a quarter
+// of a typical session's own payout: enough that sending someone a good
+// workout is worth doing, nowhere near enough to make recommending a
+// better way to earn than lifting. Paid once per accepted recommendation,
+// never per session — see functions/acceptRecommendation.js.
+const RECOMMENDATION_BOUNTY_COINS = 50;
 
 // Divisor for workouts logged BEFORE relative scoring existed (no stored
 // `score` / per-set `relativeVolume`): their raw kg volume is mapped onto
@@ -171,6 +178,7 @@ module.exports = {
   RECOVERY_MIN_SCORE,
   COINS_PER_RELATIVE_POINT,
   MAX_COINS_PER_WORKOUT,
+  RECOMMENDATION_BOUNTY_COINS,
   LEGACY_BODYWEIGHT_KG,
   STORE_ITEMS,
   STORE_ITEMS_BY_ID,

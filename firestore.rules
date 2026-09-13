@@ -438,6 +438,25 @@ service cloud.firestore {
         allow create, update: if false;
       }
 
+      match /recommendedBy/{templateId} {
+        // Server-established provenance for an accepted recommendation:
+        // which friend sent the routine now saved under this template id,
+        // and whether their bounty has been paid (functions/economy.js
+        // pays it the first time the routine is trained).
+        //
+        // Closed on every side, including read, and that is the point. The
+        // sibling `templates/{id}` document carries the same senderUid for
+        // display and is fully owner-writable, like every template always
+        // has been — so if anything that MOVES COINS read provenance from
+        // there, a client could name its own beneficiary by editing a
+        // field on its own document. This collection exists precisely so
+        // the paying code has a source the client cannot reach: written
+        // only by acceptRecommendation and updated only by logWorkout,
+        // both on the Admin SDK, which bypasses these rules entirely.
+        // Nothing in the UI needs to read it.
+        allow read, write: if false;
+      }
+
       match /fcmTokens/{tokenId} {
         // Push registration tokens — owner only, both ways. The Cloud
         // Function that actually sends pushes uses the Admin SDK, which

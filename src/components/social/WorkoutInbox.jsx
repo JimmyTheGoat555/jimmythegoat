@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
-// Workouts friends have sent you, waiting on a yes or no.
+// The two things that arrive here and need a hand: a workout a friend sent
+// (accept or dismiss) and the receipt for a bounty one of yours just
+// earned (dismiss).
 //
 // Named for what it is rather than the "InboxPopup" it was sketched as: a
 // popup would have to interrupt something, and the one moment it could
@@ -50,7 +52,7 @@ export default function WorkoutInbox({ items = [], onAccept, onDecline }) {
   return (
     <section className="card flex flex-col gap-3 p-5">
       <h2 className="text-lg font-semibold text-neutral-100">
-        Workout inbox
+        Inbox
         <span className="ml-1.5 text-sm" style={{ color: 'var(--tier-accent)' }}>
           ({items.length})
         </span>
@@ -58,10 +60,41 @@ export default function WorkoutInbox({ items = [], onAccept, onDecline }) {
 
       <ul className="flex flex-col gap-2.5">
         {items.map((item) => {
+          const busyHere = busyId === item.id;
+
+          // A bounty receipt: nothing to decide, so no Accept — one button
+          // that means "seen". Rendered in this list rather than the
+          // notification one because the coin actually landed, and a
+          // payment is worth more than a row that scrolls away.
+          if (item.type === 'reward_bounty') {
+            return (
+              <li
+                key={item.id}
+                className="flex items-start gap-3 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3.5 py-3"
+              >
+                <span aria-hidden="true" className="mt-0.5 text-lg leading-none">
+                  🪙
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-neutral-100">{item.message ?? 'You earned a bounty!'}</p>
+                  {errors[item.id] && <p className="mt-1.5 text-xs text-[var(--danger)]">{errors[item.id]}</p>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => run(item, onDecline)}
+                  disabled={busyHere}
+                  className="shrink-0 self-center rounded-xl border border-amber-400/30 px-3 py-1.5 text-xs font-semibold text-amber-200 transition active:scale-[0.97] disabled:opacity-50"
+                >
+                  Nice!
+                </button>
+              </li>
+            );
+          }
+
           const routine = item.templateData ?? {};
           const exercises = Array.isArray(routine.exercises) ? routine.exercises : [];
           const preview = exercisePreview(exercises);
-          const busy = busyId === item.id;
+          const busy = busyHere;
           return (
             <li key={item.id} className="rounded-xl border border-white/10 bg-white/5 px-3.5 py-3">
               <p className="text-sm text-neutral-100">

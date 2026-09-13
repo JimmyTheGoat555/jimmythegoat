@@ -20,6 +20,10 @@ export function useEconomy(uid) {
       exercises: workout.exercises,
       startedAt: workout.startedAt,
       assignedWorkoutId: workout.assignedWorkoutId ?? null,
+      // The saved routine this session was loaded from. The server uses it
+      // to look up whether a friend recommended it — and to look up WHO,
+      // which is why the sender's uid is deliberately not sent from here.
+      templateId: workout.templateId ?? null,
       // Whether to call out any personal records on the feed post this
       // workout produces regardless. The server decides WHAT the records
       // are — see functions/records.js — this only answers "announce them?".

@@ -34,6 +34,7 @@ const {
   RECOVERY_MIN_SCORE,
   COINS_PER_RELATIVE_POINT,
   MAX_COINS_PER_WORKOUT,
+  RECOMMENDATION_BOUNTY_COINS,
   STORE_ITEMS_BY_ID,
   STARTER_DANCE_ID,
 } = require('./storeCatalog');
@@ -254,7 +255,7 @@ function headline(exercises) {
 exports.logWorkout = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   const uid = request.auth.uid;
-  const { exercises, assignedWorkoutId, startedAt, sharePersonalRecords } = request.data ?? {};
+  const { exercises, assignedWorkoutId, templateId, startedAt, sharePersonalRecords } = request.data ?? {};
 
   const db = getFirestore();
   const userRef = db.collection('users').doc(uid);
@@ -276,6 +277,16 @@ exports.logWorkout = onCall(async (request) => {
 
   const economyRef = userRef.collection('meta').doc('economy');
   const workoutRef = userRef.collection('workouts').doc();
+  // Was this session built from a routine a friend recommended? The client
+  // sends only the TEMPLATE id — never the friend's uid — and this
+  // document decides both whether a bounty is owed and who receives it.
+  // It is written exclusively by acceptRecommendation on the Admin SDK
+  // (firestore.rules: no client write path), which is what makes "the
+  // sender" a server-established fact rather than a request field. A
+  // client naming a template it invented finds nothing here and is paid
+  // nothing; it cannot name a beneficiary at all.
+  const recommendedByRef =
+    typeof templateId === 'string' && templateId ? userRef.collection('recommendedBy').doc(templateId) : null;
   // Top-level, NOT users/{uid}/feedPosts — the whole point is that other
   // people's clients can query across everyone's posts at once
   // (where('userId','in', myFriends)), which only works against a single
@@ -320,10 +331,39 @@ exports.logWorkout = onCall(async (request) => {
   let newBadges = [];
   let firstWorkoutReward = null;
   let currentStreak = 0;
+  // { senderUid, senderName } once a bounty has actually been paid, so the
+  // finisher's summary screen can say who it went to. null otherwise.
+  let recommendationBounty = null;
 
   await db.runTransaction(async (tx) => {
     const [userSnap, economySnap] = await Promise.all([tx.get(userRef), tx.get(economyRef)]);
     if (!userSnap.exists) throw new HttpsError('failed-precondition', "Your profile doc doesn't exist yet — try again in a moment.");
+
+    // Every read in a Firestore transaction has to happen before the first
+    // write, so the bounty lookup is resolved here even though the payout
+    // is written at the very bottom — it depends on `isRecovery`, which is
+    // not known yet. Two chained reads (the provenance doc, then the
+    // sender's own doc) rather than one, because the second is addressed
+    // by a uid the first supplies.
+    let bountyTarget = null;
+    if (recommendedByRef) {
+      const provenanceSnap = await tx.get(recommendedByRef);
+      const provenance = provenanceSnap.exists ? provenanceSnap.data() : null;
+      const senderUid = typeof provenance?.senderUid === 'string' ? provenance.senderUid : null;
+      // `bountyPaidAt` already set = this recommendation has been cashed.
+      // Doing the same routine every week is the feature working, not
+      // fifty coins a week for the friend who sent it once.
+      if (senderUid && senderUid !== uid && !provenance.bountyPaidAt) {
+        const senderRef = db.collection('users').doc(senderUid);
+        const senderSnap = await tx.get(senderRef);
+        // A deleted account is not paid, and — more to the point — is not
+        // resurrected: a bare increment would create a ghost users/{uid}
+        // doc holding nothing but a coin balance.
+        if (senderSnap.exists) {
+          bountyTarget = { ref: senderRef, uid: senderUid, name: provenance.senderName ?? 'A friend' };
+        }
+      }
+    }
 
     // Rolling window, not a UTC-midnight reset: stored as the timestamps of
     // recent logs rather than a count, because "2 in the last 24 hours"
@@ -422,6 +462,10 @@ exports.logWorkout = onCall(async (request) => {
       startedAt: sanitizeStartedAt(startedAt, finishedAtIso, now),
       finishedAt: finishedAtIso,
       assignedWorkoutId: typeof assignedWorkoutId === 'string' ? assignedWorkoutId : null,
+      // Which saved routine this session was loaded from, if any — stored
+      // for the same reason assignedWorkoutId is: so the history entry can
+      // say where the workout came from without re-deriving it.
+      templateId: typeof templateId === 'string' ? templateId : null,
       // Marks this doc as having come through server validation + reward —
       // see firestore.rules for why a directly client-written workout
       // (still possible for personal history edits) can never carry this.
@@ -648,6 +692,57 @@ exports.logWorkout = onCall(async (request) => {
         timestamp: finishedAtIso,
       });
     }
+
+    // ── Recommendation bounty ───────────────────────────────────────────
+    //
+    // The friend who sent this routine is paid the first time it is
+    // actually trained. Every part of that is server-side out of
+    // necessity rather than habit: the beneficiary comes from a document
+    // no client can write, the increment lands in the SAME transaction as
+    // the finisher's own reward (so a retried call cannot pay twice), and
+    // that transaction also stamps bountyPaidAt (so running the routine
+    // again next week cannot pay again).
+    //
+    // Skipped for a recovery workout, matching every other reward in this
+    // function. A session that earns its own lifter nothing must not
+    // quietly mint fifty coins for somebody else — otherwise the cheapest
+    // possible "workout" becomes a faucet pointed at a chosen account.
+    if (bountyTarget && !isRecovery) {
+      tx.update(bountyTarget.ref, { coins: FieldValue.increment(RECOMMENDATION_BOUNTY_COINS) });
+      tx.update(recommendedByRef, { bountyPaidAt: finishedAtIso });
+
+      const finisherName = userData.displayName ?? 'A friend';
+      const bountyText = `${finisherName} completed the workout you sent! You earned ${RECOMMENDATION_BOUNTY_COINS} coins.`;
+
+      // Both documents, mirroring recommendWorkout: the inbox item is the
+      // thing they look at, and the plain notification beside it is what
+      // turns the moment into a real push — index.js is this app's only
+      // FCM caller, and nothing here is worth becoming its second.
+      const bountyNotificationRef = bountyTarget.ref.collection('notifications').doc();
+      tx.set(bountyNotificationRef, {
+        type: 'reward_bounty',
+        title: `+${RECOMMENDATION_BOUNTY_COINS} coins 🪙`,
+        body: bountyText,
+        data: { fromUid: uid, fromName: finisherName },
+        read: false,
+        createdAt: finishedAtIso,
+      });
+      tx.set(bountyTarget.ref.collection('inbox').doc(), {
+        type: 'reward_bounty',
+        message: `Your friend ${bountyText}`,
+        amount: RECOMMENDATION_BOUNTY_COINS,
+        senderUid: uid,
+        senderName: finisherName,
+        notificationId: bountyNotificationRef.id,
+        createdAt: finishedAtIso,
+      });
+
+      recommendationBounty = {
+        senderUid: bountyTarget.uid,
+        senderName: bountyTarget.name,
+        coins: RECOMMENDATION_BOUNTY_COINS,
+      };
+    }
   });
 
   return {
@@ -670,6 +765,11 @@ exports.logWorkout = onCall(async (request) => {
     // anyway, so nothing NEEDS this — it is here so the summary screen can
     // say "3 in a row 🔥" without waiting for the snapshot to land.
     currentStreak,
+    // { senderUid, senderName, coins } when this session paid a friend
+    // their recommendation bounty — so the summary can tell the finisher
+    // that sending them the routine just earned somebody something. null
+    // every other time, which is nearly always.
+    recommendationBounty,
     // Raw kg moved in THIS session, for the summary screen's volume bar.
     // Returned rather than re-summed on the client, because the client's
     // own set.weight is blank for a bodyweight exercise — the lifter's

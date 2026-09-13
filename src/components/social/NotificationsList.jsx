@@ -20,6 +20,8 @@ const ICONS = {
   // The arrival ping for an item sitting in the Workout inbox above this
   // list (see WorkoutInbox.jsx) — answering it there clears this row too.
   workout_recommendation: '📋',
+  // Someone finished a workout you recommended, and it paid.
+  reward_bounty: '🪙',
 };
 
 // The shared inbox surface — lives on the Social tab (see SocialPage.jsx),

@@ -37,6 +37,9 @@ export default function WorkoutSummaryChecklist({
   // both arrays are built from the same workout in the same request, not
   // matched across a boundary where the two could drift.
   personalRecords = [],
+  // { senderName, coins } when this session paid a friend their
+  // recommendation bounty (logWorkout's return). null nearly always.
+  recommendationBounty = null,
   onDone,
 }) {
   const jimmyLook = useJimmyLook();
@@ -218,6 +221,18 @@ export default function WorkoutSummaryChecklist({
           );
         })}
       </ul>
+
+      {/* Held back until the list is done, so it never competes with the
+          tick rhythm — and phrased around THEM, because the point of the
+          moment is that someone else got something out of your session. */}
+      {recommendationBounty && (
+        <p
+          className="relative max-w-sm text-center text-sm text-amber-300 transition-opacity duration-500"
+          style={{ opacity: allDone ? 1 : 0 }}
+        >
+          🪙 {recommendationBounty.senderName} earned {recommendationBounty.coins} coins for sending you this.
+        </p>
+      )}
     </div>
   );
 }

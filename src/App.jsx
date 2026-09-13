@@ -355,7 +355,7 @@ export default function App() {
   // Both live up here rather than inside WorkoutHome/SocialPage because
   // the two ends of this loop are on different tabs: you send from the
   // template carousel on the landing screen and receive on Social.
-  const workoutInbox = useWorkoutInbox(uid, saveTemplate);
+  const workoutInbox = useWorkoutInbox(uid);
   const [recommendingTemplate, setRecommendingTemplate] = useState(null);
   // Jimmy's evolution tier from lifetime tonnage — computed once here and
   // reused for the app-wide accent theme (below) and the tier-up
@@ -417,15 +417,17 @@ export default function App() {
   };
 
   const handleStartAssigned = (assignment) => {
-    startWorkout(withSeededSets(assignment.exercises), assignment.id);
+    startWorkout(withSeededSets(assignment.exercises), { assignedWorkoutId: assignment.id });
     navigate('/workout');
   };
 
   // Same starting point as an assigned workout (same {exerciseId, name,
   // muscleGroup} shape) but with no assignedWorkoutId — loading a template
-  // never marks any trainer assignment complete.
+  // never marks any trainer assignment complete. The id rides along so the
+  // server can tell whether a friend recommended this routine and owes
+  // them a bounty (functions/economy.js).
   const handleStartTemplate = (template) => {
-    startWorkout(withSeededSets(template.exercises));
+    startWorkout(withSeededSets(template.exercises), { templateId: template.id });
     navigate('/workout');
   };
 
@@ -484,6 +486,10 @@ export default function App() {
       newBadges,
       firstWorkoutReward,
       totalVolumeKg,
+      // Set only when this session paid a friend for recommending the
+      // routine — the finisher's half of that loop is one line on the
+      // summary, nothing more.
+      recommendationBounty,
       // The SERVER's list, not the client's optimistic guess — it is the
       // side that decided, and a recovery workout gets an empty one.
       personalRecords: earnedRecords,
@@ -554,6 +560,7 @@ export default function App() {
         exercises: performedNames,
         totalVolumeKg,
         personalRecords: earnedRecords ?? [],
+        recommendationBounty: recommendationBounty ?? null,
         reward: showReward,
       });
     } else {
@@ -919,6 +926,7 @@ export default function App() {
               exercises={finishChecklist.exercises}
               totalVolumeKg={finishChecklist.totalVolumeKg}
               personalRecords={finishChecklist.personalRecords}
+              recommendationBounty={finishChecklist.recommendationBounty}
               onDone={() => {
                 const { reward } = finishChecklist;
                 setFinishChecklist(null);

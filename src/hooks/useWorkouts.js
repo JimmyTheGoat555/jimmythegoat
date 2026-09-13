@@ -57,7 +57,7 @@ function emptySets() {
   }));
 }
 
-function emptyWorkout(presetExercises, assignedWorkoutId) {
+function emptyWorkout(presetExercises, { assignedWorkoutId = null, templateId = null } = {}) {
   return {
     id: crypto.randomUUID(),
     startedAt: new Date().toISOString(),
@@ -78,6 +78,12 @@ function emptyWorkout(presetExercises, assignedWorkoutId) {
       sets: exercise.seedSets?.length ? exercise.seedSets : emptySets(),
     })),
     assignedWorkoutId: assignedWorkoutId ?? null,
+    // Which saved routine this came from. Carried all the way to
+    // logWorkout, where it is the ONLY thing that can trigger a
+    // recommendation bounty for the friend who sent it — the server looks
+    // the sender up from this id rather than being told who to pay. See
+    // functions/acceptRecommendation.js.
+    templateId: templateId ?? null,
   };
 }
 
@@ -123,12 +129,14 @@ export function useActiveWorkout(uid) {
 
   // Screen stays awake for the whole session: acquired the moment a workout
   // starts, released the moment it ends — whether by finishing or discarding,
-  // since both paths call discardWorkout(). `presetExercises`/`assignedWorkoutId`
-  // are set when starting from a trainer-assigned routine (see
-  // AssignedWorkoutCard); omit both for a normal freestyle workout.
+  // since both paths call discardWorkout(). `presetExercises` plus one of
+  // `assignedWorkoutId` (a trainer's assignment) or `templateId` (a saved
+  // routine); omit all three for a normal freestyle workout. An options
+  // object rather than a third positional argument, which would have made
+  // the template call site read `startWorkout(ex, undefined, id)`.
   const startWorkout = useCallback(
-    (presetExercises, assignedWorkoutId) => {
-      setActiveWorkout(emptyWorkout(presetExercises, assignedWorkoutId));
+    (presetExercises, origin) => {
+      setActiveWorkout(emptyWorkout(presetExercises, origin));
       screenLock.request();
     },
     [setActiveWorkout, screenLock.request],
