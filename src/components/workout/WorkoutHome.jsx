@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useJimmyLook } from '../../context/JimmyLook';
 import MissionCard from './MissionCard';
+import BadgeShelf from '../profile/BadgeShelf';
 import JimmyAnimation from '../evolution/JimmyAnimation';
 import { lifetimeVolume } from '../../utils/workoutStats';
 import { getEvolutionProgress, formatTierGoalKg } from '../../utils/evolutionTiers';
@@ -36,6 +37,8 @@ export default function WorkoutHome({
   onStartTemplate,
   onDeleteTemplate,
   onPlanWorkout,
+  // users/{uid}.badges — the same array the Profile shelf renders.
+  badges,
   assignments = [],
   templates = [],
   workouts = [],
@@ -292,6 +295,24 @@ export default function WorkoutHome({
           />
         )}
       </button>
+
+      {/* BELOW the arena button, deliberately. This screen exists to get
+          someone into a workout, and the trophy case is something you
+          scroll down to afterwards — above it would push the primary
+          action off the fold on a small phone. `mt-auto` on the button
+          already pins that to the bottom of the viewport, so this lands
+          just past it rather than competing with it.
+
+          Same full shelf as Profile, locked silhouettes included: "what
+          am I close to" is the reason to look at it from here at all. */}
+      {/* pb-20 clears the fixed BottomNav. The padding goes HERE rather
+          than on the page container, whose pb-6 is load-bearing: the
+          arena button is mt-auto inside a min-h-screen column, so
+          padding the container would shove the primary action up the
+          fold to make room for something below it. */}
+      <div className="w-full pt-2 pb-20">
+        <BadgeShelf badges={badges} title="Trophies" />
+      </div>
     </div>
   );
 }

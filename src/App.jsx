@@ -724,6 +724,7 @@ export default function App() {
                       onStartTemplate={handleStartTemplate}
                       onDeleteTemplate={deleteTemplate}
                       onPlanWorkout={() => setPlanningWorkout(true)}
+                      badges={account?.badges}
                       assignments={assignments}
                       templates={templates}
                       workouts={workouts}
