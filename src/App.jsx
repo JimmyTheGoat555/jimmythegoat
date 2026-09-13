@@ -27,10 +27,17 @@ import { getEvolutionProgress, TRAINER_MIN_STAGE } from './utils/evolutionTiers'
 import { findNewPersonalRecords } from './utils/personalRecords';
 import { lastPerformance, seedSetsFromHistory } from './utils/lastPerformance';
 import { isBodyweightExercise } from './data/exercises';
+// NOT lazy, unlike the other post-workout overlays. Measured: a lazy
+// boundary costs ~300ms of blank home screen between cascade steps even
+// with the chunk already prefetched — React throttles revealing content
+// after a Suspense fallback. This component is an emoji, three lines of
+// text and a button (canvas-confetti, the only heavy part, is still
+// imported dynamically inside it), so there is nothing to defer and a
+// visible seam to avoid.
+import BadgeCelebrationModal from './components/workout/BadgeCelebrationModal';
 import ConfirmDialog from './components/shared/ConfirmDialog';
 import { JimmyLookProvider } from './context/JimmyLook';
 import { DEFAULT_SETS_PER_EXERCISE } from './hooks/useWorkouts';
-import { getBadge } from './data/badges';
 import { tierCssVars } from './utils/tierTheme';
 
 // Everything past the first screen is split out of the initial bundle. The
@@ -208,6 +215,8 @@ export default function App() {
   // rather than folded into appNotice's small toast — see
   // SilverLootboxModal.jsx.
   const [lootboxReward, setLootboxReward] = useState(null);
+  // Badge ids earned by the workout just logged — step 2 of the cascade.
+  const [badgeCelebration, setBadgeCelebration] = useState(null);
   // The checklist that plays after a workout is logged: { exercises, reward }.
   // `reward` is the deferred "what the user actually earned" step (coin/badge
   // toast, or the Silver Lootbox) — held back until the ticking finishes so
@@ -486,6 +495,12 @@ export default function App() {
       // functions/economy.js). The coin/badge toast below still fires as
       // usual; this is a SEPARATE full-screen moment for the free dance
       // specifically, not a replacement for it.
+      // Both are QUEUED here; the render below decides what is on screen
+      // and in what order. Setting them together rather than chaining
+      // callbacks keeps "what did this workout earn" in one place and the
+      // sequencing in one place, instead of spread across three onClose
+      // handlers that each have to know what comes next.
+      if (newBadges?.length > 0) setBadgeCelebration(newBadges);
       if (firstWorkoutReward) setLootboxReward(firstWorkoutReward);
 
       if (recoveryWorkout) {
@@ -501,17 +516,19 @@ export default function App() {
             : "That barely counted — Jimmy needs a real effort to lift the penalty. Log a proper session to restore your tier.",
           tone: neglectPenaltyLifted ? 'success' : 'warning',
         });
-      } else if (newBadges?.length > 0 || coinsEarned > 0) {
-        // Badges (functions/badges.js) trump the coin line — they're rarer.
-        const badgeNames = (newBadges ?? []).map((id) => getBadge(id)?.name ?? 'New badge');
-        const coinPart = coinsEarned > 0 ? `+${coinsEarned} coins` : null;
-        const badgePart = badgeNames.length ? `🏅 ${badgeNames.join(' · ')} unlocked!` : null;
-        setAppNotice({
-          message: [badgePart, coinPart].filter(Boolean).join('  ·  '),
-          tone: 'success',
-        });
+      } else if (coinsEarned > 0) {
+        // Coins only. Badges used to share this line; they now get a
+        // full-screen moment of their own (BadgeCelebrationModal), and
+        // naming them here as well would announce the same trophy twice.
+        setAppNotice({ message: `+${coinsEarned} coins`, tone: 'success' });
       }
     };
+
+    // Warm the lootbox chunk while the tick-list is still playing, so its
+    // download is not also part of the seam. (The seam itself is React's
+    // Suspense reveal throttle, which is why the badge modal above is not
+    // lazy at all.)
+    if (firstWorkoutReward) import('./components/workout/SilverLootboxModal');
 
     if (performedNames.length > 0) {
       setFinishChecklist({
@@ -909,14 +926,19 @@ export default function App() {
           />
         )}
 
-        {/* `!finishChecklist` is belt AND braces. reward() is only ever
-            called from the checklist's onDone, so by call order the chest
-            already comes second — but that ordering lives in a callback
-            three hundred lines away, and anything that ever calls
-            showReward() earlier would silently stack a chest on top of a
-            half-ticked list. Gated here, the sequence is a property of the
-            render instead of a convention someone has to remember. */}
-        {lootboxReward && !finishChecklist && (
+        {/* Step 2 of the cascade: trophies, after the tick-list and before
+            the chest. */}
+        {badgeCelebration && !finishChecklist && (
+          <BadgeCelebrationModal badgeIds={badgeCelebration} onClaim={() => setBadgeCelebration(null)} />
+        )}
+
+        {/* Step 3, and the guards are the whole sequencer: the chest waits
+            for BOTH the tick-list and the trophies to clear. Expressing the
+            order as render conditions rather than a chain of onClose
+            callbacks means no step needs to know what follows it — and
+            anything that ever queues a reward early cannot stack a chest
+            on top of a half-ticked list. */}
+        {lootboxReward && !finishChecklist && !badgeCelebration && (
           <Suspense fallback={null}>
             <SilverLootboxModal
               reward={lootboxReward}

@@ -841,3 +841,45 @@ button.card:hover {
     filter: drop-shadow(0 0 6px rgba(255, 176, 62, 0.5));
   }
 }
+
+/* ---- Badge celebration (components/workout/BadgeCelebrationModal.jsx) ---- */
+/* One trophy at full screen, so it can be loud where the shelf's
+   badge-glow has to stay quiet across thirteen tiles.
+   Overshoots on the way in and settles — landing, rather than being
+   pasted on — then holds a steady glow. Composited properties only
+   (transform, filter, opacity); nothing here triggers layout. */
+@keyframes badge-celebrate {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) rotate(-14deg);
+    filter: drop-shadow(0 0 0 rgba(247, 207, 94, 0));
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.18) rotate(4deg);
+    filter: drop-shadow(0 0 26px rgba(247, 207, 94, 0.95));
+  }
+  75% {
+    transform: scale(0.96) rotate(-2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 16px rgba(247, 207, 94, 0.7));
+  }
+}
+.badge-celebrate {
+  animation: badge-celebrate 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, filter;
+}
+/* Two trophies at once should not land in unison. */
+.badge-celebrate:nth-child(2n) {
+  animation-delay: 160ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badge-celebrate {
+    animation: none;
+    filter: drop-shadow(0 0 16px rgba(247, 207, 94, 0.7));
+  }
+}
