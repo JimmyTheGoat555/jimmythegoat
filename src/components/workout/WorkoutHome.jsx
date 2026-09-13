@@ -36,6 +36,9 @@ export default function WorkoutHome({
   onStartAssigned,
   onStartTemplate,
   onDeleteTemplate,
+  // Opens the friend picker for one saved routine — App owns the modal,
+  // so this screen never needs to know the friends list or the callable.
+  onRecommendTemplate,
   onPlanWorkout,
   // users/{uid}.badges — the same array the Profile shelf renders.
   badges,
@@ -259,6 +262,7 @@ export default function WorkoutHome({
                 tierId={current.id}
                 onClick={() => setTemplateIdx(i)}
                 onDelete={onDeleteTemplate ? () => onDeleteTemplate(template.id) : undefined}
+                onRecommend={onRecommendTemplate ? () => onRecommendTemplate(template) : undefined}
               />
             ))}
 
@@ -305,16 +309,6 @@ export default function WorkoutHome({
           />
         )}
       </button>
-
-      {/* BELOW the arena button, deliberately. This screen exists to get
-          someone into a workout, and the trophy case is something you
-          scroll down to afterwards — above it would push the primary
-          action off the fold on a small phone. `mt-auto` on the button
-          already pins that to the bottom of the viewport, so this lands
-          just past it rather than competing with it.
-
-          Same full shelf as Profile, locked silhouettes included: "what
-          am I close to" is the reason to look at it from here at all. */}
     </div>
   );
 }

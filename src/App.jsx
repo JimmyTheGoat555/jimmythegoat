@@ -19,6 +19,7 @@ import { useTierUpCelebration } from './hooks/useTierUpCelebration';
 import { useLazyGoatNudge } from './hooks/useLazyGoatNudge';
 import { useAssignedWorkouts } from './hooks/useAssignedWorkouts';
 import { useWorkoutTemplates } from './hooks/useWorkoutTemplates';
+import { useWorkoutInbox } from './hooks/useWorkoutInbox';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useTabSwipe } from './hooks/useTabSwipe';
 import { firebaseConfigured } from './lib/firebase';
@@ -80,6 +81,11 @@ const WorkoutSummaryChecklist = lazy(() => import('./components/workout/WorkoutS
 // Only mounts when someone actually plans ahead; it drags in the whole
 // exercise picker, which the landing screen otherwise never needs.
 const PlanWorkoutModal = lazy(() => import('./components/workout/PlanWorkoutModal'));
+// Opened from a template card on the landing screen, so it must NOT ride
+// in on SocialPage's chunk (which is prefetched, but only on idle) — and
+// it must not sit in the startup bundle either for a sheet most sessions
+// never open.
+const FriendPickerModal = lazy(() => import('./components/social/FriendPickerModal'));
 
 function prefetchTabScreens() {
   import('./components/progress/ProgressView');
@@ -344,6 +350,13 @@ export default function App() {
   // trainee, since they share one app experience. See WorkoutHome.jsx for
   // the scope note on why this isn't (yet) a trainer→trainee shared library.
   const { templates, saveTemplate, deleteTemplate } = useWorkoutTemplates(uid);
+
+  // Routines friends have sent over, and the sheet for sending one out.
+  // Both live up here rather than inside WorkoutHome/SocialPage because
+  // the two ends of this loop are on different tabs: you send from the
+  // template carousel on the landing screen and receive on Social.
+  const workoutInbox = useWorkoutInbox(uid, saveTemplate);
+  const [recommendingTemplate, setRecommendingTemplate] = useState(null);
   // Jimmy's evolution tier from lifetime tonnage — computed once here and
   // reused for the app-wide accent theme (below) and the tier-up
   // celebration. `lastWorkoutAt` applies the neglect penalty (a 1-tier
@@ -723,6 +736,7 @@ export default function App() {
                       onStartAssigned={handleStartAssigned}
                       onStartTemplate={handleStartTemplate}
                       onDeleteTemplate={deleteTemplate}
+                      onRecommendTemplate={setRecommendingTemplate}
                       onPlanWorkout={() => setPlanningWorkout(true)}
                       badges={account?.badges}
                       featuredBadges={account?.featuredBadges}
@@ -769,6 +783,9 @@ export default function App() {
                     notifications={notifications}
                     onMarkNotificationRead={markNotificationRead}
                     onDismissNotification={dismissNotification}
+                    inboxItems={workoutInbox.items}
+                    onAcceptInboxItem={workoutInbox.accept}
+                    onDeclineInboxItem={workoutInbox.decline}
                   />
                 }
               />
@@ -917,6 +934,23 @@ export default function App() {
               exercises={exercises}
               onSave={promptSaveTemplate}
               onClose={() => setPlanningWorkout(false)}
+            />
+          </Suspense>
+        )}
+
+        {/* "Recommend to a friend" on a saved routine. Only the id crosses
+            the wire — recommendWorkout re-reads the routine out of this
+            account's own templates server-side, so the copy that lands in
+            a friend's inbox cannot be anything this account never saved. */}
+        {recommendingTemplate && (
+          <Suspense fallback={null}>
+            <FriendPickerModal
+              routineTitle={recommendingTemplate.title}
+              friends={friendsGraph.friends}
+              onSend={(friendUid, message) =>
+                friendsGraph.recommendWorkout(friendUid, recommendingTemplate.id, message)
+              }
+              onClose={() => setRecommendingTemplate(null)}
             />
           </Suspense>
         )}

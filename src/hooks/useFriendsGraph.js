@@ -104,6 +104,15 @@ export function useFriendsGraph(uid, friendUids) {
     return data; // { sent }
   }, []);
 
+  // See functions/recommendWorkout.js. Takes a templateId rather than the
+  // routine itself: the server reads it out of the caller's own templates
+  // collection, so what lands in a friend's inbox is provably something
+  // this account actually saved, not a payload a tampered client typed.
+  const recommendWorkout = useCallback(async (friendUid, templateId, message) => {
+    const { data } = await httpsCallable(functions, 'recommendWorkout')({ friendUid, templateId, message });
+    return data; // { sent, to }
+  }, []);
+
   return {
     friends,
     loadingFriends,
@@ -113,5 +122,6 @@ export function useFriendsGraph(uid, friendUids) {
     respondToFriendRequest,
     removeFriend,
     sendNudge,
+    recommendWorkout,
   };
 }

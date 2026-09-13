@@ -5,6 +5,7 @@ import FriendSuggestions from './FriendSuggestions';
 import FriendsManager from './FriendsManager';
 import SocialFeed from './SocialFeed';
 import NotificationsList from './NotificationsList';
+import WorkoutInbox from './WorkoutInbox';
 
 // Composes the pieces the old Leaderboard.tsx used to do alone (ranking +
 // friend management + the feed) plus the notification inbox, which used to
@@ -32,6 +33,9 @@ export default function SocialPage({
   notifications,
   onMarkNotificationRead,
   onDismissNotification,
+  inboxItems,
+  onAcceptInboxItem,
+  onDeclineInboxItem,
 }) {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -46,6 +50,12 @@ export default function SocialPage({
   return (
     <div className="flex flex-col gap-6 pt-6 pb-24">
       <h1 className="text-3xl font-bold text-neutral-50">Social</h1>
+
+      {/* Above the notification list, because this is the only thing on
+          the page that is waiting on the user rather than informing them.
+          Renders nothing when the inbox is empty, so it costs the page no
+          space on the ordinary visit. */}
+      <WorkoutInbox items={inboxItems} onAccept={onAcceptInboxItem} onDecline={onDeclineInboxItem} />
 
       <section className="card p-5 flex flex-col gap-3">
         <h2 className="text-lg font-semibold text-neutral-100">

@@ -410,6 +410,34 @@ service cloud.firestore {
         allow create: if isOwner(uid);
       }
 
+      match /inbox/{itemId} {
+        // Actionable items sent to you by another person — today, a
+        // friend's workout recommendation (functions/recommendWorkout.js).
+        // Separate from `notifications` above because these carry a
+        // payload and WAIT ON A DECISION: the notification list is capped,
+        // truncated and dismissible with a stray ✕, which is right for a
+        // reminder and wrong for something you still have to accept.
+        //
+        // `create: if false` is the whole security model, and it is
+        // stricter than the notifications rule right above deliberately.
+        // There, `isOwner(uid)` create is harmless — the only thing you
+        // can do is write yourself a note. Here, an item carries a
+        // senderUid and a senderName that the UI renders as attribution
+        // ("Reef sent you a workout"), so a client-writable inbox would be
+        // a forgery channel: anyone could put a card in their OWN inbox
+        // claiming to be from anyone, and more to the point the same code
+        // path would have to be trusted not to write into someone else's.
+        // The callable runs on the Admin SDK, which bypasses these rules
+        // entirely, so nothing legitimate needs client create access.
+        //
+        // No update either: accept and decline both just delete the item
+        // (the accepted copy is written into the recipient's own
+        // `templates`), so there is no state on this document for anyone
+        // to edit. Read and delete are the owner's, as they must be.
+        allow read, delete: if isOwner(uid);
+        allow create, update: if false;
+      }
+
       match /fcmTokens/{tokenId} {
         // Push registration tokens — owner only, both ways. The Cloud
         // Function that actually sends pushes uses the Admin SDK, which

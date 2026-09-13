@@ -65,6 +65,13 @@ exports.searchUsers = searchUsers;
 const { sendFriendNudge } = require('./nudges');
 exports.sendFriendNudge = sendFriendNudge;
 
+// Sending a saved routine to a friend. Writes an actionable item into
+// users/{uid}/inbox AND a plain notification doc, so the arrival rides the
+// one push pipeline below like everything else — see that file's header
+// for why the payload does not just live in the notification itself.
+const { recommendWorkout } = require('./recommendWorkout');
+exports.recommendWorkout = recommendWorkout;
+
 // Cheers are written straight from the client (no callable), so the "you
 // were cheered" inbox item has to come from a trigger — the client cannot
 // be given write access to someone else's notifications. Both of these
