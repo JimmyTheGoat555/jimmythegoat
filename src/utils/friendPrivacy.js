@@ -232,6 +232,12 @@ export function sanitizeFriendData(rawData) {
     // the catalog cannot name would render as a blank tile, and one from
     // a tampered document should not render at all.
     badges: sanitizeBadges(raw.badges),
+    // Ids only, validated against the registry the same way. The reader
+    // intersects these with what was actually earned, so a stale or
+    // forged entry renders nothing.
+    featuredBadges: (Array.isArray(raw.featuredBadges) ? raw.featuredBadges : [])
+      .filter((id) => BADGE_IDS.has(id))
+      .slice(0, 3),
 
     currentStreak: Number(raw.currentStreak) || 0,
     showFire: isOnFire(raw.currentStreak),

@@ -30,7 +30,15 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['displayName', 'usernameChangedOnce', 'trainerId',
                   'equippedDance', 'equippedAccessory', 'equippedAccessories',
-                  'hasUnreadNudgePush', 'friendCode']);
+                  'hasUnreadNudgePush', 'friendCode', 'featuredBadges']) &&
+        // Which of your own badges your profile shows. Purely a display
+        // choice over ids the SERVER already awarded — `badges` itself
+        // stays server-only (serverManagedFieldsUnchanged), so the worst a
+        // tampered client can do here is feature an id it does not hold,
+        // which every reader drops on the way out (resolveFeaturedBadges
+        // filters against the earned set). Capped so it cannot be used as
+        // free storage on a doc a trainer can read.
+        request.resource.data.get('featuredBadges', []).size() <= 3;
     }
 
     // `trainerId` may only be cleared or pointed at an account that is
@@ -485,7 +493,8 @@ service cloud.firestore {
         allow create, delete: if false;
         allow update: if isOwner(uid) &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['equippedDance', 'equippedAccessory', 'equippedAccessories', 'savedWorkouts']) &&
+            .hasOnly(['equippedDance', 'equippedAccessory', 'equippedAccessories', 'savedWorkouts', 'featuredBadges']) &&
+          request.resource.data.get('featuredBadges', []).size() <= 3 &&
           request.resource.data.get('savedWorkouts', []).size() <= 20;
       }
     }

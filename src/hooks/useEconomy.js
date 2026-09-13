@@ -77,5 +77,18 @@ export function useEconomy(uid) {
     [uid],
   );
 
-  return { logWorkout, purchaseItem, equipItem, setEquippedAccessories };
+  // Which three badges the profile shows. Same plain-write + best-effort
+  // public mirror as equipItem above: it is a display preference over ids
+  // the server awarded, not a claim to have earned anything, so it needs
+  // no callable.
+  const setFeaturedBadges = useCallback(
+    async (ids) => {
+      const next = (Array.isArray(ids) ? ids : []).slice(0, 3);
+      await updateDoc(doc(db, 'users', uid), { featuredBadges: next });
+      updateDoc(doc(db, 'users', uid, 'public', 'summary'), { featuredBadges: next }).catch(() => {});
+    },
+    [uid],
+  );
+
+  return { logWorkout, purchaseItem, equipItem, setEquippedAccessories, setFeaturedBadges };
 }

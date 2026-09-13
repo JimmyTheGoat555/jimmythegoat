@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { WEEKDAY_LABELS, isWeighInDayToday, isWeighInDayTomorrow, goalMatchesDelta } from '../../utils/weighIn';
 import WeighInModal from './WeighInModal';
-import BadgeShelf from './BadgeShelf';
+import BadgeRibbon from './BadgeRibbon';
+import BadgePickerModal from './BadgePickerModal';
 import JimmyAvatar from '../evolution/JimmyAvatar';
 import { useJimmyLook } from '../../context/JimmyLook';
 import { formatRecordLoad } from '../../utils/personalRecords';
@@ -21,7 +22,8 @@ function formatDate(iso) {
 // notification/sound toggles, and sign-out all moved to SettingsPanel
 // (reached via the gear icon in TopHud) so this stays what its own
 // heading says: your numbers, not app preferences.
-export default function ProfileView({ account, profile, updateDetails, logBodyWeight, deleteBodyWeightEntry, onConnectToTrainer, onDisconnectFromTrainer, onNotifyTrainer }) {
+export default function ProfileView({ account, profile, updateDetails, logBodyWeight, deleteBodyWeightEntry, onConnectToTrainer, onDisconnectFromTrainer, onNotifyTrainer, onSetFeaturedBadges }) {
+  const [pickingBadges, setPickingBadges] = useState(false);
   const navigate = useNavigate();
   const jimmyLook = useJimmyLook();
   const [weightInput, setWeightInput] = useState('');
@@ -202,7 +204,18 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
         </section>
       )}
 
-      <BadgeShelf badges={account?.badges} />
+      {/* No catalog, by request: nothing unearned is shown anywhere, so
+          what is left to get stays a surprise. Tapping the row opens the
+          picker — it is the only control, and a separate "edit" link
+          beside three pills would outweigh them. */}
+      <div className="flex flex-col items-center gap-2">
+        <BadgeRibbon
+          badges={account?.badges}
+          featured={account?.featuredBadges}
+          onEdit={() => setPickingBadges(true)}
+          emptyHint="No badges yet — they show up here as you earn them."
+        />
+      </div>
 
       <section className="card p-5 flex flex-col gap-4">
         <h2 className="text-lg font-semibold text-neutral-100">Details</h2>
@@ -301,6 +314,15 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
           achieved={pendingWeighIn.achieved}
           onConfirm={handleConfirmWeighIn}
           onClose={() => handleConfirmWeighIn('private')}
+        />
+      )}
+
+      {pickingBadges && (
+        <BadgePickerModal
+          badges={account?.badges}
+          featured={account?.featuredBadges}
+          onSave={onSetFeaturedBadges}
+          onClose={() => setPickingBadges(false)}
         />
       )}
     </div>

@@ -222,3 +222,45 @@ export function highestEarnedTier(category, earned) {
 export function nextTier(category, earned) {
   return category.tiers.find((t) => !earned.has(t.id)) ?? null;
 }
+
+// ── Featured badges ──────────────────────────────────────────────────
+//
+// A profile shows at most three, and the owner picks which. Locked
+// badges are never rendered anywhere any more: the catalog is not a
+// to-do list on display, it is a surprise, and a grid of silhouettes
+// naming every threshold gives that away.
+
+export const MAX_FEATURED_BADGES = 3;
+
+// gold > silver > bronze, used for the automatic default and for
+// ordering the picker.
+const TIER_RANK = { gold: 3, silver: 2, bronze: 1 };
+
+// One entry per category the user has ANY tier in, holding their best.
+// The picker offers these rather than all 33 ids: "Bench Press · Bronze"
+// is not a thing to choose when you already hold gold in that category.
+export function earnedCategoryBests(earned) {
+  return BADGE_CATEGORIES.map((category) => highestEarnedTier(category, earned))
+    .filter(Boolean)
+    .map((t) => getBadge(t.id))
+    .filter(Boolean)
+    .sort((a, b) => (TIER_RANK[b.tier] ?? 0) - (TIER_RANK[a.tier] ?? 0));
+}
+
+// What to show when the user has never chosen: their best three, gold
+// first. Also the filter for a stored choice — an id that is no longer
+// earned (or never was) is dropped rather than rendered as a blank.
+export function resolveFeaturedBadges(badges, featured) {
+  const earned = earnedBadgeMap(badges);
+  const bests = earnedCategoryBests(earned);
+  const allowed = new Set(bests.map((b) => b.id));
+
+  const chosen = (Array.isArray(featured) ? featured : [])
+    .filter((id) => allowed.has(id))
+    .slice(0, MAX_FEATURED_BADGES)
+    .map((id) => getBadge(id))
+    .filter(Boolean);
+
+  if (chosen.length > 0) return chosen;
+  return bests.slice(0, MAX_FEATURED_BADGES);
+}

@@ -293,7 +293,7 @@ export default function App() {
   // `profile.coins`/`unlockedDances`/`unlockedAccessories` already arrive
   // live via useAuth's own profile listener the instant logWorkout()/
   // purchaseItem() update them server-side.
-  const { logWorkout, purchaseItem, equipItem, setEquippedAccessories } = useEconomy(uid);
+  const { logWorkout, purchaseItem, equipItem, setEquippedAccessories, setFeaturedBadges } = useEconomy(uid);
   // Social graph + feed — see hooks/useFriendsGraph.js and useFeed.js.
   // `account.friends` (bare uids) is the source of truth; both hooks derive
   // from it rather than holding their own copy.
@@ -725,6 +725,7 @@ export default function App() {
                       onDeleteTemplate={deleteTemplate}
                       onPlanWorkout={() => setPlanningWorkout(true)}
                       badges={account?.badges}
+                      featuredBadges={account?.featuredBadges}
                       assignments={assignments}
                       templates={templates}
                       workouts={workouts}
@@ -794,6 +795,7 @@ export default function App() {
                     onConnectToTrainer={connectToTrainer}
                     onDisconnectFromTrainer={disconnectFromTrainer}
                     onNotifyTrainer={notifyTrainer}
+                    onSetFeaturedBadges={setFeaturedBadges}
                   />
                 }
               />

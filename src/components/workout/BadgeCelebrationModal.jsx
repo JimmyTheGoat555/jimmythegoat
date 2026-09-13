@@ -73,10 +73,7 @@ export default function BadgeCelebrationModal({ badgeIds = [], onClaim }) {
       >
         {badges.map((badge) => (
           <li key={badge.id} className="flex flex-col items-center gap-2 text-center">
-            {/* badge-celebrate is the pop-in + hard glow (index.css). The
-                shelf's badge-earned is a slow breathe for a grid of
-                thirteen; this is one trophy at full screen and wants a
-                different weight entirely. */}
+            {/* badge-celebrate is the pop-in + hard glow (index.css). */}
             <span
               className={`badge-celebrate leading-none ${many ? 'text-5xl' : 'text-7xl'}`}
               // Glow in the metal that was actually won, so bronze does

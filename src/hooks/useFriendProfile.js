@@ -111,6 +111,8 @@ export function useFriendProfile(friendUid) {
     // Trophies, published by logWorkout as the same { id, at } shape the
     // private doc holds.
     badges: summary?.badges ?? null,
+    // Which three they chose to show; null falls back to their best three.
+    featuredBadges: summary?.featuredBadges ?? null,
     // Coaching accounts start at buff — see TRAINER_MIN_STAGE.
     minStage: summary?.minStage ?? latestPost?.minStage ?? 1,
     loading: summaryLoading || postLoading,

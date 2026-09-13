@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useJimmyLook } from '../../context/JimmyLook';
 import MissionCard from './MissionCard';
-import BadgeShelf from '../profile/BadgeShelf';
+import BadgeRibbon from '../profile/BadgeRibbon';
 import JimmyAnimation from '../evolution/JimmyAnimation';
 import { lifetimeVolume } from '../../utils/workoutStats';
 import { getEvolutionProgress, formatTierGoalKg } from '../../utils/evolutionTiers';
@@ -39,6 +39,7 @@ export default function WorkoutHome({
   onPlanWorkout,
   // users/{uid}.badges — the same array the Profile shelf renders.
   badges,
+  featuredBadges,
   assignments = [],
   templates = [],
   workouts = [],
@@ -305,13 +306,18 @@ export default function WorkoutHome({
 
           Same full shelf as Profile, locked silhouettes included: "what
           am I close to" is the reason to look at it from here at all. */}
-      {/* pb-20 clears the fixed BottomNav. The padding goes HERE rather
-          than on the page container, whose pb-6 is load-bearing: the
-          arena button is mt-auto inside a min-h-screen column, so
-          padding the container would shove the primary action up the
-          fold to make room for something below it. */}
-      <div className="w-full pt-2 pb-20">
-        <BadgeShelf badges={badges} title="Trophies" />
+      {/* Earned badges only, as a compact row. The 13-slot grid that
+          used to sit here made the home screen a scroll and put every
+          unearned threshold on display; three pills under the button say
+          the same thing about what you HAVE without publishing a
+          checklist of what you have not. */}
+      {/* pb-20 clears the fixed BottomNav — the page container's pb-6 is
+          load-bearing (the arena button is mt-auto in a min-h-screen
+          column, so padding the container would shove the primary
+          action up the fold). Without this the pills sit behind the
+          tab bar. */}
+      <div className="w-full pt-3 pb-20">
+        <BadgeRibbon badges={badges} featured={featuredBadges} />
       </div>
     </div>
   );
