@@ -317,7 +317,9 @@ export default function WorkoutHome({
           action up the fold). Without this the pills sit behind the
           tab bar. */}
       <div className="w-full pt-3 pb-20">
-        <BadgeRibbon badges={badges} featured={featuredBadges} />
+        {/* Tooltip opens upward here: this row sits against the fixed
+            bottom nav, so "below" would render behind it. */}
+        <BadgeRibbon badges={badges} featured={featuredBadges} tooltipPlacement="top" />
       </div>
     </div>
   );
