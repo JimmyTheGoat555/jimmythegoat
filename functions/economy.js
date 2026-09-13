@@ -659,6 +659,12 @@ exports.logWorkout = onCall(async (request) => {
     // anyway, so nothing NEEDS this — it is here so the summary screen can
     // say "3 in a row 🔥" without waiting for the snapshot to land.
     currentStreak,
+    // Raw kg moved in THIS session, for the summary screen's volume bar.
+    // Returned rather than re-summed on the client, because the client's
+    // own set.weight is blank for a bodyweight exercise — the lifter's
+    // body weight is folded in here, server-side. A client-side sum would
+    // report a full pull-up session as 0 kg.
+    totalVolumeKg,
   };
 });
 

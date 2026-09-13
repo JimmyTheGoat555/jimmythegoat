@@ -443,7 +443,8 @@ export default function App() {
     }
 
     pendingOfflineFinishRef.current = null;
-    const { workoutId, coinsEarned, recoveryWorkout, neglectPenaltyLifted, newBadges, firstWorkoutReward } = result;
+    const { workoutId, coinsEarned, recoveryWorkout, neglectPenaltyLifted, newBadges, firstWorkoutReward, totalVolumeKg } =
+      result;
     if (workout.assignedWorkoutId) {
       completeAssignment(workout.assignedWorkoutId, workoutId);
     }
@@ -498,7 +499,7 @@ export default function App() {
     };
 
     if (performedNames.length > 0) {
-      setFinishChecklist({ exercises: performedNames, reward: showReward });
+      setFinishChecklist({ exercises: performedNames, totalVolumeKg, reward: showReward });
     } else {
       showReward();
     }
@@ -841,6 +842,7 @@ export default function App() {
           <Suspense fallback={null}>
             <WorkoutSummaryChecklist
               exercises={finishChecklist.exercises}
+              totalVolumeKg={finishChecklist.totalVolumeKg}
               onDone={() => {
                 const { reward } = finishChecklist;
                 setFinishChecklist(null);

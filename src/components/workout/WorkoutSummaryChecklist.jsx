@@ -23,16 +23,29 @@ import { useJimmyLook } from '../../context/JimmyLook';
 const FIRST_TICK_MS = 420; // a beat to read the list before it starts
 const STAGGER_MS = 260;
 const HOLD_AFTER_DONE_MS = 1500;
+// Long enough for React to commit the empty bar before the class flips.
+const FILL_DELAY_MS = 100;
 
-export default function WorkoutSummaryChecklist({ exercises, onDone }) {
+export default function WorkoutSummaryChecklist({ exercises, totalVolumeKg = 0, onDone }) {
   const jimmyLook = useJimmyLook();
   const [crossed, setCrossed] = useState(0);
+  // Starts empty, fills once. A frame's delay is what makes it a
+  // TRANSITION rather than an initial paint: React commits width:0 first,
+  // then the class flips and the browser has two values to animate
+  // between. Setting it during the same commit would just render a full
+  // bar with nothing to watch.
+  const [volumeFilled, setVolumeFilled] = useState(false);
   const total = exercises.length;
 
   // Held in a ref so changing the callback identity can't restart the
   // sequence mid-flight.
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
+
+  useEffect(() => {
+    const timer = setTimeout(() => setVolumeFilled(true), FILL_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   // One item at a time: buzz, then cross it off.
   useEffect(() => {
@@ -83,6 +96,41 @@ export default function WorkoutSummaryChecklist({ exercises, onDone }) {
           {allDone ? 'Every rep counted.' : `${crossed} of ${total} down…`}
         </p>
       </div>
+
+      {/* What the session actually weighed, above the tick-list so it is
+          the first thing read. Deliberately a gauge and not a
+          measurement: it always fills to 100%, because the bar is a
+          flourish on a number that has no ceiling to be a fraction of.
+          (If you ever want it to MEAN something, the honest denominator
+          is their best previous session — history is already in App.) */}
+      {totalVolumeKg > 0 && (
+        <div className="relative w-full max-w-sm">
+          <div className="mb-1.5 flex items-baseline justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Total volume</span>
+            <span className="text-lg font-bold tabular-nums text-neutral-50">
+              {Math.round(totalVolumeKg).toLocaleString('en-US')} kg
+            </span>
+          </div>
+          <div
+            className="h-6 w-full overflow-hidden rounded-full border border-white/10 bg-white/5"
+            role="img"
+            aria-label={`Total volume lifted: ${Math.round(totalVolumeKg).toLocaleString('en-US')} kilograms`}
+          >
+            {/* motion-reduce lands it filled instead of sliding — the bar
+                carries the meaning, the slide is only decoration. */}
+            <div
+              className={`h-full rounded-full transition-all duration-1000 ease-out motion-reduce:transition-none ${
+                volumeFilled ? 'w-full' : 'w-0'
+              }`}
+              style={{
+                background:
+                  'linear-gradient(90deg, var(--tier-accent), var(--success))',
+                boxShadow: '0 0 18px -2px var(--success)',
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <ul className="relative flex w-full max-w-sm flex-col gap-2">
         {exercises.map((name, i) => {
