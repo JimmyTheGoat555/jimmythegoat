@@ -168,6 +168,15 @@ export default function WorkoutHome({
         </div>
       )}
 
+      {/* Earned badges only, sitting between the tier name and the
+          progress bar — what you have already done, directly above the
+          measure of what is left. Nothing unearned renders, here or
+          anywhere: the catalog is a surprise, not a checklist.
+
+          Tooltip opens downward (the default): there is a goat directly
+          above this and open space below. */}
+      <BadgeRibbon badges={badges} featured={featuredBadges} />
+
       <div className="w-full">
         {isMaxTier ? (
           <p className="text-center text-sm font-bold" style={{ color: 'var(--tier-accent)' }}>
@@ -306,21 +315,6 @@ export default function WorkoutHome({
 
           Same full shelf as Profile, locked silhouettes included: "what
           am I close to" is the reason to look at it from here at all. */}
-      {/* Earned badges only, as a compact row. The 13-slot grid that
-          used to sit here made the home screen a scroll and put every
-          unearned threshold on display; three pills under the button say
-          the same thing about what you HAVE without publishing a
-          checklist of what you have not. */}
-      {/* pb-20 clears the fixed BottomNav — the page container's pb-6 is
-          load-bearing (the arena button is mt-auto in a min-h-screen
-          column, so padding the container would shove the primary
-          action up the fold). Without this the pills sit behind the
-          tab bar. */}
-      <div className="w-full pt-3 pb-20">
-        {/* Tooltip opens upward here: this row sits against the fixed
-            bottom nav, so "below" would render behind it. */}
-        <BadgeRibbon badges={badges} featured={featuredBadges} tooltipPlacement="top" />
-      </div>
     </div>
   );
 }
