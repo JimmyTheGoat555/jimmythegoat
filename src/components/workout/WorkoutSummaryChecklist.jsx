@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import JimmyAvatar from '../evolution/JimmyAvatar';
+import { formatRecordLoad } from '../../utils/personalRecords';
 import { useJimmyLook } from '../../context/JimmyLook';
 
 // The victory lap. Plays once a workout has actually been logged, before
@@ -23,10 +24,21 @@ import { useJimmyLook } from '../../context/JimmyLook';
 const FIRST_TICK_MS = 420; // a beat to read the list before it starts
 const STAGGER_MS = 260;
 const HOLD_AFTER_DONE_MS = 1500;
+// Extra beat when a record was broken — see the effect that uses it.
+const PR_EXTRA_HOLD_MS = 1600;
 // Long enough for React to commit the empty bar before the class flips.
 const FILL_DELAY_MS = 100;
 
-export default function WorkoutSummaryChecklist({ exercises, totalVolumeKg = 0, onDone }) {
+export default function WorkoutSummaryChecklist({
+  exercises,
+  totalVolumeKg = 0,
+  // The SERVER's list of records broken by this workout (logWorkout's
+  // return), keyed to rows by exercise NAME — which is safe here because
+  // both arrays are built from the same workout in the same request, not
+  // matched across a boundary where the two could drift.
+  personalRecords = [],
+  onDone,
+}) {
   const jimmyLook = useJimmyLook();
   const [crossed, setCrossed] = useState(0);
   // Starts empty, fills once. A frame's delay is what makes it a
@@ -36,6 +48,9 @@ export default function WorkoutSummaryChecklist({ exercises, totalVolumeKg = 0, 
   // bar with nothing to watch.
   const [volumeFilled, setVolumeFilled] = useState(false);
   const total = exercises.length;
+
+  const prByName = new Map((personalRecords ?? []).map((r) => [r.name, r]));
+  const prCount = prByName.size;
 
   // Held in a ref so changing the callback identity can't restart the
   // sequence mid-flight.
@@ -65,9 +80,15 @@ export default function WorkoutSummaryChecklist({ exercises, totalVolumeKg = 0, 
   useEffect(() => {
     if (total === 0 || crossed < total) return undefined;
     navigator.vibrate?.([100, 50, 100]);
-    const timer = setTimeout(() => onDoneRef.current?.(), HOLD_AFTER_DONE_MS);
+    // A PR line only appears as its row lands, and the last one can land
+    // on the final tick — so the standard beat is not enough time to read
+    // it before the screen hands off to the reward.
+    const timer = setTimeout(
+      () => onDoneRef.current?.(),
+      prCount > 0 ? HOLD_AFTER_DONE_MS + PR_EXTRA_HOLD_MS : HOLD_AFTER_DONE_MS,
+    );
     return () => clearTimeout(timer);
-  }, [crossed, total]);
+  }, [crossed, total, prCount]);
 
   const allDone = total > 0 && crossed >= total;
 
@@ -93,7 +114,11 @@ export default function WorkoutSummaryChecklist({ exercises, totalVolumeKg = 0, 
         <JimmyAvatar {...jimmyLook} size="lg" className="drop-shadow-[0_10px_24px_rgba(57,255,20,0.35)]" />
         <h2 className="mt-2 text-center text-2xl text-neutral-50">Workout Logged</h2>
         <p className="mt-1 text-sm text-neutral-500">
-          {allDone ? 'Every rep counted.' : `${crossed} of ${total} down…`}
+          {!allDone
+            ? `${crossed} of ${total} down…`
+            : prCount > 0
+              ? `${prCount} personal record${prCount === 1 ? '' : 's'} broken.`
+              : 'Every rep counted.'}
         </p>
       </div>
 
@@ -135,6 +160,7 @@ export default function WorkoutSummaryChecklist({ exercises, totalVolumeKg = 0, 
       <ul className="relative flex w-full max-w-sm flex-col gap-2">
         {exercises.map((name, i) => {
           const done = i < crossed;
+          const pr = prByName.get(name);
           return (
             <li
               key={`${name}-${i}`}
@@ -161,6 +187,19 @@ export default function WorkoutSummaryChecklist({ exercises, totalVolumeKg = 0, 
                 >
                   {name}
                 </span>
+                {/* Revealed with the tick, not before — the row earns its
+                    trophy at the moment it is crossed off, which is the
+                    whole rhythm of this screen. Not struck through: it is
+                    the one thing here worth still reading afterwards. */}
+                {pr && (
+                  <span
+                    className="block text-xs font-semibold text-amber-300 transition-all duration-300"
+                    style={{ opacity: done ? 1 : 0, transform: done ? 'none' : 'translateY(-2px)' }}
+                  >
+                    🏆 New PR · {formatRecordLoad(pr)}
+                    {pr.reps ? ` × ${pr.reps}` : ''}
+                  </span>
+                )}
                 {/* The strike itself is a line that DRAWS across rather
                     than text-decoration appearing all at once — the drawing
                     is the satisfying part, and text-decoration can't be

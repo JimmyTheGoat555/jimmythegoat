@@ -448,8 +448,18 @@ export default function App() {
     }
 
     pendingOfflineFinishRef.current = null;
-    const { workoutId, coinsEarned, recoveryWorkout, neglectPenaltyLifted, newBadges, firstWorkoutReward, totalVolumeKg } =
-      result;
+    const {
+      workoutId,
+      coinsEarned,
+      recoveryWorkout,
+      neglectPenaltyLifted,
+      newBadges,
+      firstWorkoutReward,
+      totalVolumeKg,
+      // The SERVER's list, not the client's optimistic guess — it is the
+      // side that decided, and a recovery workout gets an empty one.
+      personalRecords: earnedRecords,
+    } = result;
     if (workout.assignedWorkoutId) {
       completeAssignment(workout.assignedWorkoutId, workoutId);
     }
@@ -504,7 +514,12 @@ export default function App() {
     };
 
     if (performedNames.length > 0) {
-      setFinishChecklist({ exercises: performedNames, totalVolumeKg, reward: showReward });
+      setFinishChecklist({
+        exercises: performedNames,
+        totalVolumeKg,
+        personalRecords: earnedRecords ?? [],
+        reward: showReward,
+      });
     } else {
       showReward();
     }
@@ -857,6 +872,7 @@ export default function App() {
             <WorkoutSummaryChecklist
               exercises={finishChecklist.exercises}
               totalVolumeKg={finishChecklist.totalVolumeKg}
+              personalRecords={finishChecklist.personalRecords}
               onDone={() => {
                 const { reward } = finishChecklist;
                 setFinishChecklist(null);
