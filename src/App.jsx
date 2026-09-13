@@ -69,6 +69,9 @@ const SilverLootboxModal = lazy(() => import('./components/workout/SilverLootbox
 // The post-finish victory lap. Only ever mounts for the few seconds
 // between a workout being logged and its reward landing.
 const WorkoutSummaryChecklist = lazy(() => import('./components/workout/WorkoutSummaryChecklist'));
+// Only mounts when someone actually plans ahead; it drags in the whole
+// exercise picker, which the landing screen otherwise never needs.
+const PlanWorkoutModal = lazy(() => import('./components/workout/PlanWorkoutModal'));
 
 function prefetchTabScreens() {
   import('./components/progress/ProgressView');
@@ -309,6 +312,8 @@ export default function App() {
   } = useActiveWorkout(uid);
   // { title, exercises } awaiting the "show this on your profile?" answer.
   const [pendingTemplate, setPendingTemplate] = useState(null);
+  // The "plan a workout for later" sheet.
+  const [planningWorkout, setPlanningWorkout] = useState(false);
   // Refs read by the "retry a deferred offline finish" effect below —
   // event listeners there would otherwise close over a stale render.
   // `pendingOfflineFinishRef` holds { sharePersonalRecords } while a
@@ -541,6 +546,14 @@ export default function App() {
   // Saves the exercise lineup of the workout currently being finished —
   // called from WorkoutSummaryModal before onFinish actually commits it,
   // so `activeWorkout` (not yet cleared) is still the right source.
+  // Both routes into a saved template end here, so the "show this on
+  // your profile?" opt-in is asked once, the same way, whether the
+  // routine came from a workout just finished or one planned in advance.
+  const promptSaveTemplate = (title, exercises) => {
+    if (!exercises?.length) return;
+    setPendingTemplate({ title, exercises });
+  };
+
   const handleSaveTemplate = (title) => {
     if (!activeWorkout) return;
     // The exercises are CAPTURED here, not read when the prompt is
@@ -548,7 +561,7 @@ export default function App() {
     // exists and then commits the finish, which clears activeWorkout a
     // moment later — reading it inside the dialog handler would find null
     // and silently save nothing.
-    setPendingTemplate({ title, exercises: activeWorkout.exercises });
+    promptSaveTemplate(title, activeWorkout.exercises);
   };
 
   // Both answers save the template; they differ only in whether it also
@@ -669,6 +682,7 @@ export default function App() {
                       onStartAssigned={handleStartAssigned}
                       onStartTemplate={handleStartTemplate}
                       onDeleteTemplate={deleteTemplate}
+                      onPlanWorkout={() => setPlanningWorkout(true)}
                       assignments={assignments}
                       templates={templates}
                       workouts={workouts}
@@ -848,6 +862,16 @@ export default function App() {
                 setFinishChecklist(null);
                 reward();
               }}
+            />
+          </Suspense>
+        )}
+
+        {planningWorkout && (
+          <Suspense fallback={null}>
+            <PlanWorkoutModal
+              exercises={exercises}
+              onSave={promptSaveTemplate}
+              onClose={() => setPlanningWorkout(false)}
             />
           </Suspense>
         )}

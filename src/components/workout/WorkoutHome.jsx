@@ -35,6 +35,7 @@ export default function WorkoutHome({
   onStartAssigned,
   onStartTemplate,
   onDeleteTemplate,
+  onPlanWorkout,
   assignments = [],
   templates = [],
   workouts = [],
@@ -259,6 +260,20 @@ export default function WorkoutHome({
             />
           )}
         </div>
+
+        {/* Under the carousel, not inside it: this does not start
+            anything, so it must not read as a fourth mission you could
+            pick. Quiet by design — planning ahead is the deliberate act
+            of a returning user, not the primary call to action. */}
+        {onPlanWorkout && (
+          <button
+            type="button"
+            onClick={onPlanWorkout}
+            className="mt-1 w-full py-2.5 text-xs font-semibold uppercase tracking-wide text-neutral-400 transition active:scale-[0.98]"
+          >
+            📝 Make a workout for later
+          </button>
+        )}
       </div>
 
       <button

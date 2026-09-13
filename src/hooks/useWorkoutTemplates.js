@@ -62,7 +62,15 @@ export function useWorkoutTemplates(uid) {
       // anything the earlier publish-everything behaviour had already put
       // on a profile without asking. That retraction is the point, not a
       // side effect: nobody consented to those.
-      const shared = rows.filter((t) => t.isPublic === true);
+      // Deduped by id BEFORE filtering, because saveTemplate composes
+      // `[justCreated, ...latest.current]` and Firestore's local-cache
+      // snapshot often already contains the new doc by the time that
+      // runs — the same routine then lands in the published array twice,
+      // which a friend sees as a duplicate card. Dedupe here rather than
+      // at the call site so a delete racing a save cannot reintroduce it.
+      const byId = new Map();
+      for (const t of rows) if (t?.id && !byId.has(t.id)) byId.set(t.id, t);
+      const shared = [...byId.values()].filter((t) => t.isPublic === true);
       updateDoc(doc(db, 'users', uid, 'public', 'summary'), {
         savedWorkouts: publishableRoutines(shared),
       }).catch(() => {});
