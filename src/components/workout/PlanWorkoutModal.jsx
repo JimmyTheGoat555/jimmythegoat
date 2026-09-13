@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import ExercisePicker from './ExercisePicker';
+import ReorderableList from './ReorderableList';
+import DragHandle from './DragHandle';
 import { getMuscleGroup } from '../../data/exercises';
 
 // Build a routine without doing it — "make a workout for later".
@@ -33,6 +35,12 @@ export default function PlanWorkoutModal({ exercises, onSave, onClose }) {
   };
 
   const remove = (exerciseId) => setPicked((prev) => prev.filter((e) => e.exerciseId !== exerciseId));
+
+  // ReorderableList hands back the ids in their new order — rebuild from
+  // current state rather than trusting objects it captured, the same
+  // reason useActiveWorkout's reorderExercises takes ids.
+  const reorder = (orderedIds) =>
+    setPicked((prev) => orderedIds.map((id) => prev.find((e) => e.exerciseId === id)).filter(Boolean));
 
   const handleSave = () => {
     if (picked.length === 0) return;
@@ -80,15 +88,30 @@ export default function PlanWorkoutModal({ exercises, onSave, onClose }) {
           {picked.length === 0 ? (
             <p className="py-2 text-center text-sm text-neutral-500">No exercises yet.</p>
           ) : (
-            <ul className="flex flex-col gap-1.5">
-              {picked.map((exercise, i) => {
+            // The same pointer-event reorder the live logger uses. Order is
+            // the order you will perform them in, so being able to fix it
+            // here is the difference between planning a session and just
+            // listing the lifts in it.
+            //
+            // Safe inside this scrolling sheet: the handle sets
+            // touch-action:none, so the container cannot scroll mid-drag
+            // and invalidate the layout ReorderableList froze on pick-up.
+            <ReorderableList
+              items={picked}
+              getKey={(e) => e.exerciseId}
+              onReorder={reorder}
+              renderItem={(exercise, { dragHandleProps, isDragging }) => {
                 const group = getMuscleGroup(exercise.muscleGroup);
                 return (
-                  <li
-                    key={exercise.exerciseId}
-                    className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5"
+                  <div
+                    className={`flex items-center gap-2 rounded-xl border bg-white/5 py-2.5 pl-1 pr-3.5 ${
+                      isDragging ? 'border-white/25' : 'border-white/10'
+                    }`}
                   >
-                    <span className="w-4 text-center text-xs tabular-nums text-neutral-600">{i + 1}</span>
+                    <DragHandle {...dragHandleProps} label={exercise.name} className="h-9 w-7" />
+                    <span className="w-4 text-center text-xs tabular-nums text-neutral-600">
+                      {picked.indexOf(exercise) + 1}
+                    </span>
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: group?.color }} />
                     <span className="min-w-0 flex-1 truncate text-sm text-neutral-200">{exercise.name}</span>
                     <button
@@ -99,10 +122,10 @@ export default function PlanWorkoutModal({ exercises, onSave, onClose }) {
                     >
                       ✕
                     </button>
-                  </li>
+                  </div>
                 );
-              })}
-            </ul>
+              }}
+            />
           )}
 
           <button

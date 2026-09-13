@@ -1,28 +1,7 @@
 import { getMuscleGroup } from '../../data/exercises';
 import { formatSets } from '../../utils/lastPerformance';
 import SetRow from './SetRow';
-
-// The six-dot grip. Only rendered while manual sorting is on — a handle
-// that can't do anything is worse than no handle.
-function DragHandle(props) {
-  return (
-    <button
-      type="button"
-      aria-label={`Reorder ${props['aria-exercise'] ?? 'exercise'}`}
-      className="-ml-1 mr-1 flex h-11 w-8 shrink-0 cursor-grab items-center justify-center text-neutral-500 active:cursor-grabbing active:text-neutral-200"
-      {...props}
-      aria-exercise={undefined}
-    >
-      <svg viewBox="0 0 10 16" className="h-4 w-2.5" aria-hidden="true">
-        {[0, 1, 2].map((row) =>
-          [0, 1].map((col) => (
-            <circle key={`${row}-${col}`} cx={col * 6 + 2} cy={row * 6 + 2} r="1.5" fill="currentColor" />
-          )),
-        )}
-      </svg>
-    </button>
-  );
-}
+import DragHandle from './DragHandle';
 
 // Chain link. Inline SVG rather than an emoji so it inherits currentColor
 // and sits on the text baseline at any size — the emoji chain renders at a
@@ -89,7 +68,7 @@ export default function ExerciseLogCard({
       )}
       <div className="flex items-center justify-between px-5 py-4">
         <div className="flex min-w-0 items-start">
-          {dragHandleProps && <DragHandle {...dragHandleProps} aria-exercise={exercise.name} />}
+          {dragHandleProps && <DragHandle {...dragHandleProps} label={exercise.name} className="-ml-1 mr-1 h-11 w-8" />}
           <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group?.color }} />
