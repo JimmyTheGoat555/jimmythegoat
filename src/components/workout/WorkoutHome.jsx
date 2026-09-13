@@ -217,18 +217,12 @@ export default function WorkoutHome({
           it already say what this is, and a label over a picker that is
           the only thing on the screen is a caption on a photograph of
           itself. */}
-      {/* Everything that could START a session is replaced while the
-          cooldown runs — the picker included, since choosing a mission you
-          cannot begin is just a menu that does nothing. Planning survives
-          it (see RestAndRecover), which is the point. */}
-      {cooldown.isCoolingDown ? (
-        <RestAndRecover
-          remaining={cooldown.remaining}
-          unlocksAt={cooldown.unlocksAt}
-          onPlanWorkout={onPlanWorkout}
-        />
-      ) : (
-        <>
+      {/* The picker stays up during a cooldown. Only STARTING is blocked,
+          and the library is not just a list of things to start: it is
+          where routines get read, deleted, and sent to a friend (📤 on
+          each card). Hiding it took all of that away for four hours,
+          which punished the wrong thing — resting is not a reason to lose
+          access to your own templates. */}
       <div className="w-full flex flex-col gap-2">
         {categories.length > 1 && (
           <div className="flex gap-2 px-0.5">
@@ -300,8 +294,11 @@ export default function WorkoutHome({
         {/* Under the carousel, not inside it: this does not start
             anything, so it must not read as a fourth mission you could
             pick. Quiet by design — planning ahead is the deliberate act
-            of a returning user, not the primary call to action. */}
-        {onPlanWorkout && (
+            of a returning user, not the primary call to action.
+            Hidden during a cooldown only because RestAndRecover carries
+            the same action as its main button — two of them a thumb apart
+            would be a choice between identical things. */}
+        {onPlanWorkout && !cooldown.isCoolingDown && (
           <button
             type="button"
             onClick={onPlanWorkout}
@@ -312,29 +309,36 @@ export default function WorkoutHome({
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={handleStart}
-        // Until the economy doc has been read we do not know whether this
-        // account is inside a cooldown. Disabled rather than hidden for
-        // that instant: hiding the primary action makes the screen look
-        // broken, and enabling it would let a fast tap start the exact
-        // session this whole feature exists to prevent.
-        disabled={cooldown.loading}
-        className="btn-arcade relative w-full max-w-xs mt-auto text-2xl py-7 overflow-hidden disabled:opacity-60"
-      >
-        {startLabel}
-        {pressed && (
-          <span
-            className="absolute inset-0 animate-[button-burst_0.4s_ease-out_forwards]"
-            style={{
-              background: 'radial-gradient(circle, rgba(255,255,255,0.6), transparent 60%)',
-              clipPath: ARCADE_BUTTON_CLIP,
-            }}
-          />
-        )}
-      </button>
-        </>
+      {/* The one thing the cooldown actually takes away: the button. */}
+      {cooldown.isCoolingDown ? (
+        <RestAndRecover
+          remaining={cooldown.remaining}
+          unlocksAt={cooldown.unlocksAt}
+          onPlanWorkout={onPlanWorkout}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={handleStart}
+          // Until the economy doc has been read we do not know whether this
+          // account is inside a cooldown. Disabled rather than hidden for
+          // that instant: hiding the primary action makes the screen look
+          // broken, and enabling it would let a fast tap start the exact
+          // session this whole feature exists to prevent.
+          disabled={cooldown.loading}
+          className="btn-arcade relative w-full max-w-xs mt-auto text-2xl py-7 overflow-hidden disabled:opacity-60"
+        >
+          {startLabel}
+          {pressed && (
+            <span
+              className="absolute inset-0 animate-[button-burst_0.4s_ease-out_forwards]"
+              style={{
+                background: 'radial-gradient(circle, rgba(255,255,255,0.6), transparent 60%)',
+                clipPath: ARCADE_BUTTON_CLIP,
+              }}
+            />
+          )}
+        </button>
       )}
     </div>
   );

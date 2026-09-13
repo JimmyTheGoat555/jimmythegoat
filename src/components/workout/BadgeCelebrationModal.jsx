@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { byTierDesc, getBadge, TIER_STYLE } from '../../data/badges';
+import { bestOfEachCategory, TIER_STYLE } from '../../data/badges';
 import BadgeMedallion from '../profile/BadgeMedallion';
 
 // "You earned a trophy." The middle step of the post-workout cascade:
@@ -12,12 +12,15 @@ import BadgeMedallion from '../profile/BadgeMedallion';
 // puts it over this modal (z-[68]); `disableForReducedMotion` is the
 // library's own opt-out and is respected here rather than reimplemented.
 export default function BadgeCelebrationModal({ badgeIds = [], onClaim }) {
-  // Gold on top, always. The server hands these over in whatever order it
-  // evaluated the ladders in, which puts bronze first whenever a session
-  // clears all three tiers of a lift at once — so the biggest thing you
-  // just won would scroll in last, under two lesser versions of itself.
-  // byTierDesc is the same ordering the picker and the profile ribbon use.
-  const badges = badgeIds.map((id) => getBadge(id)).filter(Boolean).sort(byTierDesc);
+  // One trophy per category, best tier only, gold on top.
+  //
+  // The server awards ladders cumulatively, so a first bench over 100 kg
+  // hands this bronze, silver AND gold at once. Showing all three made the
+  // gold the third thing you saw, after two smaller versions of the same
+  // achievement — and "5 trophies unlocked" for what was really two lifts
+  // cheapens both. bestOfEachCategory collapses them; the lesser ids stay
+  // awarded on the account either way.
+  const badges = bestOfEachCategory(badgeIds);
 
   useEffect(() => {
     if (badges.length === 0) return;

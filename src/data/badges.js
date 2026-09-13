@@ -275,6 +275,31 @@ export function byTierDesc(a, b) {
   return (TIER_RANK[b?.tier] ?? 0) - (TIER_RANK[a?.tier] ?? 0);
 }
 
+// Collapse a list of badge ids to ONE per category — the best tier in
+// each. Clearing three rungs of the bench ladder in a single session is
+// one achievement with a history, not three trophies, and showing the
+// bronze and silver next to the gold makes the gold look smaller than it
+// is.
+//
+// Display only. The server still awards every rung it cleared (see
+// functions/badges.js's cumulative awardLadder), and it should: the
+// lower ids are what make the ladder re-derivable, and dropping them
+// would leave a user who later has a threshold moved under them holding
+// gold with nothing beneath it. What changes here is only what gets shown
+// at once.
+export function bestOfEachCategory(ids) {
+  const best = new Map();
+  for (const id of Array.isArray(ids) ? ids : []) {
+    const badge = getBadge(id);
+    if (!badge) continue;
+    const held = best.get(badge.categoryId);
+    if (!held || (TIER_RANK[badge.tier] ?? 0) > (TIER_RANK[held.tier] ?? 0)) {
+      best.set(badge.categoryId, badge);
+    }
+  }
+  return [...best.values()].sort(byTierDesc);
+}
+
 // One entry per category the user has ANY tier in, holding their best.
 // The picker offers these rather than all 33 ids: "Bench Press · Bronze"
 // is not a thing to choose when you already hold gold in that category.
@@ -292,13 +317,27 @@ export function earnedCategoryBests(earned) {
 export function resolveFeaturedBadges(badges, featured) {
   const earned = earnedBadgeMap(badges);
   const bests = earnedCategoryBests(earned);
-  const allowed = new Set(bests.map((b) => b.id));
+  const bestByCategory = new Map(bests.map((b) => [b.categoryId, b]));
 
-  const chosen = (Array.isArray(featured) ? featured : [])
-    .filter((id) => allowed.has(id))
-    .slice(0, MAX_FEATURED_BADGES)
-    .map((id) => getBadge(id))
-    .filter(Boolean);
+  // A stored id is resolved to the best tier of ITS CATEGORY rather than
+  // rendered literally, which does three things at once:
+  //
+  //   * two rungs of the same lift collapse to one — nobody wants a
+  //     profile showing Bench Press bronze AND silver;
+  //   * a pick made before you got stronger upgrades itself, so the badge
+  //     you chose to show becomes gold the day you earn gold instead of
+  //     silently vanishing from your profile;
+  //   * an id for a category you hold nothing in disappears, which is the
+  //     only case where dropping it is the right answer.
+  const chosen = [];
+  const seen = new Set();
+  for (const id of Array.isArray(featured) ? featured : []) {
+    const best = bestByCategory.get(getBadge(id)?.categoryId);
+    if (!best || seen.has(best.categoryId)) continue;
+    seen.add(best.categoryId);
+    chosen.push(best);
+    if (chosen.length === MAX_FEATURED_BADGES) break;
+  }
 
   if (chosen.length > 0) return chosen;
   return bests.slice(0, MAX_FEATURED_BADGES);

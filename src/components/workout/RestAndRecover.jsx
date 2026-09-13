@@ -19,11 +19,14 @@ export default function RestAndRecover({ remaining, unlocksAt, onPlanWorkout }) 
       : null;
 
   return (
-    // pb-4 on THIS block, not on the page container — the container's own
+    // pb-20 on THIS block, not on the page container — the container's own
     // pb-6 is load-bearing for the mt-auto that pins this to the bottom of
-    // the viewport, and this panel is tall enough that without the extra
-    // the Draft button's bottom edge lands 5px under the fixed nav.
-    <div className="w-full max-w-xs mt-auto flex flex-col items-center gap-4 pb-4">
+    // the viewport. The 5rem clears the fixed nav, which matters now that
+    // the mission picker stays up during a cooldown: the page is taller
+    // than the viewport, so the bottom of the document is a real scroll
+    // position rather than something mt-auto has already held clear, and
+    // without this the Draft button ends up underneath the tab bar.
+    <div className="w-full max-w-xs mt-auto flex flex-col items-center gap-4 pb-20">
       <div
         className="w-full rounded-3xl border border-amber-400/25 bg-amber-400/5 px-5 py-6 text-center"
         style={{ boxShadow: '0 0 40px -18px rgba(251,191,36,0.6)' }}
