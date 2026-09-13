@@ -5,24 +5,36 @@ function formatEarned(iso) {
   return `Unlocked ${new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 }
 
-// The "Trophies" section on the Profile page. Renders the whole catalog:
-// unlocked badges in full colour, locked ones desaturated with the
-// requirement to earn them. `badges` is users/{uid}.badges (array of
-// { id, at }) — server-awarded on logWorkout, see functions/badges.js.
-export default function BadgeShelf({ badges }) {
+// The trophy shelf. `badges` is an array of { id, at } — server-awarded
+// on logWorkout (functions/badges.js), never writable by a client.
+//
+// Two modes, and the difference is the point:
+//
+//   * Your own profile renders the WHOLE catalog. A locked tile showing
+//     what it takes to earn it is the only place the app ever states a
+//     goal, and a shelf of silhouettes is most of why anyone chases one.
+//   * A friend's profile renders ONLY what they have unlocked. Their
+//     empty slots are not your business, and a wall of everything they
+//     have failed to do would be a strange thing to show a visitor.
+export default function BadgeShelf({ badges, unlockedOnly = false, title = 'Trophies' }) {
   const earned = earnedBadgeMap(badges);
+  const shown = unlockedOnly ? BADGES.filter((b) => earned.has(b.id)) : BADGES;
+
+  // Nothing earned yet and nothing to explain — render nothing rather than
+  // an empty card on someone else's profile.
+  if (unlockedOnly && shown.length === 0) return null;
 
   return (
     <section className="card p-5 flex flex-col gap-4">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold text-neutral-100">Trophies</h2>
+        <h2 className="text-lg font-semibold text-neutral-100">{title}</h2>
         <span className="text-sm text-neutral-400 tabular-nums">
-          {earned.size} / {BADGES.length}
+          {unlockedOnly ? earned.size : `${earned.size} / ${BADGES.length}`}
         </span>
       </div>
 
       <ul className="grid grid-cols-2 gap-3">
-        {BADGES.map((badge) => {
+        {shown.map((badge) => {
           const unlocked = earned.has(badge.id);
           return (
             <li
@@ -34,7 +46,11 @@ export default function BadgeShelf({ badges }) {
               }`}
             >
               <span
-                className={`text-4xl leading-none ${unlocked ? '' : 'grayscale opacity-30'}`}
+                // `badge-earned` is the glow keyframe (index.css). Locked
+                // tiles are a silhouette: grayscale kills the emoji's own
+                // colour, and the low opacity is what makes it read as a
+                // shape you have not filled in yet.
+                className={`text-4xl leading-none ${unlocked ? 'badge-earned' : 'grayscale opacity-25'}`}
                 aria-hidden="true"
               >
                 {badge.icon}
@@ -45,6 +61,11 @@ export default function BadgeShelf({ badges }) {
               <span className={`text-xs leading-snug ${unlocked ? 'text-[var(--tier-accent)]' : 'text-neutral-500'}`}>
                 {unlocked ? formatEarned(earned.get(badge.id)) : badge.requirement}
               </span>
+              {/* The flavour line is the reward for having it — locked
+                  tiles get the requirement instead, above. */}
+              {unlocked && badge.blurb && (
+                <span className="text-[11px] leading-snug text-neutral-500">{badge.blurb}</span>
+              )}
             </li>
           );
         })}

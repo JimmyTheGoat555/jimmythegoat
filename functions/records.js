@@ -253,6 +253,12 @@ function buildRecordsSnapshot(workouts) {
     streakDays,
     lastWorkoutDay,
     maxSetScore: Math.round(maxSetScore * 100) / 100,
+    // Heaviest single SESSION, in raw kg — the 10-Ton Titan badge. Tracked
+    // on the aggregate rather than read off the workout being logged, so
+    // it is seeded here from full history the one time this doc is built.
+    // Otherwise a veteran who already has a 12-tonne session on record
+    // would have to do another one to get credit for it.
+    maxWorkoutVolumeKg: rewardable.reduce((m, w) => Math.max(m, Number(w.totalVolumeKg) || 0), 0),
   };
 }
 
@@ -261,7 +267,7 @@ function buildRecordsSnapshot(workouts) {
 // recovery workout (isRecovery) touches nothing here and returns the
 // snapshot unchanged, matching bestWeightPerExercise/lifetimeVolumeOf's
 // existing rule that recovery workouts don't count toward anything.
-function applyWorkoutToRecords(records, { cleanExercises, finishedAtIso, totalScore, isRecovery }) {
+function applyWorkoutToRecords(records, { cleanExercises, finishedAtIso, totalScore, totalVolumeKg, isRecovery }) {
   const next = {
     bestPerExercise: { ...(records?.bestPerExercise ?? {}) },
     lifetimeVolume: records?.lifetimeVolume ?? 0,
@@ -269,6 +275,7 @@ function applyWorkoutToRecords(records, { cleanExercises, finishedAtIso, totalSc
     streakDays: records?.streakDays ?? 0,
     lastWorkoutDay: records?.lastWorkoutDay ?? null,
     maxSetScore: records?.maxSetScore ?? 0,
+    maxWorkoutVolumeKg: records?.maxWorkoutVolumeKg ?? 0,
   };
   if (isRecovery) return next;
 
@@ -292,6 +299,7 @@ function applyWorkoutToRecords(records, { cleanExercises, finishedAtIso, totalSc
 
   next.lifetimeVolume = Math.round((next.lifetimeVolume + totalScore) * 100) / 100;
   next.workoutCount += 1;
+  next.maxWorkoutVolumeKg = Math.max(next.maxWorkoutVolumeKg, Number(totalVolumeKg) || 0);
 
   const d = dayIndex(finishedAtIso);
   if (d != null) {

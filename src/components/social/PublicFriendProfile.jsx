@@ -8,6 +8,7 @@ import { cheerTargetId, useCheers } from '../../hooks/useCheers';
 import JimmyAnimation from '../evolution/JimmyAnimation';
 import { getTierByStage } from '../../utils/evolutionTiers';
 import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAnimations';
+import BadgeShelf from '../profile/BadgeShelf';
 import NudgeModal from './NudgeModal';
 
 // Someone else's profile. Read-only by construction — there is nothing here
@@ -433,6 +434,10 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
           name={name}
         />
       </section>
+
+      {/* Unlocked only — see BadgeShelf. Renders nothing at all when they
+          have none, rather than an empty case on someone else's page. */}
+      <BadgeShelf badges={friend.badges} unlockedOnly title="Trophies" />
 
       <section className="card p-5 flex flex-col gap-3">
         <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Personal Records</p>

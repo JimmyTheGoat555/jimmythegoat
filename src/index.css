@@ -801,3 +801,43 @@ button.card:hover {
     transform: none;
   }
 }
+
+/* ---- Badge shelf (components/profile/BadgeShelf.jsx) ---- */
+/* An unlocked trophy breathes. Deliberately slow (3.2s) and shallow: a
+   shelf of thirteen tiles all pulsing hard reads as a broken page, and
+   this is decoration on something the eye lands on for a second.
+
+   Only `filter` and `transform` animate — no box-shadow, which would
+   re-rasterise every tile's paint on every frame, thirteen at once. The
+   drop-shadow colour is currentColor via the tier accent so a trophy
+   glows in whatever tier the account is themed to. */
+@keyframes badge-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 3px rgba(255, 176, 62, 0.35));
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(255, 176, 62, 0.75));
+    transform: scale(1.06);
+  }
+}
+.badge-earned {
+  animation: badge-glow 3.2s ease-in-out infinite;
+  will-change: filter, transform;
+}
+/* Staggered so they pulse as a shelf rather than a single flashing block.
+   Prime-ish offsets, not multiples, so they do not re-sync. */
+.badge-earned:nth-child(3n + 2) {
+  animation-delay: 0.7s;
+}
+.badge-earned:nth-child(3n) {
+  animation-delay: 1.5s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badge-earned {
+    animation: none;
+    filter: drop-shadow(0 0 6px rgba(255, 176, 62, 0.5));
+  }
+}

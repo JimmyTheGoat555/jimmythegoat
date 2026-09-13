@@ -14,7 +14,7 @@ const {
   applyWorkoutToRecords,
   publishableRecord,
 } = require('./records');
-const { evaluateBadgesFromRecords } = require('./badges');
+const { evaluateBadges } = require('./badges');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const {
   MIN_WEIGHT_KG,
@@ -488,9 +488,31 @@ exports.logWorkout = onCall(async (request) => {
       cleanExercises,
       finishedAtIso,
       totalScore,
+      totalVolumeKg,
       isRecovery,
     });
     tx.set(recordsRef, { ...nextRecords, updatedAt: finishedAtIso });
+
+    // Achievement badges (see functions/badges.js + src/data/records.js).
+    // Derived from nextRecords — never a history re-scan — and only ever
+    // ADDED (arrayUnion), so a badge earned once stays earned. A recovery
+    // workout awards nothing, same as coins/PRs.
+    //
+    // Resolved ABOVE the summary write, not after it, for the same reason
+    // the Silver Lootbox grant is: the summary publishes `badges`, and a
+    // trophy earned by THIS workout would otherwise not reach a friend's
+    // shelf until the next one.
+    const heldBadges = Array.isArray(userData.badges) ? userData.badges : [];
+    const heldBadgeIds = new Set(heldBadges.map((b) => (typeof b === 'string' ? b : b?.id)));
+    newBadges = isRecovery
+      ? []
+      : [...evaluateBadges(nextRecords, { bodyWeightKg })].filter((id) => !heldBadgeIds.has(id));
+    const awardedBadges = [...heldBadges, ...newBadges.map((id) => ({ id, at: finishedAtIso }))];
+    if (newBadges.length > 0) {
+      tx.update(userRef, {
+        badges: FieldValue.arrayUnion(...newBadges.map((id) => ({ id, at: finishedAtIso }))),
+      });
+    }
 
     // Resolved here rather than read straight off userData because the
     // Silver Lootbox below may add to it in this very transaction — and
@@ -533,6 +555,11 @@ exports.logWorkout = onCall(async (request) => {
       // trainer". Same field either way in practice, but the narrow one is
       // the one that cannot grow a second meaning later.
       minStage: userData.role === 'trainer' ? 2 : 1,
+      // Trophies are for showing. Published as the same { id, at } shape
+      // the private doc holds, so a friend's shelf and your own read one
+      // format — and ids only, no thresholds or lift numbers, so a badge
+      // never discloses what it took to earn beyond its own name.
+      badges: awardedBadges,
     };
     if (userData.sharePRs === true) {
       summary.personalRecords = Object.entries(nextRecords.bestPerExercise).map(([exerciseId, r]) =>
@@ -540,22 +567,6 @@ exports.logWorkout = onCall(async (request) => {
       );
     }
     tx.set(userRef.collection('public').doc('summary'), summary, { merge: true });
-
-    // Achievement badges (see functions/badges.js + src/data/records.js).
-    // Derived from nextRecords — never a history re-scan — and only ever
-    // ADDED (arrayUnion), so a badge earned once stays earned. A recovery
-    // workout awards nothing, same as coins/PRs.
-    const heldBadgeIds = new Set(
-      (Array.isArray(userData.badges) ? userData.badges : []).map((b) => (typeof b === 'string' ? b : b?.id)),
-    );
-    newBadges = isRecovery
-      ? []
-      : [...evaluateBadgesFromRecords(nextRecords)].filter((id) => !heldBadgeIds.has(id));
-    if (newBadges.length > 0) {
-      tx.update(userRef, {
-        badges: FieldValue.arrayUnion(...newBadges.map((id) => ({ id, at: finishedAtIso }))),
-      });
-    }
 
     // The Silver Lootbox: a brand-new account's very first REAL workout
     // (records.workoutCount is the count BEFORE this one folded in, and a

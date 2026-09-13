@@ -1,5 +1,6 @@
 import { getEvolutionProgress } from './evolutionTiers';
 import { readEquippedAccessories, STORE_ITEMS } from '../data/storeItems';
+import { BADGES } from '../data/badges';
 import { isOnFire } from './streak';
 
 // What a friend's profile view is allowed to know.
@@ -168,6 +169,14 @@ function sanitizeRecord(record) {
 // whose summary predates this field. Better one real button than an empty
 // showcase for someone who demonstrably owns something.
 const DANCE_IDS = STORE_ITEMS.filter((item) => item.type === 'dance').map((item) => item.id);
+const BADGE_IDS = new Set(BADGES.map((b) => b.id));
+
+function sanitizeBadges(badges) {
+  return (Array.isArray(badges) ? badges : [])
+    .map((b) => (typeof b === 'string' ? { id: b, at: null } : b))
+    .filter((b) => b && BADGE_IDS.has(b.id))
+    .map((b) => ({ id: b.id, at: typeof b.at === 'string' ? b.at : null }));
+}
 
 function sanitizeDances(unlocked, equipped) {
   const claimed = new Set(Array.isArray(unlocked) ? unlocked : []);
@@ -217,6 +226,13 @@ export function sanitizeFriendData(rawData) {
     // here: two files deciding independently when fire starts is how you
     // end up with a friend's goat burning on their profile and not on
     // the leaderboard.
+    // Trophies, reduced to ids the registry actually knows. An award is
+    // just an id and a date — it says which milestone, never the numbers
+    // behind it — so nothing here needs stripping, only validating: an id
+    // the catalog cannot name would render as a blank tile, and one from
+    // a tampered document should not render at all.
+    badges: sanitizeBadges(raw.badges),
+
     currentStreak: Number(raw.currentStreak) || 0,
     showFire: isOnFire(raw.currentStreak),
 

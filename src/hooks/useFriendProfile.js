@@ -108,6 +108,9 @@ export function useFriendProfile(friendUid) {
     // document has the field, the sanitiser looks for it, and the hook in
     // between never passed it on.
     savedWorkouts: summary?.savedWorkouts ?? null,
+    // Trophies, published by logWorkout as the same { id, at } shape the
+    // private doc holds.
+    badges: summary?.badges ?? null,
     // Coaching accounts start at buff — see TRAINER_MIN_STAGE.
     minStage: summary?.minStage ?? latestPost?.minStage ?? 1,
     loading: summaryLoading || postLoading,
