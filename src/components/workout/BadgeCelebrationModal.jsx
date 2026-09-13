@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { getBadge } from '../../data/badges';
+import { getBadge, TIER_STYLE } from '../../data/badges';
 
 // "You earned a trophy." The middle step of the post-workout cascade:
 // the tick-list animation hands over to this, and this hands over to the
@@ -62,18 +62,37 @@ export default function BadgeCelebrationModal({ badgeIds = [], onClaim }) {
         </p>
       </div>
 
-      <ul className="relative flex w-full max-w-sm flex-col items-center gap-5">
+      {/* Scrolls rather than overflows: clearing bronze, silver AND gold
+          in one workout is the common case for a strong beginner's first
+          session, and three at 7xl would run off a phone. Tightens to a
+          row of smaller trophies past two. */}
+      <ul
+        className={`relative flex w-full max-w-sm flex-col items-center gap-5 overflow-y-auto ${
+          many ? 'max-h-[52vh]' : ''
+        }`}
+      >
         {badges.map((badge) => (
           <li key={badge.id} className="flex flex-col items-center gap-2 text-center">
             {/* badge-celebrate is the pop-in + hard glow (index.css). The
                 shelf's badge-earned is a slow breathe for a grid of
                 thirteen; this is one trophy at full screen and wants a
                 different weight entirely. */}
-            <span className="badge-celebrate text-7xl leading-none" aria-hidden="true">
+            <span
+              className={`badge-celebrate leading-none ${many ? 'text-5xl' : 'text-7xl'}`}
+              // Glow in the metal that was actually won, so bronze does
+              // not arrive dressed as gold.
+              style={{ filter: `drop-shadow(0 0 22px ${(TIER_STYLE[badge.tier] ?? TIER_STYLE.gold).glow})` }}
+              aria-hidden="true"
+            >
               {badge.icon}
             </span>
-            <span className="text-xl font-bold text-neutral-50">{badge.name}</span>
-            <span className="max-w-xs text-sm leading-snug text-neutral-400">{badge.blurb}</span>
+            <span
+              className={`font-bold ${many ? 'text-base' : 'text-xl'}`}
+              style={{ color: (TIER_STYLE[badge.tier] ?? TIER_STYLE.gold).color }}
+            >
+              {badge.name}
+            </span>
+            <span className="max-w-xs text-xs leading-snug text-neutral-400">{badge.requirement}</span>
           </li>
         ))}
       </ul>
