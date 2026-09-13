@@ -39,6 +39,7 @@ import ConfirmDialog from './components/shared/ConfirmDialog';
 import { JimmyLookProvider } from './context/JimmyLook';
 import { DEFAULT_SETS_PER_EXERCISE } from './hooks/useWorkouts';
 import { tierCssVars } from './utils/tierTheme';
+import { unequippedRewardCount } from './utils/storeAlerts';
 
 // Everything past the first screen is split out of the initial bundle. The
 // app shipped as one ~1.3MB chunk that every user parsed before seeing
@@ -108,7 +109,7 @@ function ScreenFallback() {
 // for Profile/History specifically, they're reached by a forward link,
 // not a tab tap, so "which direction did I come from" isn't even a
 // sensible question there).
-function Layout({ isTrainer, tierId, coins, unreadNotifications, onOpenSettings }) {
+function Layout({ isTrainer, tierId, coins, unreadNotifications, unequippedRewards, onOpenSettings }) {
   const location = useLocation();
   const containerRef = useRef(null);
   const tabPaths = isTrainer ? [...TAB_PATHS, TRAINER_TAB_PATH] : TAB_PATHS;
@@ -154,7 +155,12 @@ function Layout({ isTrainer, tierId, coins, unreadNotifications, onOpenSettings 
           <Outlet />
         )}
       </div>
-      <BottomNav isTrainer={isTrainer} tierId={tierId} unreadNotifications={unreadNotifications} />
+      <BottomNav
+        isTrainer={isTrainer}
+        tierId={tierId}
+        unreadNotifications={unreadNotifications}
+        unequippedRewards={unequippedRewards}
+      />
     </>
   );
 }
@@ -698,6 +704,9 @@ export default function App() {
                   tierId={currentTier.id}
                   coins={account.coins}
                   unreadNotifications={unreadNotifications}
+                  // A chest reward nobody has put on yet — see
+                  // utils/storeAlerts.js.
+                  unequippedRewards={unequippedRewardCount(account)}
                   onOpenSettings={() => setSettingsOpen(true)}
                 />
               }

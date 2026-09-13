@@ -80,7 +80,12 @@ function tabsFor(isTrainer) {
 // notification inbox lives on that tab (see SocialPage.jsx), so this is
 // the one place a queued nudge or weigh-in reminder announces itself
 // before you open it.
-export default function BottomNav({ isTrainer, unreadNotifications = 0 }) {
+//
+// `unequippedRewards` does the same job for the Store tab — see
+// utils/storeAlerts.js. Same red pill on purpose: it means the same
+// thing ("there is something in here for you"), and inventing a second
+// visual language for it would only make both harder to read.
+export default function BottomNav({ isTrainer, unreadNotifications = 0, unequippedRewards = 0 }) {
   const location = useLocation();
   const tabs = tabsFor(isTrainer);
   // Exact-match only (not "which tab is this a sub-page of") — a tab
@@ -118,6 +123,14 @@ export default function BottomNav({ isTrainer, unreadNotifications = 0 }) {
               <>
                 <span className="relative">
                   <Icon active={isActive} />
+                  {to === TAB_PATHS[3] && unequippedRewards > 0 && (
+                    <span
+                      className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-[var(--danger)] text-white text-[10px] font-bold leading-none tabular-nums"
+                      aria-label={`${unequippedRewards} unlocked item${unequippedRewards === 1 ? '' : 's'} to equip`}
+                    >
+                      {unequippedRewards}
+                    </span>
+                  )}
                   {to === TAB_PATHS[2] && unreadNotifications > 0 && (
                     <span
                       className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-[var(--danger)] text-white text-[10px] font-bold leading-none tabular-nums"
