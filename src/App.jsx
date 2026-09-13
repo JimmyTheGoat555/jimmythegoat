@@ -869,7 +869,14 @@ export default function App() {
           />
         )}
 
-        {lootboxReward && (
+        {/* `!finishChecklist` is belt AND braces. reward() is only ever
+            called from the checklist's onDone, so by call order the chest
+            already comes second — but that ordering lives in a callback
+            three hundred lines away, and anything that ever calls
+            showReward() earlier would silently stack a chest on top of a
+            half-ticked list. Gated here, the sequence is a property of the
+            render instead of a convention someone has to remember. */}
+        {lootboxReward && !finishChecklist && (
           <Suspense fallback={null}>
             <SilverLootboxModal
               reward={lootboxReward}

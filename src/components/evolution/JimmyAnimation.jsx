@@ -44,6 +44,10 @@ export default function JimmyAnimation({
   // the whole useJimmyLook() object in here, so the hero goat — the
   // biggest Jimmy in the app — lights up without touching that call site.
   showFire = false,
+  // Whether tapping the goat replays the clip. Off for a caller that owns
+  // the tap itself (PublicFriendProfile drives playback from outside, so
+  // two handlers would fight over the same press).
+  interactive = true,
 }) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -63,7 +67,7 @@ export default function JimmyAnimation({
   }
 
   const showAnimation = Boolean(animationSrc) && !failed;
-  const canReplay = showAnimation && isLoaded;
+  const canReplay = interactive && showAnimation && isLoaded;
   // The counter only ever appends a fragment, so the browser reuses the
   // already-downloaded image and only the animation restarts.
   const playSrc = replay === 0 ? animationSrc : `${animationSrc}#${replay}`;

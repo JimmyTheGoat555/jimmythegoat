@@ -6,8 +6,9 @@ import { getStoreItem } from '../../data/storeItems';
 import { formatRecordLoad, recordSortKey } from '../../utils/personalRecords';
 import { cheerTargetId, useCheers } from '../../hooks/useCheers';
 import { AccessoryIcon } from '../evolution/accessoryArt';
-import JimmyAvatar from '../evolution/JimmyAvatar';
-import GradientBorder from '../shared/GradientBorder';
+import JimmyAnimation from '../evolution/JimmyAnimation';
+import { getTierByStage } from '../../utils/evolutionTiers';
+import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAnimations';
 import NudgeModal from './NudgeModal';
 import FriendDancesModal from './FriendDancesModal';
 
@@ -274,6 +275,9 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
   const knownFriend = friends.find((f) => f.uid === friendUid);
   const [nudging, setNudging] = useState(false);
   const [showingDances, setShowingDances] = useState(false);
+  // How many times the visitor has asked to see the emote. 0 means the
+  // clip has never been requested — and therefore never fetched.
+  const [avatarPlays, setAvatarPlays] = useState(0);
 
   const raw = useFriendProfile(friendUid);
   const friend = sanitizeFriendData(raw);
@@ -312,6 +316,27 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
 
   const worn = friend.equippedAccessories.map((id) => getStoreItem(id)).filter(Boolean);
 
+  const friendTier = getTierByStage(friend.evolutionStage);
+  const danceNumber = danceNumberForItemId(friend.equippedDance);
+  const danceName = getStoreItem(friend.equippedDance)?.name ?? 'move';
+  const dancePath = getDanceAnimationPath(danceNumber, friend.evolutionStage);
+  // Null until the first tap, so the WebP is never even requested for a
+  // visitor who only came to read their PRs. Each further tap bumps the
+  // fragment: a distinct URL to the image decoder (which is what restarts
+  // an animated WebP — see JimmyAnimation) but the same cached resource
+  // to the network.
+  const avatarAnimationSrc =
+    avatarPlays === 0 || !dancePath ? null : avatarPlays === 1 ? dancePath : `${dancePath}#${avatarPlays}`;
+
+  // No equipped dance means there is nothing to play in place, so the tap
+  // falls through to the showcase — which at least tells them what this
+  // person owns, rather than doing nothing at all.
+  const handleAvatarTap = () => {
+    navigator.vibrate?.([30]);
+    if (dancePath) setAvatarPlays((n) => n + 1);
+    else setShowingDances(true);
+  };
+
   // Copies the STRUCTURE into your own library — the same shape
   // saveTemplate already writes for your own routines (exerciseId, name,
   // muscleGroup and nothing else), so a copied routine is indistinguishable
@@ -349,34 +374,61 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
             Reading the current user's context here would quietly dress every
             friend in your own loadout, and it would look entirely plausible.
 
-            Tapping him opens the dance showcase. A real <button> rather than
-            a div with a handler, so it is reachable by keyboard and announces
-            itself; the press feedback is active:scale-95 on the button
-            itself, which tracks the finger and springs back on release. */}
+            Full body, not a head crop: the gear below the neck (tank,
+            hoodie, jeans) is most of what someone has actually bought, and
+            a circular head shot hides all of it.
+
+            He is STILL when the page opens. `animationSrc` stays null until
+            a tap, so the clip is not even fetched — the profile of someone
+            you just wanted to look at should not start performing at you.
+            A real <button>, so it is keyboard-reachable and announced. */}
         <button
           type="button"
-          onClick={() => setShowingDances(true)}
-          className="rounded-full transition-transform duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ember)]"
-          aria-label={`See ${name}'s dances`}
+          onClick={handleAvatarTap}
+          className="transition-transform duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ember)] rounded-3xl"
+          aria-label={
+            danceNumber ? `Play ${name}'s ${danceName}` : `See ${name}'s dances`
+          }
         >
-          <GradientBorder tierId={friend.tierId} shape="circle" fillClassName="rounded-full overflow-hidden" className="shrink-0">
-            <JimmyAvatar
+          <span className="relative flex items-end justify-center">
+            {/* Tier-coloured glow standing in for the ring the head crop
+                used to have — it keeps the tier legible without boxing a
+                full-length goat into a circle. */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-2 h-32 w-40 rounded-full blur-3xl opacity-60"
+              style={{ background: 'radial-gradient(circle, var(--tier-glow), transparent 70%)' }}
+            />
+            <JimmyAnimation
+              animationSrc={avatarAnimationSrc}
+              staticImageSrc={friendTier?.image}
+              alt={`${name} the ${friend.tierLabel}`}
+              className="relative h-44 w-40"
               evolutionStage={friend.evolutionStage}
               equippedAccessories={friend.equippedAccessories}
               showFire={friend.showFire}
-              crop="head"
-              size={96}
-              className="bg-neutral-800"
-              alt={`${name} the ${friend.tierLabel}`}
+              // This component owns the tap; two handlers on one press
+              // would each restart the clip.
+              interactive={false}
             />
-          </GradientBorder>
+          </span>
         </button>
-        {/* Nothing about a round goat says "press me", and an avatar that
-            does something on tap is not a convention this app has
-            established anywhere else yet. */}
+        {/* Nothing about a goat standing still says "press me". */}
         <p className="text-xs text-neutral-600 -mt-1">
-          Tap {name}'s Jimmy to see his moves
+          {/* No possessive before the dance name — catalog names are
+              already titled ("The Shuffle"), so "his The Shuffle" is what
+              you get if you add one. */}
+          {danceNumber ? `Tap ${name} to see ${danceName}` : `Tap ${name} to see his moves`}
         </p>
+        {friend.unlockedDances.length > 1 && (
+          <button
+            type="button"
+            onClick={() => setShowingDances(true)}
+            className="-mt-1 text-xs font-semibold text-[var(--ember)] active:scale-95 transition"
+          >
+            See all {friend.unlockedDances.length} moves
+          </button>
+        )}
 
         <div>
           <h1 className="text-2xl font-bold text-neutral-50">{name}</h1>
