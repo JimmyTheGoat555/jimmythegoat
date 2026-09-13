@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { workoutVolume, workoutSetCount } from '../../utils/workoutStats';
+import { formatRecordLoad } from '../../utils/personalRecords';
 
 function defaultTemplateName(workout) {
   const names = workout.exercises.map((e) => e.name);
@@ -82,7 +83,7 @@ export default function WorkoutSummaryModal({
             <ul className="flex flex-col gap-0.5">
               {personalRecords.map((pr) => (
                 <li key={pr.exerciseId} className="text-xs text-amber-100/90">
-                  <span className="font-semibold">{pr.name}</span> — {pr.weight} kg × {pr.reps}
+                  <span className="font-semibold">{pr.name}</span> — {formatRecordLoad(pr)} × {pr.reps}
                   <span className="text-amber-100/60"> (was {pr.previousWeight} kg)</span>
                 </li>
               ))}

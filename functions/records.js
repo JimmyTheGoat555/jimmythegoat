@@ -19,6 +19,7 @@
 // hundreds. Now that full scan happens once, ever, per account.
 
 const { LEGACY_BODYWEIGHT_KG } = require('./storeCatalog');
+const { BODYWEIGHT_EXERCISE_IDS } = require('./exercises');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -35,7 +36,20 @@ function bestSetOf(exercise) {
     const reps = Number(set.reps);
     if (!Number.isFinite(weight) || weight <= 0) continue;
     if (!Number.isFinite(reps) || reps <= 0) continue;
-    if (!best || weight > best.weight) best = { weight, reps };
+    // `weight` on a bodyweight set is bodyWeight + belt (economy.js folds
+    // the lifter's own mass in), so it is BOTH the right number to rank
+    // on and a direct readout of what that person weighs. Both flags ride
+    // along so the publishing step can keep the ranking and drop the
+    // number — see publishableRecord in economy.js.
+    if (!best || weight > best.weight) {
+      best = {
+        weight,
+        reps,
+        ...(set.isBodyweight === true
+          ? { isBodyweight: true, addedWeight: Number(set.addedWeight) || 0 }
+          : {}),
+      };
+    }
   }
   return best;
 }
@@ -131,9 +145,62 @@ function findNewPersonalRecordsFromBest(currentExercises, bestPerExercise) {
       weight: top.weight,
       reps: top.reps,
       previousWeight: previous.weight,
+      // The belt they beat, for bodyweight lifts. `previousWeight` is an
+      // absolute load there — body weight plus belt — so it is exactly as
+      // disclosing as the new record was, and publishableRecord swaps in
+      // this one instead.
+      ...(top.isBodyweight === true
+        ? { previousAddedWeight: Number(previous.addedWeight) || 0 }
+        : {}),
+      // Carried so publishableRecord (economy.js) can strip the absolute
+      // load before this reaches a feed post. The unstripped copy is what
+      // the OWNER gets back from logWorkout for their own summary screen.
+      ...(top.isBodyweight === true ? { isBodyweight: true, addedWeight: top.addedWeight } : {}),
     });
   }
   return records;
+}
+
+// A personal record as OTHER PEOPLE may see it — the feed card and a
+// friend's profile.
+//
+// For a weighted lift the record is its weight and there is nothing to
+// hide. For a bodyweight lift the stored `weight` is the lifter's body
+// weight plus any belt, so publishing it publishes what they weigh:
+// a friend reading "Pull-Up 94 kg" on the feed has just been told a
+// number nobody chose to share, and subtracting a visible belt figure
+// gives it exactly.
+//
+// So the number does not leave the server. `weight` is omitted entirely
+// rather than zeroed or nulled — a reader has nothing to accidentally
+// render — and `addedWeight` goes in its place, which is the part that
+// is actually the lifter's achievement. The client formats it as
+// "BW" or "BW +20 kg" (utils/personalRecords.js's formatRecordLoad).
+//
+// Doing this here rather than in the UI is the whole point: a client-side
+// format would still ship the real figure in the payload, where it sits
+// in the network tab regardless of what React draws.
+function publishableRecord(exerciseId, r) {
+  const base = { exerciseId, name: r.name, reps: r.reps };
+  if (r.isBodyweight === true || BODYWEIGHT_EXERCISE_IDS.has(exerciseId)) {
+    return {
+      ...base,
+      isBodyweight: true,
+      addedWeight: Number(r.addedWeight) || 0,
+      // Only the belt comparison survives. Undefined on the profile list
+      // (an all-time best has nothing to have beaten) and on a plain
+      // bodyweight PR with no belt either side — the card omits the
+      // "(was …)" clause entirely rather than printing a bare unit.
+      ...(r.previousAddedWeight !== undefined
+        ? { previousAddedWeight: Number(r.previousAddedWeight) || 0 }
+        : {}),
+    };
+  }
+  return {
+    ...base,
+    weight: r.weight,
+    ...(r.previousWeight !== undefined ? { previousWeight: r.previousWeight } : {}),
+  };
 }
 
 // Computes the FULL users/{uid}/meta/records aggregate from a complete
@@ -242,6 +309,7 @@ function applyWorkoutToRecords(records, { cleanExercises, finishedAtIso, totalSc
 }
 
 module.exports = {
+  publishableRecord,
   bestWeightPerExercise,
   lifetimeVolumeOf,
   findNewPersonalRecordsFromBest,

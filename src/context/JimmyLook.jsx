@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo } from 'react';
 import { readEquippedAccessories } from '../data/storeItems';
+import { isOnFire } from '../utils/streak';
 
 // What the SIGNED-IN user's Jimmy looks like: his evolution stage and the
 // gear he has equipped. The two values always travel together (they are
@@ -16,7 +17,7 @@ import { readEquippedAccessories } from '../data/storeItems';
 // component that silently falls back to "the current user" turns a
 // forgotten prop into wrong data instead of an obvious blank.
 const EMPTY = [];
-const JimmyLookContext = createContext({ evolutionStage: 1, equippedAccessories: EMPTY });
+const JimmyLookContext = createContext({ evolutionStage: 1, equippedAccessories: EMPTY, showFire: false });
 
 export function JimmyLookProvider({ evolutionStage, account, children }) {
   // readEquippedAccessories also folds in the pre-multi-slot
@@ -28,9 +29,21 @@ export function JimmyLookProvider({ evolutionStage, account, children }) {
   // many times a session while its contents almost never change. Without
   // this every avatar on screen re-renders on every snapshot.
   const key = equipped.join(',');
+  // Server-written (functions/economy.js's logWorkout), so it arrives on
+  // the account doc alongside everything else here and needs no separate
+  // listener. `showFire` is published pre-derived rather than as the raw
+  // number so the existing `<JimmyAvatar {...useJimmyLook()} />` spreads
+  // pick the fire up without a single call site changing — the whole
+  // reason this context hands over a props-shaped object.
+  const currentStreak = Number(account?.currentStreak) || 0;
   const value = useMemo(
-    () => ({ evolutionStage, equippedAccessories: key ? key.split(',') : EMPTY }),
-    [evolutionStage, key],
+    () => ({
+      evolutionStage,
+      equippedAccessories: key ? key.split(',') : EMPTY,
+      currentStreak,
+      showFire: isOnFire(currentStreak),
+    }),
+    [evolutionStage, key, currentStreak],
   );
 
   return <JimmyLookContext.Provider value={value}>{children}</JimmyLookContext.Provider>;

@@ -428,7 +428,9 @@ service cloud.firestore {
         // A small, deliberately-public mirror of exactly what a friend's
         // profile view needs — displayName, lifetimeVolume (drives their
         // shown evolution stage), sharePRs, personalRecords when sharePRs
-        // is true, and equippedDance/equippedAccessory. Nothing else about
+        // is true, equippedDance/equippedAccessory, and unlockedDances
+        // (the dance emotes they own, so a visitor can play them from the
+        // friend's profile — see FriendDancesModal.jsx). Nothing else about
         // this account lives here. Readable by anyone signed in, matching
         // this app's existing precedent: feedPosts already carries similar
         // cosmetic/stat data under the same bare signedIn() rule (see
@@ -449,11 +451,42 @@ service cloud.firestore {
         // harmless vanity, not a security or economy bypass, so this
         // doesn't need the ownership cross-check equippedFieldsValid() does
         // for the real doc.
+        //
+        // unlockedDances is pointedly NOT in that exception. Equipping is
+        // vanity; the unlocked list is the paid-for inventory, and a
+        // client that could write it here would be advertising dances it
+        // never bought. It is mirrored by purchaseItem() and
+        // logWorkout() on the Admin SDK path instead.
+        //
+        // savedWorkouts joins that owner-writable set (see
+        // hooks/useWorkoutTemplates.js's publish()). It is the one entry
+        // here that is not a bare cosmetic id, so be honest about what the
+        // rule can and cannot check:
+        //
+        //   * CAN cap the array length, which is the vector that actually
+        //     matters — this document is readable by every signed-in user,
+        //     so an unbounded array is an unbounded blob served to
+        //     everyone. 20 is well past any real library.
+        //   * CANNOT validate each element. Rules have no way to iterate a
+        //     list and assert that no entry carries a `weight` key, so the
+        //     structure-only guarantee is enforced by the client allowlist
+        //     (utils/friendPrivacy.js's publishableRoutine) and nothing
+        //     else.
+        //
+        // That asymmetry is acceptable HERE and it is worth writing down
+        // why, because it would not be acceptable for most fields: the
+        // only data a tampered client could push into this array is its
+        // own owner's, about themselves. There is no third party whose
+        // numbers could leak, which is the thing the read-side fence
+        // exists to protect. Compare `personalRecords` right above, which
+        // stays server-only precisely because a client writing it could
+        // fabricate a record it never lifted.
         allow read: if signedIn();
         allow create, delete: if false;
         allow update: if isOwner(uid) &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['equippedDance', 'equippedAccessory', 'equippedAccessories']);
+            .hasOnly(['equippedDance', 'equippedAccessory', 'equippedAccessories', 'savedWorkouts']) &&
+          request.resource.data.get('savedWorkouts', []).size() <= 20;
       }
     }
   }

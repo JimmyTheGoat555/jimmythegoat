@@ -15,19 +15,54 @@ const { enforceRateLimit } = require('./guards');
 // even "just send a request" has to be a callable — this also lets the
 // recipient's `fromName` come from the sender's own verified doc instead
 // of a client-supplied string.
+//
+// Two ways in, and they are not equally trusted:
+//
+//   * `code` — the original. A friend code is a capability: you can only
+//     be added by someone you actually handed it to, so resolving one is
+//     permission enough on its own.
+//   * `targetUid` — for the Add buttons on a suggestion card and a search
+//     result, neither of which has a code to send.
+//
+// The uid path used to additionally require the target to be a
+// friend-of-a-friend, on the reasoning that a raw uid is not a capability
+// the way a code is. Username search retired that check rather than
+// working around it: search exists precisely so that people you have no
+// connection to can find each other, so a rule saying "you may only
+// contact people already near you in the graph" would either reject every
+// interesting search result or reduce search to a list of people you can
+// already reach. You cannot ship a discovery feature and a
+// discovery-prevention rule at once; this app now chooses discovery.
+//
+// What still stands between this and a spam cannon: the target must be a
+// real account, and the caller gets 20 requests an hour (guards.js). That
+// is the ordinary posture for a social app, and it is a deliberate
+// loosening — see functions/userSearch.js for the same note from the
+// other side.
 exports.sendFriendRequest = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   // Puts a request in someone else's inbox — verified email + hourly cap, see guards.js.
   const uid = request.auth.uid;
   const code = String(request.data?.code ?? '').trim().toUpperCase();
-  if (!code) throw new HttpsError('invalid-argument', 'Enter a code.');
+  const requestedUid = String(request.data?.targetUid ?? '').trim();
+  if (!code && !requestedUid) throw new HttpsError('invalid-argument', 'Enter a code.');
 
   const db = getFirestore();
-  const codeSnap = await db.collection('friendCodes').doc(code).get();
-  if (!codeSnap.exists) {
-    throw new HttpsError('not-found', "No one found with that code — double check it and try again.");
+
+  let targetUid;
+  if (code) {
+    const codeSnap = await db.collection('friendCodes').doc(code).get();
+    if (!codeSnap.exists) {
+      throw new HttpsError('not-found', "No one found with that code — double check it and try again.");
+    }
+    targetUid = codeSnap.data().uid;
+  } else {
+    if (requestedUid === uid) throw new HttpsError('invalid-argument', "That's you.");
+    // Existence is checked below, by the same targetSnap read the code
+    // path uses — no separate probe here, so both routes fail identically
+    // for a uid that is not an account.
+    targetUid = requestedUid;
   }
-  const targetUid = codeSnap.data().uid;
   if (targetUid === uid) throw new HttpsError('invalid-argument', "That's your own code.");
 
   const [callerSnap, targetSnap] = await Promise.all([
@@ -45,14 +80,67 @@ exports.sendFriendRequest = onCall(async (request) => {
   // typo'd code doesn't cost the caller a slot. Throws 'resource-exhausted'.
   await enforceRateLimit(uid, 'friendRequest');
 
+  const fromName = callerSnap.data().displayName ?? 'Someone';
+  const targetRef = db.collection('users').doc(targetUid);
+  const nowIso = new Date().toISOString();
+
+  // Batched so the request and the notification announcing it land
+  // together. Split into two awaits there would be a window where the
+  // request exists and nothing tells the recipient — which is the exact
+  // bug this change is here to fix, just narrower.
+  const batch = db.batch();
+
   // set(), not create-only — sending a second request (e.g. after being
   // declined) just refreshes the existing one rather than erroring.
-  await db.collection('users').doc(targetUid).collection('friendRequests').doc(uid).set({
+  batch.set(targetRef.collection('friendRequests').doc(uid), {
     fromUid: uid,
-    fromName: callerSnap.data().displayName ?? 'Someone',
+    fromName,
     status: 'pending',
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
   });
+
+  // The inbox entry. sendPushOnNotificationCreate (functions/index.js)
+  // watches this collection and turns any new doc into an OS push, so this
+  // one write drives both surfaces and no push code belongs here.
+  //
+  // The doc id is derived from the SENDER rather than auto-generated, the
+  // same identity-by-id trick as friendRequests/{fromUid} and likes/{likerUid}
+  // above. Two consequences, both wanted:
+  //
+  //   * One inbox entry per pending sender. Re-sending cannot stack up ten
+  //     copies of "Dana wants to be your friend."
+  //   * onDocumentCreated fires on CREATE only, so a re-send while the
+  //     entry is still sitting unread is silent. Push again only if they
+  //     already cleared it — which is the difference between a reminder
+  //     and being pestered, and it matters because the hourly cap still
+  //     allows ~20 sends at one person.
+  batch.set(targetRef.collection('notifications').doc(`friend_request_${uid}`), {
+    type: 'friend_request',
+    title: 'New Friend Request! 🐐',
+    body: `${fromName} wants to be your friend.`,
+    // Who it came from, so the inbox row can grow a tap-to-open-profile
+    // later without a schema change. Same shape as cheerNotifications.js.
+    data: { fromUid: uid, fromName },
+    read: false,
+    // An ISO string, NOT FieldValue.serverTimestamp(), and this is load-
+    // bearing rather than stylistic. Two things downstream read this field
+    // and both assume a string:
+    //
+    //   * NotificationsList.jsx's timeAgo() does new Date(value).getTime().
+    //     A Firestore Timestamp gives Invalid Date → NaN → broken.
+    //   * useNotifications runs orderBy('createdAt','desc'). Firestore's
+    //     cross-type ordering ranks Timestamp BELOW String, so a
+    //     serverTimestamp doc sorts under every existing ISO-string one:
+    //     the newest notification would land at the BOTTOM of the inbox.
+    //
+    // Every other writer here (cheerNotifications.js, the two scheduled
+    // jobs in index.js) uses toISOString() for the same reason. Moving to
+    // serverTimestamp is a fine idea, but it is a migration of all four
+    // writers plus both readers, not a per-call choice.
+    createdAt: nowIso,
+  });
+
+  await batch.commit();
 
   return { targetName: targetSnap.data().displayName ?? 'Someone' };
 });

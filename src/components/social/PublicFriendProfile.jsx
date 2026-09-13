@@ -3,11 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
 import { sanitizeFriendData } from '../../utils/friendPrivacy';
 import { getStoreItem } from '../../data/storeItems';
+import { formatRecordLoad, recordSortKey } from '../../utils/personalRecords';
 import { cheerTargetId, useCheers } from '../../hooks/useCheers';
 import { AccessoryIcon } from '../evolution/accessoryArt';
 import JimmyAvatar from '../evolution/JimmyAvatar';
 import GradientBorder from '../shared/GradientBorder';
 import NudgeModal from './NudgeModal';
+import FriendDancesModal from './FriendDancesModal';
 
 // Someone else's profile. Read-only by construction — there is nothing here
 // to edit, and nothing here that they have not published.
@@ -68,9 +70,18 @@ function RoutineCard({ routine, onCopy, ownerUid, myUid }) {
         {routine.exercises.map((exercise, i) => (
           <li key={exercise.id ?? `${exercise.name}-${i}`} className="flex items-baseline justify-between gap-3 text-sm">
             <span className="text-neutral-300">{exercise.name}</span>
-            <span className="text-neutral-500 tabular-nums whitespace-nowrap">
-              {exercise.setCount} × {formatReps(exercise.repRange)}
-            </span>
+            {/* Omitted entirely rather than rendered as "× —". A template
+                in this app stores no sets at all (useWorkoutTemplates:
+                exerciseId/name/muscleGroup and nothing else), so setCount
+                is null for every routine published today and this span
+                would otherwise be a dangling multiplication sign on every
+                single line. The branch stays for a future published shape
+                that does carry set data. */}
+            {exercise.setCount != null && (
+              <span className="text-neutral-500 tabular-nums whitespace-nowrap">
+                {exercise.setCount} × {formatReps(exercise.repRange)}
+              </span>
+            )}
           </li>
         ))}
       </ul>
@@ -262,6 +273,7 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
   const navigate = useNavigate();
   const knownFriend = friends.find((f) => f.uid === friendUid);
   const [nudging, setNudging] = useState(false);
+  const [showingDances, setShowingDances] = useState(false);
 
   const raw = useFriendProfile(friendUid);
   const friend = sanitizeFriendData(raw);
@@ -311,7 +323,11 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
   const handleCopyWorkout = onSaveTemplate
     ? (routine) =>
         onSaveTemplate(
-          `${routine.name} — from ${name}`,
+          // "big reef's arms and shoulders" — the owner's name possessive,
+          // in front. Attribution has to be in the TITLE because a copied
+          // template is otherwise indistinguishable from your own, and a
+          // library of anonymous "Push Day"s is useless a month later.
+          `${name}'s ${routine.name}`,
           routine.exercises
             .filter((e) => e.exerciseId)
             .map(({ exerciseId, name: exerciseName, muscleGroup }) => ({
@@ -331,17 +347,36 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
       <div className="flex flex-col items-center gap-3 text-center">
         {/* THEIR goat in THEIR gear — explicit props, never useJimmyLook().
             Reading the current user's context here would quietly dress every
-            friend in your own loadout, and it would look entirely plausible. */}
-        <GradientBorder tierId={friend.tierId} shape="circle" fillClassName="rounded-full overflow-hidden" className="shrink-0">
-          <JimmyAvatar
-            evolutionStage={friend.evolutionStage}
-            equippedAccessories={friend.equippedAccessories}
-            crop="head"
-            size={96}
-            className="bg-neutral-800"
-            alt={`${name} the ${friend.tierLabel}`}
-          />
-        </GradientBorder>
+            friend in your own loadout, and it would look entirely plausible.
+
+            Tapping him opens the dance showcase. A real <button> rather than
+            a div with a handler, so it is reachable by keyboard and announces
+            itself; the press feedback is active:scale-95 on the button
+            itself, which tracks the finger and springs back on release. */}
+        <button
+          type="button"
+          onClick={() => setShowingDances(true)}
+          className="rounded-full transition-transform duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ember)]"
+          aria-label={`See ${name}'s dances`}
+        >
+          <GradientBorder tierId={friend.tierId} shape="circle" fillClassName="rounded-full overflow-hidden" className="shrink-0">
+            <JimmyAvatar
+              evolutionStage={friend.evolutionStage}
+              equippedAccessories={friend.equippedAccessories}
+              showFire={friend.showFire}
+              crop="head"
+              size={96}
+              className="bg-neutral-800"
+              alt={`${name} the ${friend.tierLabel}`}
+            />
+          </GradientBorder>
+        </button>
+        {/* Nothing about a round goat says "press me", and an avatar that
+            does something on tap is not a convention this app has
+            established anywhere else yet. */}
+        <p className="text-xs text-neutral-600 -mt-1">
+          Tap {name}'s Jimmy to see his moves
+        </p>
 
         <div>
           <h1 className="text-2xl font-bold text-neutral-50">{name}</h1>
@@ -390,7 +425,10 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
           <ul className="flex flex-col gap-2">
             {friend.personalRecords
               .slice()
-              .sort((a, b) => b.weight - a.weight)
+              // Not `b.weight - a.weight`: a published bodyweight record has no
+              // `weight` at all any more, and NaN comparisons silently scramble
+              // the whole list rather than misplacing one row.
+              .sort((a, b) => recordSortKey(b) - recordSortKey(a))
               .map((pr) => (
                 <li key={pr.exerciseId ?? pr.name}>
                   <Cheerable
@@ -403,7 +441,7 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
                         <span className="text-neutral-300">{pr.name}</span>
                         <span className="flex items-center gap-2">
                           <span className="font-semibold text-neutral-100 tabular-nums">
-                            {pr.weight} kg{pr.reps ? ` × ${pr.reps}` : ''}
+                            {formatRecordLoad(pr)}{pr.reps ? ` × ${pr.reps}` : ''}
                           </span>
                           <CheerButton {...cheer} onToggle={cheer.toggleLike} />
                         </span>
@@ -447,6 +485,18 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
           friendName={name}
           onSend={(messageId) => onSendNudge(friendUid, messageId)}
           onClose={() => setNudging(false)}
+        />
+      )}
+
+      {showingDances && (
+        <FriendDancesModal
+          friendName={name}
+          evolutionStage={friend.evolutionStage}
+          equippedAccessories={friend.equippedAccessories}
+          unlockedDances={friend.unlockedDances}
+          equippedDance={friend.equippedDance}
+          dancesPublished={friend.dancesPublished}
+          onClose={() => setShowingDances(false)}
         />
       )}
     </div>

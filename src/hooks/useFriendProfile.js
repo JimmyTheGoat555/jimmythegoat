@@ -84,6 +84,30 @@ export function useFriendProfile(friendUid) {
     // single field for accounts that predate this.
     equippedAccessories:
       summary?.equippedAccessories ?? latestPost?.equippedAccessories ?? null,
+    // The dance emotes they own, for the showcase a visitor can play from
+    // their profile (FriendDancesModal.jsx). Server-written only — see
+    // economy.js's logWorkout/purchaseItem — so unlike the equipped
+    // fields there is no client mirror and no feedPosts fallback: posts
+    // snapshot what someone is WEARING, never what they own.
+    //
+    // Null, not [], for an account whose summary predates this field.
+    // "Never published" and "owns nothing" want different copy in the UI,
+    // and only the absent case can be repaired by logging a workout.
+    unlockedDances: summary?.unlockedDances ?? null,
+    // Streak. The feed-post fallback is real here, unlike for
+    // unlockedDances: logWorkout stamps currentStreak onto every post,
+    // so a friend whose summary predates this field still shows fire
+    // from their latest post.
+    currentStreak: summary?.currentStreak ?? latestPost?.currentStreak ?? 0,
+    // The routines they chose to show. Summary only — a feed post carries
+    // what they LIFTED, never their library — and absent for anyone who
+    // has published none, which sanitizeFriendData turns into an empty
+    // list and PublicFriendProfile renders as no section at all.
+    //
+    // Without this line the whole publish→copy loop is invisible: the
+    // document has the field, the sanitiser looks for it, and the hook in
+    // between never passed it on.
+    savedWorkouts: summary?.savedWorkouts ?? null,
     loading: summaryLoading || postLoading,
     // A profile that truly doesn't exist (bad uid, or they've deleted their
     // account) vs. one that's just never logged a workout yet — the latter

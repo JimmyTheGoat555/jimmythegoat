@@ -27,6 +27,7 @@ import { getEvolutionProgress } from './utils/evolutionTiers';
 import { findNewPersonalRecords } from './utils/personalRecords';
 import { lastPerformance, seedSetsFromHistory } from './utils/lastPerformance';
 import { isBodyweightExercise } from './data/exercises';
+import ConfirmDialog from './components/shared/ConfirmDialog';
 import { JimmyLookProvider } from './context/JimmyLook';
 import { DEFAULT_SETS_PER_EXERCISE } from './hooks/useWorkouts';
 import { getBadge } from './data/badges';
@@ -303,7 +304,11 @@ export default function App() {
     addSet,
     updateSet,
     removeSet,
+    linkSuperset,
+    unlinkSuperset,
   } = useActiveWorkout(uid);
+  // { title, exercises } awaiting the "show this on your profile?" answer.
+  const [pendingTemplate, setPendingTemplate] = useState(null);
   // Refs read by the "retry a deferred offline finish" effect below —
   // event listeners there would otherwise close over a stale render.
   // `pendingOfflineFinishRef` holds { sharePersonalRecords } while a
@@ -529,7 +534,23 @@ export default function App() {
   // so `activeWorkout` (not yet cleared) is still the right source.
   const handleSaveTemplate = (title) => {
     if (!activeWorkout) return;
-    saveTemplate(title, activeWorkout.exercises);
+    // The exercises are CAPTURED here, not read when the prompt is
+    // answered. The summary modal calls this while the workout still
+    // exists and then commits the finish, which clears activeWorkout a
+    // moment later — reading it inside the dialog handler would find null
+    // and silently save nothing.
+    setPendingTemplate({ title, exercises: activeWorkout.exercises });
+  };
+
+  // Both answers save the template; they differ only in whether it also
+  // goes on the profile. Dismissing the sheet (tapping outside) takes the
+  // private path — "I didn't answer" must not mean "throw my routine
+  // away", and it must never mean "publish it".
+  const resolvePendingTemplate = (isPublic) => {
+    if (pendingTemplate) {
+      saveTemplate(pendingTemplate.title, pendingTemplate.exercises, { isPublic });
+    }
+    setPendingTemplate(null);
   };
 
   // Confirmation happens in ActiveWorkoutLogger's own ConfirmDialog now —
@@ -641,12 +662,6 @@ export default function App() {
                       assignments={assignments}
                       templates={templates}
                       workouts={workouts}
-                      // Real recent-workout flavor text instead of the old
-                      // mock friends' fake stats — see hooks/useFeed.js.
-                      // {username, weeklyTonnage} shape kept exactly as
-                      // WorkoutHome's buildHypeMessages() already expects, so
-                      // that logic needed zero changes.
-                      friends={feed.posts.map((p) => ({ username: p.userName, weeklyTonnage: p.totalVolume }))}
                       equippedDance={account.equippedDance}
                         barOverride={tierUp.barOverride}
                       lastWorkoutAt={lastWorkout}
@@ -680,6 +695,7 @@ export default function App() {
                     friends={friendsGraph.friends}
                     incomingRequests={friendsGraph.incomingRequests}
                     onSendRequest={friendsGraph.sendFriendRequest}
+                    onSendRequestByUid={friendsGraph.sendFriendRequestByUid}
                     onRespond={friendsGraph.respondToFriendRequest}
                     onRemove={friendsGraph.removeFriend}
                     notifications={notifications}
@@ -775,6 +791,8 @@ export default function App() {
                     onAddExercise={addExercise}
                     onRemoveExercise={removeExercise}
                     onReorderExercises={reorderExercises}
+                    onLinkSuperset={linkSuperset}
+                    onUnlinkSuperset={unlinkSuperset}
                     onAddSet={addSet}
                     onUpdateSet={updateSet}
                     onRemoveSet={removeSet}
@@ -820,6 +838,23 @@ export default function App() {
               }}
             />
           </Suspense>
+        )}
+
+        {/* Asked once, at save time, for each routine. Rendered up here
+            with the other global sheets rather than inside
+            WorkoutSummaryModal, because that modal has already unmounted
+            by the time this needs to appear — it closes as part of
+            finishing the workout. */}
+        {pendingTemplate && (
+          <ConfirmDialog
+            title="Show this routine on your profile?"
+            message="Friends can see the exercises and copy the routine. Weights and reps are always hidden."
+            confirmLabel="Yes, show it"
+            cancelLabel="Keep it private"
+            tone="primary"
+            onConfirm={() => resolvePendingTemplate(true)}
+            onCancel={() => resolvePendingTemplate(false)}
+          />
         )}
 
         {lootboxReward && (

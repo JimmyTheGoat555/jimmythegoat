@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { lifetimeVolume, weeklyScore } from '../../utils/workoutStats';
 import { getEvolutionProgress } from '../../utils/evolutionTiers';
 import GradientBorder from '../shared/GradientBorder';
 import JimmyAvatar from '../evolution/JimmyAvatar';
 import { readEquippedAccessories } from '../../data/storeItems';
+import { isOnFire } from '../../utils/streak';
 
 interface FeedPost {
   userId: string;
@@ -17,6 +18,9 @@ interface FeedPost {
   // fallback source for `score`.
   totalVolume: number;
   timestamp: string;
+  // Stamped on every post by logWorkout. Optional: posts written before
+  // the streak deploy don't carry it, and those simply don't burn.
+  currentStreak?: number;
 }
 
 interface LeaderboardProps {
@@ -25,6 +29,8 @@ interface LeaderboardProps {
   // The signed-in user's own loadout — friends' gear rides along on their
   // feed posts, but yours has to be handed in since you have no post here.
   equippedAccessories?: string[];
+  // Same reason: no post of yours is in this list to carry it.
+  currentStreak?: number;
 }
 
 interface Rankable {
@@ -35,6 +41,10 @@ interface Rankable {
   // lighter lifter ranks on the same scale as a heavier friend.
   weeklyScore: number;
   isYou: boolean;
+  // Longest-lived value wins across the week's posts, so the row shows
+  // the run they are actually on rather than whatever the oldest post in
+  // the window happened to say.
+  currentStreak: number;
   // Multi-slot loadout, so the row shows the gear they're actually
   // wearing (see components/evolution/JimmyAvatar.jsx).
   equippedAccessories?: string[];
@@ -76,6 +86,7 @@ function weeklyFriendTotals(feedPosts: FeedPost[]): Rankable[] {
     const existing = totals.get(post.userId);
     if (existing) {
       existing.weeklyScore += value;
+      existing.currentStreak = Math.max(existing.currentStreak, Number(post.currentStreak) || 0);
     } else {
       // logWorkout now stamps the poster's running lifetime total onto
       // each feed post, so a friend's tier no longer has to default to the
@@ -88,6 +99,7 @@ function weeklyFriendTotals(feedPosts: FeedPost[]): Rankable[] {
         lifetimeVolume: post.lifetimeVolume ?? 0,
         weeklyScore: value,
         isYou: false,
+        currentStreak: Number(post.currentStreak) || 0,
         equippedAccessories: readEquippedAccessories(post),
       });
     }
@@ -98,11 +110,11 @@ function weeklyFriendTotals(feedPosts: FeedPost[]): Rankable[] {
 // Head-cropped so the equipped gear is actually legible at 36px — a
 // full-body goat this small is mostly legs. JimmyAvatar owns the sprite
 // fallback, so there's no broken-image state to track here any more.
-function Avatar({ tierId, stage, accessories }: { tierId: string; stage: number; accessories: string[] }) {
+function Avatar({ tierId, stage, accessories, showFire }: { tierId: string; stage: number; accessories: string[]; showFire: boolean }) {
   return (
     <GradientBorder tierId={tierId} shape="circle" fillClassName="rounded-full overflow-hidden" glow={false} className="shrink-0">
       <div className="h-9 w-9 bg-neutral-800">
-        <JimmyAvatar evolutionStage={stage} equippedAccessories={accessories} crop="head" className="h-full w-full" />
+        <JimmyAvatar evolutionStage={stage} equippedAccessories={accessories} showFire={showFire} crop="head" className="h-full w-full" />
       </div>
     </GradientBorder>
   );
@@ -116,7 +128,12 @@ function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
       <span className="w-6 text-center text-lg font-semibold text-neutral-500">
         {MEDALS[rank] ?? `#${rank + 1}`}
       </span>
-      <Avatar tierId={current.id} stage={current.stage} accessories={entry.equippedAccessories ?? []} />
+      <Avatar
+        tierId={current.id}
+        stage={current.stage}
+        accessories={entry.equippedAccessories ?? []}
+        showFire={isOnFire(entry.currentStreak)}
+      />
       <div className="flex-1 min-w-0">
         <p className="text-base font-semibold text-neutral-100 truncate">
           {entry.isYou ? 'You' : entry.username}
@@ -134,12 +151,36 @@ function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
 
   // Your own row gets the tier-gradient glow border — everyone else stays
   // plain glass so your spot on the board actually pops.
-  return entry.isYou ? (
+  const bordered = entry.isYou ? (
     <GradientBorder tierId={current.id} fillClassName="" glow>
       {row}
     </GradientBorder>
   ) : (
     row
+  );
+
+  // Every row opens that person's profile. A friend's `id` IS their uid —
+  // it comes straight off their feed post — and every non-you row is a
+  // friend by construction, since the posts this board aggregates are only
+  // ever fetched for uids in your own friends list (useFeed).
+  //
+  // No chevron or other affordance: the right-hand side already carries
+  // the score, and a whole tappable row is the convention the rest of the
+  // app's lists already use (FriendsManager, the feed). The press scale is
+  // the feedback instead.
+  //
+  // Scale only, no focus ring: `.card` is a clip-path'd arcade shape with
+  // no border-radius, so any ring would trace a plain rectangle floating
+  // around its cut corners. Keyboard focus still lands on the link itself,
+  // which the browser outlines.
+  return (
+    <Link
+      to={entry.isYou ? '/profile' : `/friends/${entry.id}`}
+      aria-label={entry.isYou ? 'Open your profile' : `Open ${entry.username}'s profile`}
+      className="block transition-transform duration-150 active:scale-[0.99]"
+    >
+      {bordered}
+    </Link>
   );
 }
 
@@ -148,11 +189,12 @@ function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
 // "see what friends are up to" surface; this card is just the at-a-glance
 // "where do I stand this week" number. Ranked on Relative Strength Volume
 // so bodyweight matters, not raw tonnage.
-export default function Leaderboard({ workouts, feedPosts, equippedAccessories = [] }: LeaderboardProps) {
+export default function Leaderboard({ workouts, feedPosts, equippedAccessories = [], currentStreak = 0 }: LeaderboardProps) {
   const you: Rankable = {
     id: 'me',
     username: 'You',
     equippedAccessories,
+    currentStreak,
     lifetimeVolume: lifetimeVolume(workouts),
     weeklyScore: weeklyScore(workouts),
     isYou: true,

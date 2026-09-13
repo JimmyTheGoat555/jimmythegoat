@@ -8,7 +8,12 @@
 // client, double check later" step anywhere in here.
 const { randomUUID } = require('crypto');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const { findNewPersonalRecordsFromBest, buildRecordsSnapshot, applyWorkoutToRecords } = require('./records');
+const {
+  findNewPersonalRecordsFromBest,
+  buildRecordsSnapshot,
+  applyWorkoutToRecords,
+  publishableRecord,
+} = require('./records');
 const { evaluateBadgesFromRecords } = require('./badges');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const {
@@ -36,6 +41,13 @@ const { BODYWEIGHT_EXERCISE_IDS } = require('./exercises');
 
 const round1 = (n) => Math.round(Number(n) * 10) / 10;
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+// How long a streak survives between sessions. Three days, so one skipped
+// gym day — or a weekend — does not wipe a run. Deliberately forgiving:
+// this number exists to make people come back, and a streak that punishes
+// a single rest day mostly teaches them the streak is not worth chasing.
+const STREAK_GAP_MS = 3 * DAY_MS;
 
 // Re-validates and re-computes every set server-side — the client's own
 // clamped inputs (see SetRow.jsx) are a UX nicety, not a security boundary.
@@ -149,6 +161,17 @@ function validateAndScoreWorkout(exercises, bodyWeightKg) {
         reps,
         relativeVolume,
         completed: true,
+        // A drop set: same exercise, immediately after the previous set at
+        // a lower load, no rest between. Purely descriptive — it scores
+        // exactly like any other completed set, because it IS one. Written
+        // only when true so an ordinary set's document does not grow a
+        // `false` on every row of every workout forever.
+        //
+        // This has to be named here or it does not exist. Every set is
+        // rebuilt field-by-field from scratch a few lines up rather than
+        // spread from the client's object, so anything not listed is
+        // dropped — silently, and with no error the client could notice.
+        ...(rawSet.isDropSet === true ? { isDropSet: true } : {}),
         ...(isBodyweight ? { isBodyweight: true, addedWeight, bodyWeightAtLog: round1(bw) } : {}),
       });
     }
@@ -160,6 +183,20 @@ function validateAndScoreWorkout(exercises, bodyWeightKg) {
       name: exName,
       muscleGroup: typeof exercise.muscleGroup === 'string' ? exercise.muscleGroup.slice(0, 60) : null,
       sets: cleanSets,
+      // Superset membership. Adjacent exercises carrying the same id were
+      // performed back-to-back. An opaque grouping token, never displayed
+      // and only ever compared for equality — but still client-supplied
+      // and still stored, so it is type-checked and length-bounded like
+      // every other free-form string that reaches a document here.
+      //
+      // Note what is NOT enforced: that the id is shared by an ADJACENT
+      // exercise. An exercise dropped for having no completed sets can
+      // leave a one-member group behind, and the reader treats a group of
+      // one as an ordinary exercise, which is the correct reading of what
+      // actually happened.
+      ...(typeof exercise.supersetId === 'string' && exercise.supersetId
+        ? { supersetId: exercise.supersetId.slice(0, 64) }
+        : {}),
       ...(isBodyweight ? { isBodyweight: true } : {}),
     });
   }
@@ -282,6 +319,7 @@ exports.logWorkout = onCall(async (request) => {
   let effectiveRecords = personalRecords;
   let newBadges = [];
   let firstWorkoutReward = null;
+  let currentStreak = 0;
 
   await db.runTransaction(async (tx) => {
     const [userSnap, economySnap] = await Promise.all([tx.get(userRef), tx.get(economyRef)]);
@@ -343,6 +381,40 @@ exports.logWorkout = onCall(async (request) => {
     // stale timestamp — still "overdue" — until one actually clears it.
     neglectPenaltyLifted = !isRecovery || totalScore >= RECOVERY_MIN_SCORE;
 
+    // ── Workout streak ──────────────────────────────────────────────────
+    //
+    // NOT the same number as meta/records' `streakDays`, and that is
+    // intentional rather than an oversight. `streakDays` is strict
+    // consecutive calendar days and feeds the streak-7 badge (records.js);
+    // this one tolerates a three-day gap and drives the fire on Jimmy. An
+    // achievement should be hard to earn; a comeback hook should be hard
+    // to lose. Same word, two jobs.
+    //
+    // Gated on neglectPenaltyLifted for the same reason lastWorkoutAt is,
+    // and the coupling is load-bearing: the streak is measured FROM
+    // lastWorkoutAt, so if a below-the-bar comeback workout leaves that
+    // timestamp stale, the streak has to stay frozen with it. Advancing
+    // one without the other would judge the NEXT log against a gap that
+    // never happened.
+    //
+    // A second workout on the same UTC day HOLDS the streak instead of
+    // advancing it — the identical rule applyWorkoutToRecords already
+    // applies to streakDays, and the reason is the same: without it the
+    // number counts sessions rather than days, and the 2-per-24h cap
+    // would let a two-a-day lifter run a streak at double everyone else's
+    // rate against a calendar nobody shares.
+    const priorStreak = Number(userSnap.data().currentStreak) || 0;
+    const brokeStreak = !Number.isFinite(lastWorkoutMs) || now - lastWorkoutMs > STREAK_GAP_MS;
+    const sameUtcDay =
+      Number.isFinite(lastWorkoutMs) && Math.floor(now / DAY_MS) === Math.floor(lastWorkoutMs / DAY_MS);
+    currentStreak = !neglectPenaltyLifted
+      ? priorStreak
+      : brokeStreak
+        ? 1
+        : sameUtcDay
+          ? Math.max(priorStreak, 1)
+          : priorStreak + 1;
+
     tx.set(workoutRef, {
       exercises: cleanExercises,
       // Bounded to [now - 48h, now] — see sanitizeStartedAt. Never fed
@@ -396,7 +468,13 @@ exports.logWorkout = onCall(async (request) => {
     // fetching every user's meta/economy subdoc. Server-only — see
     // firestore.rules' serverManagedFieldsUnchanged().
     if (neglectPenaltyLifted) {
-      tx.set(userRef, { lastWorkoutAt: finishedAtIso }, { merge: true });
+      // currentStreak rides along with lastWorkoutAt, in the same write,
+      // because the two are only meaningful together — see the streak
+      // block above. Server-only: `currentStreak` is absent from
+      // firestore.rules' userUpdateFieldsAllowed() allowlist, and that
+      // allowlist is hasOnly(), so a client write touching this field is
+      // already denied without the rule needing to name it.
+      tx.set(userRef, { lastWorkoutAt: finishedAtIso, currentStreak }, { merge: true });
     }
 
     const userData = userSnap.data();
@@ -414,23 +492,46 @@ exports.logWorkout = onCall(async (request) => {
     });
     tx.set(recordsRef, { ...nextRecords, updatedAt: finishedAtIso });
 
+    // Resolved here rather than read straight off userData because the
+    // Silver Lootbox below may add to it in this very transaction — and
+    // the summary is written before that runs. Publishing the pre-grant
+    // list would hide a brand-new account's free dance from friends until
+    // their SECOND workout.
+    const ownedDances = Array.isArray(userData.unlockedDances) ? [...userData.unlockedDances] : [];
+    const grantsStarterDance =
+      !isRecovery && (records.workoutCount ?? 0) === 0 && !ownedDances.includes(STARTER_DANCE_ID);
+    if (grantsStarterDance) ownedDances.push(STARTER_DANCE_ID);
+
     // Refresh the friend-visible profile summary — see publicProfile.js.
     // `sharePersonalRecords` below is a one-off, per-post consent ("call
     // out this workout's PR in the feed"); `userData.sharePRs` is the
     // standing profile-level consent ("let friends see my current
     // all-time bests at all"). They are deliberately independent.
+    //
+    // `unlockedDances` rides along because a friend's profile lets a
+    // visitor play the dances someone owns (FriendDancesModal.jsx), and
+    // the authoritative list lives on the private users/{uid} doc no
+    // friend can read. It is cosmetic only — which emotes they own, not
+    // what they lift, spend or weigh — and being seen is the entire point
+    // of a showcase, so it is published deliberately and has no opt-out
+    // flag the way personalRecords does. Server-written only: the
+    // client-update rule on public/summary still allows exactly the three
+    // equipped fields, so nobody can claim a dance they never unlocked.
     const summary = {
       displayName: userData.displayName ?? 'Someone',
       lifetimeVolume: Math.round(nextRecords.lifetimeVolume),
       sharePRs: userData.sharePRs === true,
+      unlockedDances: ownedDances,
+      // So a friend's profile can set Jimmy alight too. Published
+      // unconditionally, like the tier: a streak is a boast, not a
+      // measurement of what you lifted, and there is nothing in the
+      // number to opt out of.
+      currentStreak,
     };
     if (userData.sharePRs === true) {
-      summary.personalRecords = Object.entries(nextRecords.bestPerExercise).map(([exerciseId, r]) => ({
-        exerciseId,
-        name: r.name,
-        weight: r.weight,
-        reps: r.reps,
-      }));
+      summary.personalRecords = Object.entries(nextRecords.bestPerExercise).map(([exerciseId, r]) =>
+        publishableRecord(exerciseId, r),
+      );
     }
     tx.set(userRef.collection('public').doc('summary'), summary, { merge: true });
 
@@ -458,13 +559,14 @@ exports.logWorkout = onCall(async (request) => {
     // unlockedDances with no fanfare. The client shows this as a
     // full-screen chest-opening moment (see SilverLootboxModal.jsx) rather
     // than folding it into the normal "+N coins" toast.
-    if (!isRecovery && (records.workoutCount ?? 0) === 0) {
-      const alreadyOwned = Array.isArray(userData.unlockedDances) && userData.unlockedDances.includes(STARTER_DANCE_ID);
-      if (!alreadyOwned) {
-        tx.update(userRef, { unlockedDances: FieldValue.arrayUnion(STARTER_DANCE_ID) });
-        const starterItem = STORE_ITEMS_BY_ID.get(STARTER_DANCE_ID);
-        firstWorkoutReward = { itemId: STARTER_DANCE_ID, name: starterItem?.name ?? 'A new dance', emoji: starterItem?.emoji ?? '🎁' };
-      }
+    //
+    // Both the condition and the resulting list are resolved above, next
+    // to the summary write, so the published showcase and the real grant
+    // can never disagree about what this account owns.
+    if (grantsStarterDance) {
+      tx.update(userRef, { unlockedDances: FieldValue.arrayUnion(STARTER_DANCE_ID) });
+      const starterItem = STORE_ITEMS_BY_ID.get(STARTER_DANCE_ID);
+      firstWorkoutReward = { itemId: STARTER_DANCE_ID, name: starterItem?.name ?? 'A new dance', emoji: starterItem?.emoji ?? '🎁' };
     }
 
     // A recovery workout is a private "get back on the horse" — no feed
@@ -498,6 +600,12 @@ exports.logWorkout = onCall(async (request) => {
         // the guard is kept explicit so the two writes can't drift.
         score: isRecovery ? 0 : totalScore,
         coinsEarned: effectiveCoins,
+        // Snapshotted onto the post like the cosmetics below it, and for
+        // the same reason: the leaderboard and the feed draw their avatars
+        // from feedPosts, not from public/summary, so without this the
+        // fire would be invisible on exactly the two screens where you
+        // look at other people.
+        currentStreak,
         equippedDance: userData.equippedDance ?? null,
         // Legacy single-slot field, still written so anything not yet
         // reading the array keeps working.
@@ -512,7 +620,12 @@ exports.logWorkout = onCall(async (request) => {
           : userData.equippedAccessory
             ? [userData.equippedAccessory]
             : [],
-        personalRecords: sharePersonalRecords === true ? personalRecords : [],
+        // Same treatment as the profile list above: a bodyweight PR goes
+        // out as BW + belt, never as the absolute load.
+        personalRecords:
+          sharePersonalRecords === true
+            ? personalRecords.map((r) => publishableRecord(r.exerciseId, r))
+            : [],
         timestamp: finishedAtIso,
       });
     }
@@ -534,6 +647,10 @@ exports.logWorkout = onCall(async (request) => {
     // { itemId, name, emoji } exactly once, ever, per account — the
     // Silver Lootbox's first-workout dance grant. null every other time.
     firstWorkoutReward,
+    // The run this workout just extended. The account doc carries it live
+    // anyway, so nothing NEEDS this — it is here so the summary screen can
+    // say "3 in a row 🔥" without waiting for the snapshot to land.
+    currentStreak,
   };
 });
 
@@ -567,6 +684,25 @@ exports.purchaseItem = onCall(async (request) => {
 
     const updated = coins - item.cost;
     tx.update(userRef, { coins: updated, [field]: FieldValue.arrayUnion(item.id) });
+
+    // Buying a dance updates the friend-visible showcase immediately
+    // rather than at the buyer's next logged workout — the same
+    // "cosmetics should land the moment you change them" reasoning behind
+    // equipItem's client-side mirror (hooks/useEconomy.js), except this
+    // one has to be server-side: unlockedDances is not a field the rules
+    // let a client write to public/summary, precisely so an unpaid-for
+    // dance can never appear there. merge:true rather than update()
+    // because set() is what tolerates a missing doc; in practice there
+    // is never one to create, since accounts start at 0 coins (see
+    // firestore.rules' serverManagedFieldsAtDefault) and coins only come
+    // from logWorkout, which writes the summary first.
+    if (item.type === 'dance') {
+      tx.set(
+        userRef.collection('public').doc('summary'),
+        { unlockedDances: FieldValue.arrayUnion(item.id) },
+        { merge: true },
+      );
+    }
     return updated;
   });
 

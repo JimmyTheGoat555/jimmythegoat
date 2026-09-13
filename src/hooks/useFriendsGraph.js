@@ -76,6 +76,16 @@ export function useFriendsGraph(uid, friendUids) {
     return data; // { targetName }
   }, []);
 
+  // Same callable, the other way in — for the Add button on a suggestion
+  // card, which knows a uid and has no code to type. The server will only
+  // accept a uid that is a friend-of-a-friend of the caller (see
+  // functions/friendSuggestions.js's isFriendOfFriend and why), so this is
+  // not a way to add an arbitrary stranger by id.
+  const sendFriendRequestByUid = useCallback(async (targetUid) => {
+    const { data } = await httpsCallable(functions, 'sendFriendRequest')({ targetUid });
+    return data; // { targetName }
+  }, []);
+
   const respondToFriendRequest = useCallback(async (fromUid, accept) => {
     const { data } = await httpsCallable(functions, 'respondToFriendRequest')({ fromUid, accept });
     return data; // { accepted }
@@ -99,6 +109,7 @@ export function useFriendsGraph(uid, friendUids) {
     loadingFriends,
     incomingRequests,
     sendFriendRequest,
+    sendFriendRequestByUid,
     respondToFriendRequest,
     removeFriend,
     sendNudge,

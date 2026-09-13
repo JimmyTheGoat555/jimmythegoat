@@ -16,6 +16,7 @@ const ICONS = {
   friend_nudge: '🐐',
   lazy_goat_tease: '😴',
   cheer_received: '❤️',
+  friend_request: '👋',
 };
 
 // The shared inbox surface — lives on the Social tab (see SocialPage.jsx),

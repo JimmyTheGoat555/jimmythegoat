@@ -23,6 +23,7 @@ export default function SetRow({
   onChange,
   onToggleComplete,
   onRemove,
+  onToggleDropSet,
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   // A bodyweight set only needs reps (the load is your body weight, added
@@ -36,13 +37,35 @@ export default function SetRow({
   const loadTop = isBodyweight ? (added > 0 ? `BW +${formatWorkingWeight(added)}` : 'BW') : isSet(set.weight) ? formatWorkingWeight(set.weight) : '—';
   const loadLabel = isBodyweight ? 'body' : 'kg';
 
+  const isDrop = set.isDropSet === true;
+
   return (
     <div
+      // A drop set is indented and rail-marked rather than recoloured: the
+      // green fill already means "completed", and a second background
+      // colour on the same row would put two unrelated meanings in one
+      // channel. The rail reads as "hangs off the set above", which is
+      // exactly what a drop set is.
       className={`grid grid-cols-[auto_1fr_1fr_auto_auto] items-center gap-2 py-1.5 rounded-2xl transition ${
         set.completed ? 'bg-[var(--success)]/15' : ''
-      }`}
+      } ${isDrop ? 'ml-4 border-l-2 border-[var(--ember)] pl-1' : ''}`}
     >
-      <span className="text-sm text-neutral-500 w-5 text-center tabular-nums">{index + 1}</span>
+      <button
+        type="button"
+        onClick={onToggleDropSet}
+        // The set number doubles as the toggle. There is no room for a
+        // sixth control on a 375px row — the grid is already five columns
+        // and the two chips need every pixel they have — and the number
+        // is the one cell that was pure decoration.
+        aria-pressed={isDrop}
+        aria-label={`Set ${index + 1}${isDrop ? ' — drop set, tap to make it a normal set' : ' — tap to mark as a drop set'}`}
+        title={isDrop ? 'Drop set (no rest)' : 'Mark as drop set'}
+        className={`w-5 h-11 text-sm tabular-nums transition active:scale-90 ${
+          isDrop ? 'text-[var(--ember)] font-bold' : 'text-neutral-500'
+        }`}
+      >
+        {isDrop ? '↓' : index + 1}
+      </button>
 
       <button type="button" onClick={() => setSheetOpen(true)} className={chipClass} aria-label={`Set ${index + 1} weight`}>
         <span className="text-base font-semibold text-neutral-100 tabular-nums">{loadTop}</span>

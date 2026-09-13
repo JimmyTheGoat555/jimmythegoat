@@ -40,6 +40,10 @@ export default function JimmyAnimation({
   // dance previews pass nothing, because there the subject is the dance.
   evolutionStage,
   equippedAccessories = [],
+  // Streak fire, same flag JimmyAvatar takes. WorkoutHome already spreads
+  // the whole useJimmyLook() object in here, so the hero goat — the
+  // biggest Jimmy in the app — lights up without touching that call site.
+  showFire = false,
 }) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -68,7 +72,7 @@ export default function JimmyAnimation({
 
   return (
     <div
-      className={`relative ${className} ${canReplay ? 'cursor-pointer' : ''}`}
+      className={`relative ${className} ${showFire ? 'streak-fire' : ''} ${canReplay ? 'cursor-pointer' : ''}`}
       onClick={canReplay ? () => setReplay((n) => n + 1) : undefined}
       onKeyDown={
         canReplay

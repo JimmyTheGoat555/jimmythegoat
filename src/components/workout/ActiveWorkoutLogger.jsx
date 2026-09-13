@@ -125,6 +125,8 @@ export default function ActiveWorkoutLogger({
   onDiscard,
   onSaveTemplate,
   onReorderExercises,
+  onLinkSuperset,
+  onUnlinkSuperset,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -199,11 +201,32 @@ export default function ActiveWorkoutLogger({
     setShowSummary(true);
   };
 
+  // Does finishing THIS set mean it is time to rest?
+  //
+  // Two ways the answer is no, and both are the whole point of the
+  // feature — a rest timer firing mid-technique is worse than no timer,
+  // because it starts an alarm the lifter then has to stop while holding
+  // a dumbbell:
+  //
+  //   * a drop set IS the absence of rest — strip weight, go again;
+  //   * inside a superset you move to the next exercise, so only the LAST
+  //     member's set ends the round. Adjacency is what defines the group
+  //     (see useWorkouts' cohereSupersets, which keeps it true), so "last"
+  //     is simply "the next exercise is not in my group".
+  const shouldRestAfter = (exerciseId, setId) => {
+    const i = workout.exercises.findIndex((e) => e.exerciseId === exerciseId);
+    const exercise = workout.exercises[i];
+    if (!exercise) return true;
+    if (exercise.sets.find((s) => s.id === setId)?.isDropSet === true) return false;
+    if (!exercise.supersetId) return true;
+    return workout.exercises[i + 1]?.supersetId !== exercise.supersetId;
+  };
+
   // Checking a set off pops the rest timer full-screen; un-checking it or
   // editing weight/reps leaves any running rest alone.
   const handleUpdateSet = (exerciseId, setId, patch) => {
     onUpdateSet(exerciseId, setId, patch);
-    if (patch.completed === true) {
+    if (patch.completed === true && shouldRestAfter(exerciseId, setId)) {
       rest.start();
       setTimerMinimized(false);
     }
@@ -268,18 +291,50 @@ export default function ActiveWorkoutLogger({
             getKey={(e) => e.exerciseId}
             onReorder={onReorderExercises}
             disabled={priorityOn}
-            renderItem={(exercise, { dragHandleProps, isDragging }) => (
-              <ExerciseLogCard
-                exercise={exercise}
-                lastTime={lastPerformance(exercise.exerciseId, history)}
-                dragHandleProps={dragHandleProps}
-                isDragging={isDragging}
-                onAddSet={() => onAddSet(exercise.exerciseId)}
-                onUpdateSet={(setId, patch) => handleUpdateSet(exercise.exerciseId, setId, patch)}
-                onRemoveSet={(setId) => onRemoveSet(exercise.exerciseId, setId)}
-                onRemoveExercise={() => onRemoveExercise(exercise.exerciseId)}
-              />
-            )}
+            renderItem={(exercise, { dragHandleProps, isDragging }) => {
+              const i = workout.exercises.indexOf(exercise);
+              const prev = workout.exercises[i - 1];
+              const next = workout.exercises[i + 1];
+              const gid = exercise.supersetId ?? null;
+              // Position within the group, derived from the neighbours
+              // rather than stored — storing it would be a second source
+              // of truth that every reorder could put out of step.
+              const openedHere = gid && prev?.supersetId !== gid;
+              const closesHere = gid && next?.supersetId !== gid;
+              const supersetPosition = !gid
+                ? null
+                : openedHere
+                  ? 'first'
+                  : closesHere
+                    ? 'last'
+                    : 'middle';
+              return (
+                <ExerciseLogCard
+                  exercise={exercise}
+                  lastTime={lastPerformance(exercise.exerciseId, history)}
+                  dragHandleProps={dragHandleProps}
+                  isDragging={isDragging}
+                  supersetPosition={supersetPosition}
+                  // Offered only where it can actually do something: there
+                  // has to be a next exercise, and it must not already be
+                  // in this group.
+                  onLinkNext={
+                    next && next.supersetId !== gid
+                      ? () => onLinkSuperset(exercise.exerciseId)
+                      : null
+                  }
+                  // One break control per group, on its first card, since
+                  // unlinking dissolves the whole group anyway.
+                  onUnlink={
+                    supersetPosition === 'first' ? () => onUnlinkSuperset(exercise.exerciseId) : null
+                  }
+                  onAddSet={() => onAddSet(exercise.exerciseId)}
+                  onUpdateSet={(setId, patch) => handleUpdateSet(exercise.exerciseId, setId, patch)}
+                  onRemoveSet={(setId) => onRemoveSet(exercise.exerciseId, setId)}
+                  onRemoveExercise={() => onRemoveExercise(exercise.exerciseId)}
+                />
+              );
+            }}
           />
 
           <button

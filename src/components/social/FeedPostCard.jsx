@@ -1,9 +1,22 @@
+import { Link } from 'react-router-dom';
 import { usePostLikes } from '../../hooks/useFeed';
 import { STORE_ITEMS, readEquippedAccessories } from '../../data/storeItems';
 import { getEvolutionProgress } from '../../utils/evolutionTiers';
 import JimmyAvatar from '../evolution/JimmyAvatar';
+import { formatRecordLoad } from '../../utils/personalRecords';
+import { isOnFire } from '../../utils/streak';
 
 const ITEMS_BY_ID = new Map(STORE_ITEMS.map((item) => [item.id, item]));
+
+// The record this one beat, in the same units the new one is shown in.
+// Returns null when there is nothing worth printing.
+function previousLoad(pr) {
+  if (pr.isBodyweight === true || pr.previousWeight === undefined) {
+    const prev = Number(pr.previousAddedWeight);
+    return Number.isFinite(prev) && prev > 0 ? `BW +${prev} kg` : null;
+  }
+  return `${pr.previousWeight} kg`;
+}
 
 function relativeTime(iso) {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -35,18 +48,36 @@ export default function FeedPostCard({ post, myUid }) {
         {/* The poster as they actually look — head-cropped so the gear
             reads at 40px. Stage comes from the volume the post itself
             carries, so an old post keeps showing who they were then. */}
-        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-neutral-800">
-          <JimmyAvatar
-            evolutionStage={postTier.stage}
-            equippedAccessories={readEquippedAccessories(post)}
-            crop="head"
-            className="h-full w-full"
-          />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-neutral-100 truncate">{post.userName}</p>
-          <p className="text-xs text-neutral-500">{relativeTime(post.timestamp)}</p>
-        </div>
+        {/* Avatar and name open that person's profile. One Link around
+            both rather than two, so the whole identity block is a single
+            target — at 40px an avatar alone is an awkward tap on a phone.
+            The timestamp rides inside it too; it is part of the same
+            block and excluding it would leave a dead strip in the middle
+            of the tap area.
+
+            Your own post goes to /profile instead of the public view of
+            yourself, matching the leaderboard's "You" row. */}
+        <Link
+          to={post.userId === myUid ? '/profile' : `/friends/${post.userId}`}
+          aria-label={`Open ${post.userId === myUid ? 'your' : `${post.userName}'s`} profile`}
+          className="flex min-w-0 flex-1 items-center gap-2 transition-transform duration-150 active:scale-[0.98]"
+        >
+          <span className="block h-10 w-10 shrink-0 overflow-hidden rounded-full bg-neutral-800">
+            <JimmyAvatar
+              evolutionStage={postTier.stage}
+              equippedAccessories={readEquippedAccessories(post)}
+              // Snapshotted on the post, like the stage above it, so an
+              // old card keeps showing the run they were on at the time.
+              showFire={isOnFire(post.currentStreak)}
+              crop="head"
+              className="h-full w-full"
+            />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-neutral-100">{post.userName}</span>
+            <span className="block text-xs text-neutral-500">{relativeTime(post.timestamp)}</span>
+          </span>
+        </Link>
         {dance && (
           <span className="text-xl" title={dance.name}>
             {dance.emoji}
@@ -67,8 +98,13 @@ export default function FeedPostCard({ post, myUid }) {
           {post.personalRecords.map((pr) => (
             <p key={pr.exerciseId} className="text-xs text-amber-200">
               🏆 <span className="font-semibold">New PR — {pr.name}:</span>{' '}
-              <span className="tabular-nums">{pr.weight}</span> kg × {pr.reps}
-              <span className="text-amber-200/60"> (was {pr.previousWeight} kg)</span>
+              <span className="tabular-nums">{formatRecordLoad(pr)}</span> × {pr.reps}
+              {/* Omitted when there is nothing to compare against. A
+                  bodyweight PR publishes no absolute load, so its "was" is
+                  the previous BELT figure — and a first-ever bodyweight PR
+                  with no belt on either side has no meaningful previous at
+                  all, where this used to print "(was undefined kg)". */}
+              {previousLoad(pr) && <span className="text-amber-200/60"> (was {previousLoad(pr)})</span>}
             </p>
           ))}
         </div>

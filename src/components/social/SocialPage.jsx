@@ -1,5 +1,7 @@
 import Leaderboard from './Leaderboard';
 import { readEquippedAccessories } from '../../data/storeItems';
+import { useFriendSuggestions } from '../../hooks/useFriendSuggestions';
+import FriendSuggestions from './FriendSuggestions';
 import FriendsManager from './FriendsManager';
 import SocialFeed from './SocialFeed';
 import NotificationsList from './NotificationsList';
@@ -24,6 +26,7 @@ export default function SocialPage({
   friends,
   incomingRequests,
   onSendRequest,
+  onSendRequestByUid,
   onRespond,
   onRemove,
   notifications,
@@ -31,6 +34,14 @@ export default function SocialPage({
   onDismissNotification,
 }) {
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  // Keyed on the friend COUNT, not the array: accepting a request or
+  // adding someone is what makes the previous suggestion list wrong, and
+  // the array itself is a new object on every Firestore snapshot.
+  const { suggestions, loading: suggestionsLoading } = useFriendSuggestions({
+    enabled: Boolean(myUid),
+    friendCount: friendUids.length,
+  });
 
   return (
     <div className="flex flex-col gap-6 pt-6 pb-24">
@@ -52,10 +63,25 @@ export default function SocialPage({
         />
       </section>
 
-      <Leaderboard workouts={workouts} feedPosts={feedPosts} equippedAccessories={readEquippedAccessories(account)} />
+      <Leaderboard
+        workouts={workouts}
+        feedPosts={feedPosts}
+        equippedAccessories={readEquippedAccessories(account)}
+        currentStreak={Number(account?.currentStreak) || 0}
+      />
+
+      {/* Between the board and the friend manager on purpose: you have
+          just looked at where you stand against the people you follow,
+          which is the moment "here are three more" lands. */}
+      <FriendSuggestions
+        suggestions={suggestions}
+        loading={suggestionsLoading}
+        onAdd={onSendRequestByUid}
+      />
 
       <FriendsManager
         myFriendCode={myFriendCode}
+        onSendRequestByUid={onSendRequestByUid}
         friends={friends}
         incomingRequests={incomingRequests}
         onSendRequest={onSendRequest}

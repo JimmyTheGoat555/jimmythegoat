@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useJimmyLook } from '../../context/JimmyLook';
 import MissionCard from './MissionCard';
-import HypeSpeechBubble from './HypeSpeechBubble';
 import JimmyAnimation from '../evolution/JimmyAnimation';
 import { lifetimeVolume } from '../../utils/workoutStats';
 import { getEvolutionProgress, formatTierGoalKg } from '../../utils/evolutionTiers';
@@ -13,32 +12,6 @@ import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAn
 // to the exact same slanted shape regardless of inheritance quirks.
 const ARCADE_BUTTON_CLIP = 'polygon(16px 0, 100% 0, calc(100% - 16px) 100%, 0 100%)';
 const TAB_CLIP = 'polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%)';
-
-function buildHypeMessages({ next, remaining, isMaxTier, neglected, baseTier, friends, bodyWeightKg }) {
-  const messages = [];
-  if (neglected) {
-    // Leads the rotation while the penalty is active — the demotion is the
-    // thing that needs saying first.
-    messages.push(`Jimmy's gone soft — 5 days off cost you a tier. One workout brings ${baseTier.label} back.`);
-  }
-  if (isMaxTier) {
-    messages.push('Legendary status reached. Nothing left to prove — except to yourself.');
-  } else if (next) {
-    // Shown as a personalised absolute-kg goal (relative points × body
-    // weight) — see utils/evolutionTiers.js. The bar itself is still
-    // driven by the relative percent.
-    messages.push(`${formatTierGoalKg(remaining, bodyWeightKg)} to ${next.label}!`);
-  }
-  const activeFriend = friends.find((f) => f.weeklyTonnage > 0);
-  if (activeFriend) {
-    messages.push(
-      `${activeFriend.username} just put up ${activeFriend.weeklyTonnage.toLocaleString('en-US')} kg this week!`,
-    );
-  }
-  messages.push('Every set you skip, someone else logs.');
-  messages.push("Jimmy's watching. Don't disappoint him.");
-  return messages;
-}
 
 // The app's "lobby" — Jimmy front and center on a glowing launchpad,
 // framed by the mission-select strip and stat bar like a game HUD, with
@@ -65,7 +38,6 @@ export default function WorkoutHome({
   assignments = [],
   templates = [],
   workouts = [],
-  friends = [],
   equippedDance = null,
   // During a tier-up celebration (see hooks/useTierUpCelebration.js) this
   // is briefly 100, then null again — the XP bar rushes to full, holds,
@@ -116,11 +88,6 @@ export default function WorkoutHome({
     activeMission = { type: 'template', data: templates[clampedTemplateIdx] };
   }
 
-  const messages = useMemo(
-    () => buildHypeMessages({ next, remaining, isMaxTier, neglected, baseTier, friends, bodyWeightKg }),
-    [next, remaining, isMaxTier, neglected, baseTier, friends, bodyWeightKg],
-  );
-
   const handleStart = () => {
     setPressed(true);
     navigator.vibrate?.(35);
@@ -152,8 +119,6 @@ export default function WorkoutHome({
 
   return (
     <div className="flex flex-col items-center gap-5 pt-8 pb-6 min-h-[calc(100vh-6rem)]">
-      <HypeSpeechBubble messages={messages} />
-
       <div className="relative flex flex-col items-center justify-end mt-1 h-52 w-full">
         {/* The lobby launchpad — sits behind the mascot by DOM order alone
             (a local stacking group, not the app-wide fixed ambient layers

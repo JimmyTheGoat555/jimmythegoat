@@ -5,6 +5,7 @@ import WeighInModal from './WeighInModal';
 import BadgeShelf from './BadgeShelf';
 import JimmyAvatar from '../evolution/JimmyAvatar';
 import { useJimmyLook } from '../../context/JimmyLook';
+import { formatRecordLoad } from '../../utils/personalRecords';
 
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -279,7 +280,7 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
                   {formatDate(entry.date)}
                   {entry.visibility === 'public' && <span title="Public">📢</span>}
                 </span>
-                <span className="text-neutral-100 font-semibold tabular-nums">{entry.weight} kg</span>
+                <span className="text-neutral-100 font-semibold tabular-nums">{formatRecordLoad(entry)}</span>
                 <button
                   type="button"
                   onClick={() => deleteBodyWeightEntry(entry.id)}

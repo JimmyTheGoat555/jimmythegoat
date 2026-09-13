@@ -1,5 +1,6 @@
 import { getEvolutionProgress } from './evolutionTiers';
-import { readEquippedAccessories } from '../data/storeItems';
+import { readEquippedAccessories, STORE_ITEMS } from '../data/storeItems';
+import { isOnFire } from './streak';
 
 // What a friend's profile view is allowed to know.
 //
@@ -40,12 +41,74 @@ import { readEquippedAccessories } from '../data/storeItems';
 // no reps, no loads — so when routines are eventually published there will
 // be no weight here to strip. This function still strips, because it must
 // keep holding if the published shape ever grows richer than that.
+// ── WRITE SIDE ──────────────────────────────────────────────────────────
+//
+// The twin of sanitizeRoutine below, and it lives in this file rather than
+// next to the hook that calls it precisely so the two halves of the same
+// contract — what we publish, and what we accept back — sit where you
+// cannot change one without seeing the other.
+//
+// This is an ALLOWLIST BY CONSTRUCTION: three keys are destructured out of
+// each exercise and a fresh object is built from them. `weight`,
+// `addedWeight`, `sets`, `reps` and anything else added to a template
+// later cannot survive, because nothing copies them. That is a stronger
+// guarantee than deleting known-bad keys, which silently passes whatever
+// the next person adds.
+//
+// Be clear about what this does and does not buy, though. It runs on the
+// client, so it protects a user from ACCIDENTALLY over-sharing — it cannot
+// stop someone who tampers with their own client from publishing whatever
+// they like into their own public summary. That is a genuinely acceptable
+// limit here, and it is worth naming why: the only data at risk is the
+// publisher's own, about themselves. Nothing here can leak a third party's
+// numbers, which is what the read-side fence exists to prevent.
+const MAX_PUBLISHED_ROUTINES = 20;
+const MAX_PUBLISHED_EXERCISES = 30;
+
+export function publishableRoutine(template) {
+  if (!template || typeof template !== 'object') return null;
+  const exercises = Array.isArray(template.exercises) ? template.exercises : [];
+  return {
+    id: typeof template.id === 'string' ? template.id : null,
+    // Templates store `title`; the published shape says `name`, because
+    // that is what sanitizeRoutine and RoutineCard read. Translated here,
+    // once, rather than teaching every reader about both spellings.
+    name: (typeof template.title === 'string' && template.title.trim()) || 'Untitled routine',
+    exercises: exercises.slice(0, MAX_PUBLISHED_EXERCISES).map(({ exerciseId, name, muscleGroup }) => ({
+      exerciseId: typeof exerciseId === 'string' ? exerciseId : null,
+      name: typeof name === 'string' ? name : 'Exercise',
+      muscleGroup: typeof muscleGroup === 'string' ? muscleGroup : null,
+    })),
+  };
+}
+
+// The whole published array, rebuilt from the caller's current template
+// list. NOT an append: appending cannot express a delete, cannot repair
+// drift between the private collection and the public mirror, and cannot
+// backfill the templates that already existed before any of this shipped.
+// Recomputing the array converges on all three for free.
+export function publishableRoutines(templates) {
+  return (Array.isArray(templates) ? templates : [])
+    .slice(0, MAX_PUBLISHED_ROUTINES)
+    .map(publishableRoutine)
+    .filter(Boolean);
+}
+
+// ── READ SIDE ───────────────────────────────────────────────────────────
+
 function sanitizeRoutine(routine) {
   if (!routine || typeof routine !== 'object') return null;
   const exercises = Array.isArray(routine.exercises) ? routine.exercises : [];
   return {
     id: routine.id ?? null,
-    name: typeof routine.name === 'string' ? routine.name : 'Untitled routine',
+    // `title` accepted as well as `name` purely as drift insurance: the
+    // writer (publishableRoutine) and this reader now live in one file but
+    // are called from opposite ends of the app, and the private template
+    // doc really does spell it `title`.
+    name:
+      (typeof routine.name === 'string' && routine.name) ||
+      (typeof routine.title === 'string' && routine.title) ||
+      'Untitled routine',
     exercises: exercises.map((exercise) => {
       const sets = Array.isArray(exercise?.sets) ? exercise.sets : [];
       // Rep counts collapse to a range: "3 x 8-10" reads as a routine,
@@ -91,6 +154,27 @@ function sanitizeRecord(record) {
   };
 }
 
+// The dances a visitor is offered to play on someone else's profile.
+//
+// Reduced to catalog membership on the way through, which does two things
+// at once: an id that is not a real dance cannot reach getDanceAnimationPath
+// and ask the browser for an arbitrary path, and the result comes out in
+// catalog order rather than purchase order, so two people who own the same
+// four dances show the same four buttons in the same places.
+//
+// The equipped dance is folded in because it is published by a different
+// mechanism (a client mirror, live since well before unlockedDances existed
+// — see useEconomy.js) and so may be the ONLY dance visible on an account
+// whose summary predates this field. Better one real button than an empty
+// showcase for someone who demonstrably owns something.
+const DANCE_IDS = STORE_ITEMS.filter((item) => item.type === 'dance').map((item) => item.id);
+
+function sanitizeDances(unlocked, equipped) {
+  const claimed = new Set(Array.isArray(unlocked) ? unlocked : []);
+  if (typeof equipped === 'string') claimed.add(equipped);
+  return DANCE_IDS.filter((id) => claimed.has(id));
+}
+
 export function sanitizeFriendData(rawData) {
   const raw = rawData ?? {};
 
@@ -127,6 +211,24 @@ export function sanitizeFriendData(rawData) {
     tierId: current.id,
     tierLabel: current.label,
     equippedAccessories: readEquippedAccessories(raw),
+
+    // Their workout streak, and whether it is long enough to set them
+    // alight. The threshold is imported rather than re-typed as `>= 2`
+    // here: two files deciding independently when fire starts is how you
+    // end up with a friend's goat burning on their profile and not on
+    // the leaderboard.
+    currentStreak: Number(raw.currentStreak) || 0,
+    showFire: isOnFire(raw.currentStreak),
+
+    // Cosmetic and published on purpose (economy.js writes it into
+    // public/summary); there is no opt-out the way there is for PRs,
+    // because a showcase nobody can see is not a showcase.
+    unlockedDances: sanitizeDances(raw.unlockedDances, raw.equippedDance),
+    equippedDance: DANCE_IDS.includes(raw.equippedDance) ? raw.equippedDance : null,
+    // Distinguishes "owns no dances" from "their summary predates the
+    // field" — the second is fixed by them logging a workout, the first
+    // is not, and the two want different copy.
+    dancesPublished: Array.isArray(raw.unlockedDances),
 
     // The bar, without the numbers behind it. `percent` is a position, not
     // a measurement — you cannot read a volume back off a rounded

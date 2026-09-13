@@ -56,6 +56,12 @@ exports.sendFriendRequest = sendFriendRequest;
 exports.respondToFriendRequest = respondToFriendRequest;
 exports.removeFriend = removeFriend;
 
+const { suggestFriends } = require('./friendSuggestions');
+exports.suggestFriends = suggestFriends;
+
+const { searchUsers } = require('./userSearch');
+exports.searchUsers = searchUsers;
+
 const { sendFriendNudge } = require('./nudges');
 exports.sendFriendNudge = sendFriendNudge;
 

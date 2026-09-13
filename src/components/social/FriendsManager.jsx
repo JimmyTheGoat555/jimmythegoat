@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import FriendSearch from './FriendSearch';
 
 // `friends` is useFriendsGraph(...).friends — [{uid, displayName}],
 // resolved from the caller's own users/{uid}.friends array of bare uids
@@ -14,6 +15,7 @@ export default function FriendsManager({
   friends,
   incomingRequests,
   onSendRequest,
+  onSendRequestByUid,
   onRespond,
   onRemove,
 }) {
@@ -90,6 +92,17 @@ export default function FriendsManager({
           </form>
 
           {message && <p className="text-sm text-neutral-400">{message}</p>}
+
+          {/* Above the pending requests and the friends list, directly
+              under the code box: the two are the same job — "get a new
+              person into this list" — and a code is now the fallback for
+              when you already have one, not the primary route. */}
+          <div className="flex flex-col gap-2 border-t border-white/10 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Find people
+            </p>
+            <FriendSearch onAddByUid={onSendRequestByUid} />
+          </div>
 
           {incomingRequests.length > 0 && (
             <div className="flex flex-col gap-1.5">

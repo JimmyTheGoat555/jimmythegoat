@@ -294,6 +294,15 @@ export default function JimmyAvatar({
   size = null,
   // 'head' zooms to the head/collarbone for small round avatars.
   crop = null,
+  // A live workout streak sets him alight (.streak-fire in index.css).
+  // A plain boolean rather than the streak number, because this component
+  // renders a goat and should not also own the question of how long a run
+  // has to be before it counts — that threshold lives with the data, at
+  // the call site. Not read from JimmyLook either: every friend's avatar
+  // on the leaderboard, the feed and their profile is somebody ELSE's, and
+  // a context fallback here would quietly set them on fire whenever YOU
+  // were on a streak. Same reasoning as equippedAccessories.
+  showFire = false,
   // Any extra layer to sit under the accessories (the dance animation on
   // WorkoutHome, say) — handed in rather than imported so this stays a
   // pure renderer.
@@ -340,24 +349,42 @@ export default function JimmyAvatar({
     </div>
   );
 
+  // The aura is drawn by ::before/::after at inset:-18%, so it has to land
+  // on an element that does NOT clip — which is why the cropped branch
+  // below grew an extra wrapper instead of just taking the class.
+  //
+  // Worth knowing at the call sites: a PARENT that clips still wins. The
+  // small round avatars are wrapped in GradientBorder's
+  // `rounded-full overflow-hidden`, so there the fire reads as a glow
+  // banked inside the ring rather than a halo spilling out of it. That is
+  // a deliberate accept, not an oversight — punching the aura out through
+  // the ring would mean dropping the circular mask that makes those
+  // avatars avatars.
+  const fireClass = showFire ? 'streak-fire' : '';
+
   if (!cropped) {
     return (
-      <div className={`inline-block ${px == null ? 'h-full' : ''} ${className}`} style={sizeStyle}>
+      <div
+        className={`inline-block ${px == null ? 'h-full' : ''} ${fireClass} ${className}`}
+        style={sizeStyle}
+      >
         {inner}
       </div>
     );
   }
 
   return (
-    <div className={`relative overflow-hidden ${className}`} style={sizeStyle}>
-      <div
-        className="flex h-full w-full items-start justify-center"
-        style={{
-          transform: `scale(${HEAD_CROP.scale}) translateY(${HEAD_CROP.translateY})`,
-          transformOrigin: 'center top',
-        }}
-      >
-        {inner}
+    <div className={`${fireClass} ${className}`} style={sizeStyle}>
+      <div className="relative h-full w-full overflow-hidden">
+        <div
+          className="flex h-full w-full items-start justify-center"
+          style={{
+            transform: `scale(${HEAD_CROP.scale}) translateY(${HEAD_CROP.translateY})`,
+            transformOrigin: 'center top',
+          }}
+        >
+          {inner}
+        </div>
       </div>
     </div>
   );

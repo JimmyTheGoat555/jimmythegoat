@@ -15,7 +15,7 @@
 // removeFriend are callables rather than direct client writes.
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
-const { bestWeightPerExercise, lifetimeVolumeOf } = require('./records');
+const { bestWeightPerExercise, lifetimeVolumeOf, publishableRecord } = require('./records');
 
 exports.setSharePRs = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -43,12 +43,12 @@ exports.setSharePRs = onCall(async (request) => {
   // exists on the doc. Turning sharing off deletes the field outright
   // rather than leaving stale records behind an unchecked flag.
   if (share) {
-    summary.personalRecords = [...bestWeightPerExercise(workouts).entries()].map(([exerciseId, r]) => ({
-      exerciseId,
-      name: r.name,
-      weight: r.weight,
-      reps: r.reps,
-    }));
+    // publishableRecord drops the absolute load for bodyweight lifts —
+    // see economy.js for why. Shared from there so the two publishers of
+    // this list cannot disagree about what a friend is allowed to see.
+    summary.personalRecords = [...bestWeightPerExercise(workouts).entries()].map(([exerciseId, r]) =>
+      publishableRecord(exerciseId, r),
+    );
   }
 
   const batch = db.batch();

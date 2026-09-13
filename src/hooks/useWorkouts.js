@@ -87,6 +87,36 @@ function emptyWorkout(presetExercises, assignedWorkoutId) {
 // (a trainer and trainee testing on one device, say) never see each
 // other's in-progress session — a real bug this app hit as soon as a
 // second account existed on the same machine.
+// Pulls every member of a superset back together, in first-appearance
+// order of the groups themselves.
+//
+// A superset is defined by ADJACENCY plus a shared id, and two things in
+// this app reorder the exercise array behind the feature's back: dragging,
+// and Jimmy's Priority sort (ActiveWorkoutLogger rewrites the real order
+// whenever it is on). Either can leave two linked exercises with something
+// else wedged between them, at which point the pair silently stops being a
+// superset — no error, just a group that quietly evaporated.
+//
+// Rather than teach both callers about groups, the invariant is restored
+// here, in the single function that changes order at all. Anything that
+// reorders is therefore free to ignore supersets entirely.
+function cohereSupersets(exercises) {
+  const out = [];
+  const placed = new Set();
+  for (const exercise of exercises) {
+    if (placed.has(exercise)) continue;
+    out.push(exercise);
+    placed.add(exercise);
+    if (!exercise.supersetId) continue;
+    for (const other of exercises) {
+      if (placed.has(other) || other.supersetId !== exercise.supersetId) continue;
+      out.push(other);
+      placed.add(other);
+    }
+  }
+  return out;
+}
+
 export function useActiveWorkout(uid) {
   const [activeWorkout, setActiveWorkout] = useLocalStorage(`active-workout:${uid ?? 'anon'}`, null);
   const screenLock = useWakeLock();
@@ -155,7 +185,8 @@ export function useActiveWorkout(uid) {
         // Anything the caller didn't mention keeps its place at the end,
         // so a partial list can't silently drop work.
         for (const e of prev.exercises) if (!orderedIds.includes(e.exerciseId)) next.push(e);
-        return { ...prev, exercises: next };
+        // Groups win over the requested order — see cohereSupersets.
+        return { ...prev, exercises: cohereSupersets(next) };
       });
     },
     [setActiveWorkout],
@@ -163,10 +194,67 @@ export function useActiveWorkout(uid) {
 
   const removeExercise = useCallback(
     (exerciseId) => {
-      setActiveWorkout((prev) => ({
-        ...prev,
-        exercises: prev.exercises.filter((e) => e.exerciseId !== exerciseId),
-      }));
+      setActiveWorkout((prev) => {
+        const kept = prev.exercises.filter((e) => e.exerciseId !== exerciseId);
+        // Deleting the middle of a superset can leave a single exercise
+        // still carrying a group id. A group of one is not a superset, and
+        // leaving the id on would render a "linked" chrome around nothing,
+        // so the survivor is unlinked.
+        const counts = new Map();
+        for (const e of kept) if (e.supersetId) counts.set(e.supersetId, (counts.get(e.supersetId) ?? 0) + 1);
+        return {
+          ...prev,
+          exercises: kept.map((e) =>
+            e.supersetId && counts.get(e.supersetId) === 1 ? { ...e, supersetId: null } : e,
+          ),
+        };
+      });
+    },
+    [setActiveWorkout],
+  );
+
+  // Links an exercise with the one directly after it. Joining an exercise
+  // to a member of an existing group extends that group rather than
+  // starting a rival one, so chaining a third exercise onto a pair gives a
+  // tri-set instead of two overlapping pairs.
+  const linkSuperset = useCallback(
+    (exerciseId) => {
+      setActiveWorkout((prev) => {
+        if (!prev) return prev;
+        const i = prev.exercises.findIndex((e) => e.exerciseId === exerciseId);
+        const a = prev.exercises[i];
+        const b = prev.exercises[i + 1];
+        if (!a || !b) return prev;
+        const groupId = a.supersetId ?? b.supersetId ?? crypto.randomUUID();
+        return {
+          ...prev,
+          exercises: prev.exercises.map((e, idx) =>
+            idx === i || idx === i + 1 ? { ...e, supersetId: groupId } : e,
+          ),
+        };
+      });
+    },
+    [setActiveWorkout],
+  );
+
+  // Breaks the WHOLE group this exercise belongs to, not just its own
+  // link. Unlinking one member of a tri-set has no single obvious meaning
+  // — does the chain heal around the gap, or split in two? — and an
+  // ambiguous destructive action is worse than a blunt one the lifter can
+  // simply redo.
+  const unlinkSuperset = useCallback(
+    (exerciseId) => {
+      setActiveWorkout((prev) => {
+        if (!prev) return prev;
+        const groupId = prev.exercises.find((e) => e.exerciseId === exerciseId)?.supersetId;
+        if (!groupId) return prev;
+        return {
+          ...prev,
+          exercises: prev.exercises.map((e) =>
+            e.supersetId === groupId ? { ...e, supersetId: null } : e,
+          ),
+        };
+      });
     },
     [setActiveWorkout],
   );
@@ -236,5 +324,7 @@ export function useActiveWorkout(uid) {
     addSet,
     updateSet,
     removeSet,
+    linkSuperset,
+    unlinkSuperset,
   };
 }
