@@ -21,6 +21,7 @@ interface FeedPost {
   // Stamped on every post by logWorkout. Optional: posts written before
   // the streak deploy don't carry it, and those simply don't burn.
   currentStreak?: number;
+  minStage?: number;
 }
 
 interface LeaderboardProps {
@@ -31,6 +32,7 @@ interface LeaderboardProps {
   equippedAccessories?: string[];
   // Same reason: no post of yours is in this list to carry it.
   currentStreak?: number;
+  minStage?: number;
 }
 
 interface Rankable {
@@ -41,6 +43,8 @@ interface Rankable {
   // lighter lifter ranks on the same scale as a heavier friend.
   weeklyScore: number;
   isYou: boolean;
+  // 2 for a coaching account (see TRAINER_MIN_STAGE); rides on the post.
+  minStage: number;
   // Longest-lived value wins across the week's posts, so the row shows
   // the run they are actually on rather than whatever the oldest post in
   // the window happened to say.
@@ -99,6 +103,7 @@ function weeklyFriendTotals(feedPosts: FeedPost[]): Rankable[] {
         lifetimeVolume: post.lifetimeVolume ?? 0,
         weeklyScore: value,
         isYou: false,
+        minStage: Number(post.minStage) || 1,
         currentStreak: Number(post.currentStreak) || 0,
         equippedAccessories: readEquippedAccessories(post),
       });
@@ -121,7 +126,7 @@ function Avatar({ tierId, stage, accessories, showFire }: { tierId: string; stag
 }
 
 function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
-  const { current } = getEvolutionProgress(entry.lifetimeVolume);
+  const { current } = getEvolutionProgress(entry.lifetimeVolume, { minStage: entry.minStage ?? 1 });
 
   const row = (
     <div className="card flex items-center gap-3 p-4">
@@ -189,12 +194,19 @@ function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
 // "see what friends are up to" surface; this card is just the at-a-glance
 // "where do I stand this week" number. Ranked on Relative Strength Volume
 // so bodyweight matters, not raw tonnage.
-export default function Leaderboard({ workouts, feedPosts, equippedAccessories = [], currentStreak = 0 }: LeaderboardProps) {
+export default function Leaderboard({
+  workouts,
+  feedPosts,
+  equippedAccessories = [],
+  currentStreak = 0,
+  minStage = 1,
+}: LeaderboardProps) {
   const you: Rankable = {
     id: 'me',
     username: 'You',
     equippedAccessories,
     currentStreak,
+    minStage,
     lifetimeVolume: lifetimeVolume(workouts),
     weeklyScore: weeklyScore(workouts),
     isYou: true,

@@ -16,6 +16,7 @@ interface JimmyEvolutionProps {
   // Latest logged body weight (0 = none yet) — only scales how the
   // relative tier goal is shown in kg. See utils/evolutionTiers.js.
   bodyWeightKg?: number;
+  minStage?: number;
 }
 
 const LAST_SEEN_KEY = 'last-evolution-tier';
@@ -34,10 +35,11 @@ const LAST_SEEN_KEY = 'last-evolution-tier';
 // sprite to the new one once, then record the new tier as seen. If a
 // sprite file is missing, each layer falls back to the tier's emoji
 // instead of a broken-image icon.
-export default function JimmyEvolution({ workouts, bodyWeightKg = 0 }: JimmyEvolutionProps) {
+export default function JimmyEvolution({ workouts, bodyWeightKg = 0, minStage = 1 }: JimmyEvolutionProps) {
   const { equippedAccessories } = useJimmyLook();
   const totalVolume = lifetimeVolume(workouts);
   const { current, next, percent, isMaxTier, neglected, baseTier } = getEvolutionProgress(totalVolume, {
+    minStage,
     lastWorkoutAt: lastWorkoutAt(workouts),
   });
 

@@ -186,9 +186,9 @@ export function sanitizeFriendData(rawData) {
   // client fetched. If the exact number must never reach a friend's
   // device, publicProfile.js has to publish the derived stage INSTEAD of
   // the volume — a server change, not one this file can make.
-  const { current, next, percent, isMaxTier } = getEvolutionProgress(
-    Number(raw.lifetimeVolume) || 0,
-  );
+  const { current, next, percent, isMaxTier } = getEvolutionProgress(Number(raw.lifetimeVolume) || 0, {
+    minStage: Number(raw.minStage) || 1,
+  });
 
   // Absent means never shared. `isPublic !== false` rather than
   // `=== true` on purpose: today the server publishes an all-or-nothing

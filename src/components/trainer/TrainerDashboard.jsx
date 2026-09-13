@@ -11,11 +11,12 @@ import GradientBorder from '../shared/GradientBorder';
 // purely the roster they manage on top of that. Sign-out lives on the
 // shared Profile tab now, same as for a trainee, so there's no duplicate
 // sign-out control here.
-export default function TrainerDashboard({ profile, workouts }) {
+export default function TrainerDashboard({ profile, workouts, minStage = 1 }) {
   const { roster } = useTrainerTrainees(profile.id);
   // Your OWN tier reflects your own neglect the same as it does on the
   // Workout/Progress tabs — a trainer who stops training slips a tier too.
   const { current: yourTier } = getEvolutionProgress(lifetimeVolume(workouts), {
+    minStage,
     lastWorkoutAt: lastWorkoutAt(workouts),
   });
 

@@ -97,16 +97,40 @@ export function isTierNeglected(lastWorkoutAt, now = Date.now()) {
 // your Titan tier"). Callers rendering someone ELSE's tier (leaderboard,
 // a friend's profile) simply omit it and get the raw, un-penalised
 // result.
-export function getEvolutionProgress(volume, { lastWorkoutAt } = {}) {
+// The stage a trainer's goat starts at. Coaching accounts skip the first
+// evolution phase — someone who shows up to coach other people should not
+// be introduced to them as the base goat.
+//
+// A FLOOR, not a grant: `lifetimeVolume` itself is untouched, so nothing
+// downstream that pays out (coins, relative volume, PRs, the leaderboard
+// score) is affected. Only which sprite and label they wear.
+export const TRAINER_MIN_STAGE = 2;
+
+export function getEvolutionProgress(volume, { lastWorkoutAt, minStage = 1 } = {}) {
+  // Raising the floor raises the volume the rest of this function reasons
+  // about, rather than just swapping the label at the end. That keeps
+  // `next`, `percent` and `isMaxTier` in agreement with `current`: a
+  // floored account reads as standing at the very start of the buff →
+  // titan climb, which is exactly "started their journey at buff goat".
+  // Their bar therefore sits at 0% until real volume passes buff's
+  // threshold — correct, if worth knowing.
+  const minIndex = Math.max(0, Math.min(EVOLUTION_TIERS.length - 1, minStage - 1));
+  const effectiveVolume = Math.max(volume, EVOLUTION_TIERS[minIndex].threshold);
+
   let baseIndex = 0;
   for (let i = 0; i < EVOLUTION_TIERS.length; i += 1) {
-    if (volume >= EVOLUTION_TIERS[i].threshold) baseIndex = i;
+    if (effectiveVolume >= EVOLUTION_TIERS[i].threshold) baseIndex = i;
   }
 
   // Drop one tier (floored at 0) when neglected. Capped at one regardless
   // of how long it's been — 5 days and 5 weeks demote the same single step.
-  const neglected = isTierNeglected(lastWorkoutAt) && baseIndex > 0;
-  const currentIndex = neglected ? baseIndex - 1 : baseIndex;
+  //
+  // The floor wins over the penalty: a demotion must never take an account
+  // below the stage it started at, or a lapsed trainer would appear as the
+  // base goat they were never meant to be. Consequence worth naming: a
+  // trainer under titan cannot visibly be demoted at all.
+  const neglected = isTierNeglected(lastWorkoutAt) && baseIndex > minIndex;
+  const currentIndex = Math.max(minIndex, neglected ? baseIndex - 1 : baseIndex);
 
   const current = EVOLUTION_TIERS[currentIndex];
   const baseTier = EVOLUTION_TIERS[baseIndex];
@@ -117,7 +141,7 @@ export function getEvolutionProgress(volume, { lastWorkoutAt } = {}) {
   }
 
   const span = next.threshold - current.threshold;
-  const progressInSpan = volume - current.threshold;
+  const progressInSpan = effectiveVolume - current.threshold;
   const percent = Math.min(100, Math.max(0, (progressInSpan / span) * 100));
 
   return { current, next, percent, isMaxTier: false, neglected, baseTier };

@@ -7,9 +7,9 @@ import { getEvolutionProgress, pointsToDisplayKg, formatTierGoalKg } from '../..
 // points scaled by the user's body weight into a big absolute-kg goal
 // (75 kg fallback in formatTierGoalKg) — same milestone, framed for the
 // dopamine hit. `bodyWeightKg` comes from App via ProgressView.
-export default function LifetimeVolumeCard({ workouts, bodyWeightKg = 0 }) {
+export default function LifetimeVolumeCard({ workouts, bodyWeightKg = 0, minStage = 1 }) {
   const score = lifetimeVolume(workouts);
-  const { current, next, percent, isMaxTier } = getEvolutionProgress(score);
+  const { current, next, percent, isMaxTier } = getEvolutionProgress(score, { minStage });
 
   return (
     <div className="card p-5">

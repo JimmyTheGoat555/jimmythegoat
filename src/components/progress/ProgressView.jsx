@@ -29,7 +29,7 @@ const chartTooltipStyle = {
   fontSize: 13,
 };
 
-export default function ProgressView({ workouts, exercises, bodyWeightKg = 0 }) {
+export default function ProgressView({ workouts, exercises, bodyWeightKg = 0, minStage = 1 }) {
   const { getExercise } = exercises;
   const finished = workouts.filter((w) => w.finishedAt).slice().reverse();
   const trainedIds = useMemo(() => exercisesTrainedInHistory(workouts), [workouts]);
@@ -60,9 +60,9 @@ export default function ProgressView({ workouts, exercises, bodyWeightKg = 0 }) 
         </Link>
       </header>
 
-      <JimmyEvolution workouts={workouts} bodyWeightKg={bodyWeightKg} />
+      <JimmyEvolution workouts={workouts} bodyWeightKg={bodyWeightKg} minStage={minStage} />
       <StreakHeatmap workouts={workouts} />
-      <LifetimeVolumeCard workouts={workouts} bodyWeightKg={bodyWeightKg} />
+      <LifetimeVolumeCard workouts={workouts} bodyWeightKg={bodyWeightKg} minStage={minStage} />
       <WeeklyVolumeCard workouts={workouts} />
       <WeeklySummaryCard workouts={workouts} />
       <MuscleGroupGoals workouts={workouts} />

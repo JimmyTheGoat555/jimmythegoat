@@ -527,6 +527,12 @@ exports.logWorkout = onCall(async (request) => {
       // measurement of what you lifted, and there is nothing in the
       // number to opt out of.
       currentStreak,
+      // The stage this account's goat starts at — 2 for a coach. Published
+      // as a NUMBER rather than the raw `role`, because a friend's profile
+      // only needs "draw them from buff up", not "this person is a
+      // trainer". Same field either way in practice, but the narrow one is
+      // the one that cannot grow a second meaning later.
+      minStage: userData.role === 'trainer' ? 2 : 1,
     };
     if (userData.sharePRs === true) {
       summary.personalRecords = Object.entries(nextRecords.bestPerExercise).map(([exerciseId, r]) =>
@@ -606,6 +612,8 @@ exports.logWorkout = onCall(async (request) => {
         // fire would be invisible on exactly the two screens where you
         // look at other people.
         currentStreak,
+        // So an old post still draws them at the tier they were.
+        minStage: userData.role === 'trainer' ? 2 : 1,
         equippedDance: userData.equippedDance ?? null,
         // Legacy single-slot field, still written so anything not yet
         // reading the array keeps working.

@@ -40,7 +40,9 @@ export default function FeedPostCard({ post, myUid }) {
   const dance = post.equippedDance ? ITEMS_BY_ID.get(post.equippedDance) : null;
   // Older posts predate lifetimeVolume on the feed doc; 0 just means the
   // first tier, which is a sane thing to show rather than nothing.
-  const postTier = getEvolutionProgress(post.lifetimeVolume ?? 0).current;
+  const postTier = getEvolutionProgress(post.lifetimeVolume ?? 0, {
+    minStage: Number(post.minStage) || 1,
+  }).current;
 
   return (
     <div className="card p-4 flex flex-col gap-2">

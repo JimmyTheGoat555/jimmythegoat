@@ -30,7 +30,20 @@ export default function NotificationsList({ notifications, onMarkRead, onDismiss
   }
 
   return (
-    <ul className="flex flex-col gap-1.5">
+    // Exactly three rows, then scrolls. Measured rather than guessed: a
+    // two-line card (title + body + timestamp) renders at 101px and the
+    // flex gap is 6px, so 3 * 101 + 2 * 6 = 314px ≈ 19.75rem.
+    //
+    // max-height, not height: one or two notifications still size to their
+    // content instead of leaving a hole, and a short single-line
+    // notification means slightly more than three fit — which is the right
+    // way for it to be wrong.
+    //
+    // `overscroll-contain` matters more than it looks on a phone: without
+    // it, flicking past the end of this list hands the momentum to the
+    // page and scrolls the whole Social tab, which feels like the list
+    // jumped away from your thumb.
+    <ul className="flex flex-col gap-1.5 max-h-[19.75rem] overflow-y-auto overscroll-contain pr-0.5">
       {notifications.slice(0, 12).map((n) => (
         <li
           key={n.id}

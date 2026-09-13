@@ -108,6 +108,8 @@ export function useFriendProfile(friendUid) {
     // document has the field, the sanitiser looks for it, and the hook in
     // between never passed it on.
     savedWorkouts: summary?.savedWorkouts ?? null,
+    // Coaching accounts start at buff — see TRAINER_MIN_STAGE.
+    minStage: summary?.minStage ?? latestPost?.minStage ?? 1,
     loading: summaryLoading || postLoading,
     // A profile that truly doesn't exist (bad uid, or they've deleted their
     // account) vs. one that's just never logged a workout yet — the latter

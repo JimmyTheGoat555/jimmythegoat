@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { lifetimeVolume } from '../utils/workoutStats';
-import { getEvolutionProgress } from '../utils/evolutionTiers';
+import { getEvolutionProgress, TRAINER_MIN_STAGE } from '../utils/evolutionTiers';
 
 // One live subscription per connected trainee's workout collection, kept
 // alongside the roster subscription. Not the cheapest possible design (a
@@ -37,7 +37,17 @@ export function useTrainerTrainees(trainerUid) {
 
   const roster = trainees.map((trainee) => {
     const totalVolume = volumeByUid[trainee.id] ?? 0;
-    return { ...trainee, totalVolume, evolution: getEvolutionProgress(totalVolume) };
+    // A trainee's own doc is readable by their connected trainer (see
+    // firestore.rules), so `role` is right here — no need for the
+    // published mirror the friend-facing screens rely on. Matters for the
+    // rare coach who is also being coached.
+    return {
+      ...trainee,
+      totalVolume,
+      evolution: getEvolutionProgress(totalVolume, {
+        minStage: trainee.role === 'trainer' ? TRAINER_MIN_STAGE : 1,
+      }),
+    };
   });
 
   return { roster };

@@ -68,6 +68,7 @@ export default function SocialPage({
         feedPosts={feedPosts}
         equippedAccessories={readEquippedAccessories(account)}
         currentStreak={Number(account?.currentStreak) || 0}
+        minStage={account?.role === 'trainer' ? 2 : 1}
       />
 
       {/* Between the board and the friend manager on purpose: you have

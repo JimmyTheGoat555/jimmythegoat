@@ -50,6 +50,8 @@ export default function WorkoutHome({
   // tier goals as big absolute-kg numbers; 0 falls back to 75 kg inside
   // formatTierGoalKg.
   bodyWeightKg = 0,
+  // 2 for a coaching account — see TRAINER_MIN_STAGE in evolutionTiers.
+  minStage = 1,
 }) {
   const [activeTab, setActiveTab] = useState(null);
   const [assignedIdx, setAssignedIdx] = useState(0);
@@ -59,6 +61,7 @@ export default function WorkoutHome({
 
   const totalVolume = lifetimeVolume(workouts);
   const { current, next, percent, isMaxTier, neglected, baseTier } = getEvolutionProgress(totalVolume, {
+    minStage,
     lastWorkoutAt,
   });
   const remaining = next ? Math.max(0, next.threshold - totalVolume) : 0;

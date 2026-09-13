@@ -23,7 +23,7 @@ import { useLocalStorage } from './hooks/useLocalStorage';
 import { useTabSwipe } from './hooks/useTabSwipe';
 import { firebaseConfigured } from './lib/firebase';
 import { lifetimeVolume, lastWorkoutAt } from './utils/workoutStats';
-import { getEvolutionProgress } from './utils/evolutionTiers';
+import { getEvolutionProgress, TRAINER_MIN_STAGE } from './utils/evolutionTiers';
 import { findNewPersonalRecords } from './utils/personalRecords';
 import { lastPerformance, seedSetsFromHistory } from './utils/lastPerformance';
 import { isBodyweightExercise } from './data/exercises';
@@ -332,7 +332,15 @@ export default function App() {
   // getEvolutionProgress is pure and both helpers reduce the whole history
   // array, so doing it once matters as that array grows.
   const lastWorkout = lastWorkoutAt(workouts);
-  const evolution = getEvolutionProgress(lifetimeVolume(workouts), { lastWorkoutAt: lastWorkout });
+  // A coaching account starts at buff — see TRAINER_MIN_STAGE. Derived
+  // once here and passed down, rather than each screen re-deciding who is
+  // a trainer, so the goat on the home screen and the goat on the
+  // leaderboard can never disagree.
+  const minStage = account?.role === 'trainer' ? TRAINER_MIN_STAGE : 1;
+  const evolution = getEvolutionProgress(lifetimeVolume(workouts), {
+    lastWorkoutAt: lastWorkout,
+    minStage,
+  });
   // Latest logged body weight (0 = none yet). Tier math stays fully
   // relative; this only personalises how the progress bars RENDER those
   // relative goals as big absolute-kg numbers — see
@@ -655,6 +663,7 @@ export default function App() {
                     <Navigate to="/workout" replace />
                   ) : (
                     <WorkoutHome
+                      minStage={minStage}
                       onStartWorkout={handleStartWorkout}
                       onStartAssigned={handleStartAssigned}
                       onStartTemplate={handleStartTemplate}
@@ -674,6 +683,7 @@ export default function App() {
                 path="progress"
                 element={
                   <ProgressView
+                    minStage={minStage}
                     workouts={workouts}
                     exercises={exercises}
                     bodyWeightKg={bodyWeightKg}
@@ -762,7 +772,7 @@ export default function App() {
                 <>
                   <Route
                     path="trainees"
-                    element={<TrainerDashboard profile={account} workouts={workouts} onSignOut={signOut} />}
+                    element={<TrainerDashboard profile={account} workouts={workouts} minStage={minStage} onSignOut={signOut} />}
                   />
                   <Route
                     path="trainees/:traineeId"
