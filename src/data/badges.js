@@ -33,6 +33,8 @@ export const TIER_STYLE = {
 export const BADGE_CATEGORIES = [
   {
     id: 'bench_absolute',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Bench pressed %s',
     name: 'Bench Press',
     icon: '🏋️',
     blurb: 'Flat barbell bench, all the way down and back up.',
@@ -44,6 +46,8 @@ export const BADGE_CATEGORIES = [
   },
   {
     id: 'bench_relative',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Bench pressed %s',
     name: 'Relative Bench',
     icon: '⚖️',
     blurb: 'Bench measured against what you carry around all day.',
@@ -55,6 +59,8 @@ export const BADGE_CATEGORIES = [
   },
   {
     id: 'squat_absolute',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Squatted %s',
     name: 'Squat',
     icon: '🦵',
     blurb: 'Under the bar and back up. Nobody gets this by accident.',
@@ -66,6 +72,8 @@ export const BADGE_CATEGORIES = [
   },
   {
     id: 'deadlift_absolute',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Deadlifted %s',
     name: 'Deadlift',
     icon: '🪨',
     blurb: 'Off the floor, locked out, put down under control.',
@@ -77,6 +85,8 @@ export const BADGE_CATEGORIES = [
   },
   {
     id: 'deadlift_relative',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Deadlifted %s',
     name: 'Relative Deadlift',
     icon: '🧲',
     blurb: 'Multiples of your own body weight, off the floor.',
@@ -88,6 +98,8 @@ export const BADGE_CATEGORIES = [
   },
   {
     id: 'overhead_press',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Pressed %s straight overhead',
     name: 'Overhead Press',
     icon: '🙌',
     blurb: 'Straight overhead, no leg drive to hide behind.',
@@ -99,6 +111,8 @@ export const BADGE_CATEGORIES = [
   },
   {
     id: 'db_press',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Pressed %s dumbbells',
     name: 'Dumbbell Press',
     icon: '💪',
     blurb: 'Two of them. Getting into position is half the lift.',
@@ -110,6 +124,8 @@ export const BADGE_CATEGORIES = [
   },
   {
     id: 'weighted_pullup',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Pulled up with %s strapped on',
     name: 'Weighted Pull-Up',
     icon: '🔗',
     blurb: 'Your body was not heavy enough, apparently.',
@@ -121,17 +137,21 @@ export const BADGE_CATEGORIES = [
   },
   {
     id: 'power_total',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Bench, squat and deadlift adding to %s',
     name: 'Power Total',
     icon: '🏆',
     blurb: 'Squat, bench and deadlift added together.',
     tiers: [
-      { id: 'total-200kg', tier: 'bronze', label: '200 kg total' },
-      { id: 'total-350kg', tier: 'silver', label: '350 kg total' },
-      { id: 'total-500kg', tier: 'gold', label: '500 kg total' },
+      { id: 'total-200kg', tier: 'bronze', label: '200 kg' },
+      { id: 'total-350kg', tier: 'silver', label: '350 kg' },
+      { id: 'total-500kg', tier: 'gold', label: '500 kg' },
     ],
   },
   {
     id: 'daily_volume',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Moved %s',
     name: 'Session Volume',
     icon: '🚛',
     blurb: 'Everything moved between one warm-up and one shower.',
@@ -149,13 +169,17 @@ export const BADGE_CATEGORIES = [
   // categories, which is why `tiers` is still an array here.
   {
     id: 'consistency',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Logged %s',
     name: '50 Workouts',
     icon: '📅',
     blurb: 'Fifty sessions in the book. Consistency compounds.',
-    tiers: [{ id: 'workouts-50', tier: 'gold', label: '50 workouts logged' }],
+    tiers: [{ id: 'workouts-50', tier: 'gold', label: '50 workouts' }],
   },
   {
     id: 'streak',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Trained %s',
     name: 'Streak Master',
     icon: '🔥',
     blurb: 'Seven days straight. No zero days.',
@@ -163,6 +187,8 @@ export const BADGE_CATEGORIES = [
   },
   {
     id: 'relative_titan',
+    // Plain language for the detail sheet: what you actually DID.
+    how: 'Hit %s',
     name: 'Relative Titan',
     icon: '⚡',
     blurb: 'Pound-for-pound freak. Jimmy is impressed, and Jimmy is never impressed.',
@@ -185,6 +211,9 @@ export const BADGES = BADGE_CATEGORIES.flatMap((category) =>
     icon: category.icon,
     blurb: category.blurb,
     requirement: t.label,
+    // "Bench pressed 100 kg" — the threshold folded into the verb, so
+    // the detail sheet reads as a sentence instead of a spec line.
+    howEarned: (category.how ?? '%s').replace('%s', t.label),
     categoryId: category.id,
     categoryName: category.name,
   })),

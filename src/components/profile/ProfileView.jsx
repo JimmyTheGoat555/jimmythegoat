@@ -205,9 +205,9 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
       )}
 
       {/* No catalog, by request: nothing unearned is shown anywhere, so
-          what is left to get stays a surprise. Tapping the row opens the
-          picker — it is the only control, and a separate "edit" link
-          beside three pills would outweigh them. */}
+          what is left to get stays a surprise. Tapping a badge opens its
+          detail sheet, and the picker is reachable from inside that —
+          one kind of tap target on the row rather than two. */}
       <div className="flex flex-col items-center gap-2">
         <BadgeRibbon
           badges={account?.badges}
