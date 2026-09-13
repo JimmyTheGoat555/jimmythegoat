@@ -410,13 +410,6 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
             />
           </span>
         </button>
-        {/* Nothing about a goat standing still says "press me". */}
-        <p className="text-xs text-neutral-600 -mt-1">
-          {/* No possessive before the dance name — catalog names are
-              already titled ("The Shuffle"), so "his The Shuffle" is what
-              you get if you add one. */}
-          {danceNumber ? `Tap ${name} to see ${danceName}` : `Tap ${name} to see his moves`}
-        </p>
         {friend.unlockedDances.length > 1 && (
           <button
             type="button"
