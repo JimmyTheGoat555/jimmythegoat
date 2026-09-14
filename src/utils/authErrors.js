@@ -40,6 +40,12 @@ export function friendlyAuthError(err, fallback = 'Something went wrong — try 
   const cleaned = raw
     .replace(/^Firebase:\s*/, '')
     .replace(/\s*\(auth\/[^)]+\)\.?/, '')
+    // Callable errors arrive with the HTTP status bolted on the end —
+    // "…come back tomorrow. [429]" — which is debugging output wearing a
+    // sentence's clothes. It reaches ordinary UI states now (the once-a-day
+    // ad cap is a [429] every time), so it goes here rather than at one
+    // call site.
+    .replace(/\s*\[\d{3}\]\s*$/, '')
     .trim();
   return cleaned || fallback;
 }

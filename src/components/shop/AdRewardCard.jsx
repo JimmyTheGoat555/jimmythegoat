@@ -10,7 +10,14 @@ import { useRewardedAd } from '../../hooks/useRewardedAd';
 // watch a video where somebody is deciding whether to train is a different
 // product than a gym app.
 export default function AdRewardCard() {
-  const { status, busy, error, limitReached, lastReward, watchAd } = useRewardedAd();
+  const { status, busy, isAdLoaded, isNative, error, limitReached, lastReward, watchAd } = useRewardedAd();
+  // Fetching an ad is a real state on native and a non-state on web (where
+  // there is nothing to fetch and isAdLoaded is always true), so the
+  // button only ever shows "Loading ad…" where it means something.
+  // `status === 'loading'` is the fetch in progress; the second clause
+  // catches the after-a-failed-load state, where nothing is in flight and
+  // there is still no ad to show.
+  const fetching = isNative && !isAdLoaded && (status === 'loading' || !busy);
 
   return (
     <>
@@ -27,19 +34,25 @@ export default function AdRewardCard() {
           <button
             type="button"
             onClick={watchAd}
-            // Stays disabled once today's is claimed — the answer will not
-            // change until tomorrow, and a button that reliably fails is
-            // worse than one that says why it is off.
-            disabled={busy || Boolean(limitReached)}
+            // Three reasons to be off, in order of how long they last:
+            // an ad is playing, today's reward is already claimed (until
+            // tomorrow), or there is no ad loaded yet to show.
+            disabled={busy || Boolean(limitReached) || !isAdLoaded}
             className="mt-3 w-full rounded-2xl bg-[var(--ember)] py-3 text-sm font-bold text-white transition active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
           >
+            {/* Order is the message: what is happening right now beats
+                what is true all day, which beats the resting label. The
+                cap outranks "loading" because an ad loading behind a
+                reward you cannot claim is not worth announcing. */}
             {status === 'playing'
               ? 'Watching Ad…'
               : status === 'rewarding'
                 ? 'Adding coins…'
                 : limitReached
                   ? 'Come back tomorrow'
-                  : `▶ Watch Ad (Get ${AD_REWARD_COINS} Coins)`}
+                  : fetching
+                    ? 'Loading ad…'
+                    : `▶ Watch Ad (Get ${AD_REWARD_COINS} Coins)`}
           </button>
 
           {/* The balance in the HUD updates itself from the account
@@ -56,11 +69,14 @@ export default function AdRewardCard() {
         </div>
       </section>
 
-      {/* Full screen and NOT dismissible, because a rewarded ad is not:
+      {/* WEB ONLY. On native the AdMob SDK draws its own full-screen ad
+          over the app and this would sit uselessly behind it.
+
+          Full screen and NOT dismissible, because a rewarded ad is not:
           closing it early is exactly the case where a real SDK pays
           nothing, and a fake one that can be tapped away in half a second
           would teach the wrong habit before the real thing lands. */}
-      {busy && (
+      {busy && !isNative && (
         <div
           className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-neutral-950/97 px-6"
           role="status"
