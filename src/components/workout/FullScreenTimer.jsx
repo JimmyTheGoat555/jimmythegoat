@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { REST_ALARM_WAV_BASE64 } from '../../utils/restAlarmSound';
+import { useEffect, useState } from 'react';
 import { nextRestTip, TIP_KINDS } from '../../data/restTips';
 
 // The rest timer, sized to be read from the floor. Replaces the little
@@ -140,27 +139,12 @@ export default function FullScreenTimer({
   onSkip,
   onMinimize,
 }) {
-  const audioRef = useRef(null);
-  const hasPlayedRef = useRef(false);
-
-  // Fire the alarm exactly once per rest period, the moment it lands on
-  // zero. The hook already vibrates; this adds the sound, which is the
-  // half that carries across a noisy gym.
-  useEffect(() => {
-    if (secondsLeft !== 0) {
-      hasPlayedRef.current = false;
-      return;
-    }
-    if (hasPlayedRef.current) return;
-    hasPlayedRef.current = true;
-    const el = audioRef.current;
-    if (!el) return;
-    el.currentTime = 0;
-    // Rejects when the browser refuses autoplay — the vibration and the
-    // full-screen colour change still carry it, so this must never throw
-    // into the render tree.
-    el.play?.().catch(() => {});
-  }, [secondsLeft]);
+  // No audio here any more. The alarm — sound, vibration and the
+  // system notification — all belong to useRestTimer, which owns the one
+  // absolute `endsAt` that decides when the rest is actually over. This
+  // component used to hold a second, independent trigger on a preloaded
+  // <audio> element; that element is what took over the phone's media
+  // session and paused the lifter's music. See utils/restAlarm.js.
 
   const accent = isOverdue ? 'var(--danger)' : isDone ? 'var(--success)' : '#ffffff';
   const label = isOverdue ? overdueMessage : isDone ? "REST'S OVER" : 'RESTING';
@@ -171,10 +155,6 @@ export default function FullScreenTimer({
         isOverdue ? 'animate-pulse' : ''
       }`}
     >
-      {/* Preloaded so the tap that started this rest also unlocks playback —
-          see restAlarmSound.js for why that matters on a locked phone. */}
-      <audio ref={audioRef} src={REST_ALARM_WAV_BASE64} preload="auto" />
-
       {/* A wash of the state colour behind the clock, so the screen reads
           as "done" from across the gym even before the digits resolve. */}
       <div

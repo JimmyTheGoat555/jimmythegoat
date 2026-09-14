@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadJSON } from '../lib/storage';
 import { randomRestOverdueMessage } from '../utils/restMessages';
+import { playRestAlarm, unlockRestAlarm } from '../utils/restAlarm';
+import {
+  askRestNotificationPermission,
+  cancelRestNotification,
+  scheduleRestNotification,
+} from '../utils/restNotification';
 
 export const DEFAULT_REST_SECONDS = 90;
 export const REST_STEP_SECONDS = 30;
@@ -18,14 +24,15 @@ export const OVERDUE_THRESHOLD_SECONDS = 30;
 const SOUND_EFFECTS_KEY = 'sound-effects-enabled';
 
 // Vibration always fires — haptic feedback isn't really "sound", and
-// muting one shouldn't silently kill the other. Only the WebAudio beep
-// respects the toggle.
+// muting one shouldn't silently kill the other. Only the beep respects
+// the toggle.
 //
-// The audible half of this is now primarily FullScreenTimer's preloaded
-// <audio> element (see utils/restAlarmSound.js — an AudioContext created
-// here, 90 seconds after the last touch, is routinely left suspended on a
-// locked phone). This WebAudio path stays as the fallback for whichever
-// of the two a given browser refuses.
+// The sound itself is utils/restAlarm.js: ONE AudioContext, created and
+// unlocked by the tap that started this rest. That replaced a preloaded
+// <audio> element, which played reliably and took the phone's media
+// session with it — pausing the lifter's music and never resuming it.
+// WebAudio mixes instead of claiming the session, so Spotify keeps going
+// underneath the beep.
 function alertRestOver(soundEnabled) {
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
     // Long-short-long-short-longest: a pattern you feel as deliberate
@@ -33,24 +40,7 @@ function alertRestOver(soundEnabled) {
     navigator.vibrate([200, 100, 200, 100, 500]);
   }
   if (!soundEnabled) return;
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
-    oscillator.type = 'sine';
-    oscillator.frequency.value = 880;
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
-    oscillator.start();
-    oscillator.stop(ctx.currentTime + 0.6);
-  } catch {
-    // Autoplay blocked or WebAudio unsupported — the vibration above already
-    // covered it on devices that support that instead.
-  }
+  playRestAlarm();
 }
 
 // A rest-period countdown driven entirely by one absolute timestamp,
@@ -87,13 +77,27 @@ export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
       hasAlertedRef.current = false;
       hasNaggedRef.current = false;
       const t = Date.now();
+      const ends = t + seconds * 1000;
+      // Called from the tap that completed a set, which is the only
+      // moment a browser will hand out an audio context that still works
+      // ninety seconds later. Both of these need that gesture: the
+      // permission prompt as much as the unlock.
+      unlockRestAlarm();
+      askRestNotificationPermission();
+      // The background half. A page that gets thrown out of memory takes
+      // this timeout with it — see restNotification.js for exactly how
+      // much this can and cannot promise.
+      scheduleRestNotification(ends);
       setNow(t);
-      setEndsAt(t + seconds * 1000);
+      setEndsAt(ends);
     },
     [defaultSeconds],
   );
 
   const dismiss = useCallback(() => {
+    // Skipping a rest must take its notification with it, or the alert
+    // arrives for a rest that stopped existing two sets ago.
+    cancelRestNotification();
     setEndsAt(null);
   }, []);
 
@@ -105,7 +109,11 @@ export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
       // Floor the target at the current moment: subtracting past 0:00 lands
       // you exactly at 0:00 (matching the old Math.max(0, prev + delta)),
       // never at a target in the past that would read as instant overdue.
-      return Math.max(t, prev + delta * 1000);
+      const next = Math.max(t, prev + delta * 1000);
+      // +30 while resting has to move the notification too, or it fires
+      // at the old time and contradicts the clock on screen.
+      scheduleRestNotification(next);
+      return next;
     });
   }, []);
 
@@ -119,7 +127,15 @@ export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
     if (!running) return undefined;
     const id = setInterval(() => setNow(Date.now()), 1000);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') setNow(Date.now());
+      if (document.visibilityState !== 'visible') return;
+      // The clock is derived from an absolute timestamp, so this is the
+      // whole catch-up: one re-sample and the display is instantly right,
+      // however long the tab was frozen.
+      setNow(Date.now());
+      // iOS suspends the audio context for a backgrounded page. Resuming
+      // here means a rest that ends moments after you look at the phone
+      // still makes a sound.
+      unlockRestAlarm();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
@@ -150,6 +166,9 @@ export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
   useEffect(() => {
     if (secondsLeft === 0 && !hasAlertedRef.current) {
       hasAlertedRef.current = true;
+      // The app is open and has just fired the alarm itself, so a system
+      // notification a moment later would be the same news twice.
+      cancelRestNotification();
       alertRestOver(loadJSON(SOUND_EFFECTS_KEY, true));
     }
   }, [secondsLeft]);
