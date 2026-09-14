@@ -20,7 +20,11 @@ const MESSAGES = {
   'auth/wrong-password': 'Wrong password — try again, or reset it below.',
   'auth/invalid-credential': "That email and password don't match an account.",
   'auth/invalid-login-credentials': "That email and password don't match an account.",
-  'auth/email-already-in-use': 'That email already has an account — sign in instead.',
+  // Only ever seen when email enumeration protection is OFF; with it on
+  // (as on this project) Firebase resolves silently instead of saying
+  // this, which is why the change-email screen names the case in its own
+  // copy rather than relying on an error that may never arrive.
+  'auth/email-already-in-use': 'That email already has an account. Sign in with it, or use an alias like you+gym@gmail.com.',
   'auth/weak-password': 'Password needs to be at least 6 characters.',
   'auth/too-many-requests': 'Too many attempts. Wait a few minutes and try again.',
   'auth/network-request-failed': 'No connection — check your signal and try again.',

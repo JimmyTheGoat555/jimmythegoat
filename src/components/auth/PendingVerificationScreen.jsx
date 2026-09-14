@@ -62,12 +62,26 @@ export default function PendingVerificationScreen({
     setChange('busy');
     try {
       await onChangeEmail(target);
-      // The address on the account does NOT change yet — Firebase swaps it
-      // only when the link is opened — so the confirmation names where the
-      // link went rather than claiming the change is done.
+      // Says where the link went, never that the change is done — Firebase
+      // swaps the address only when the link is opened.
+      //
+      // And note what this resolving does NOT prove. This project has
+      // email enumeration protection on (verified against the Identity
+      // Toolkit API: a password reset for an address with no account comes
+      // back 200, not EMAIL_NOT_FOUND). That protection means Firebase
+      // will not tell a client whether an address is already registered —
+      // so a change aimed at an address that ALREADY HAS AN ACCOUNT
+      // resolves exactly like this one and sends nothing at all. The
+      // caller cannot distinguish the two, which is why the note below
+      // names the case instead of promising delivery.
       setChange({ sentTo: target });
     } catch (err) {
-      setChange({ error: friendlyAuthError(err, "Couldn't change the email — try again.") });
+      setChange({
+        error: friendlyAuthError(
+          err,
+          "Couldn't change the email — try again.",
+        ),
+      });
     }
   };
 
@@ -150,10 +164,33 @@ export default function PendingVerificationScreen({
                 friends are all on it, and "verify or lose it" is a false
                 choice when the only thing wrong is a typo. */}
             {change?.sentTo ? (
-              <p className="mt-5 text-sm font-semibold text-[var(--success)]">
-                Link sent to {change.sentTo}. Open it to finish — your account, history and coins stay exactly
-                as they are.
-              </p>
+              <div className="mt-5 w-full text-left">
+                <p className="text-sm font-semibold text-[var(--success)]">
+                  Link sent to {change.sentTo}. Open it to finish — your account, history and coins stay
+                  exactly as they are.
+                </p>
+                {/* The honest part. Firebase will not say whether an
+                    address is taken, so "sent" cannot mean "delivered" and
+                    pretending otherwise leaves people refreshing an inbox
+                    for a mail that was never going to arrive. */}
+                <p className="mt-2 text-xs leading-snug text-neutral-400">
+                  Nothing after a minute? Check spam. And an address that{' '}
+                  <span className="font-semibold text-neutral-200">already has its own Jimmy account</span>{' '}
+                  can&rsquo;t be used here — Gmail lets you add a suffix, so{' '}
+                  <span className="font-semibold text-neutral-200">you+gym@gmail.com</span> reaches the same
+                  inbox as a different address.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChange(null);
+                    setNextEmail('');
+                  }}
+                  className="mt-2 text-xs font-semibold text-[var(--ember)] underline underline-offset-2"
+                >
+                  Try a different address
+                </button>
+              </div>
             ) : changing ? (
               <form onSubmit={handleChangeEmail} className="mt-5 w-full">
                 <label htmlFor="new-email" className="block text-left text-xs font-semibold text-neutral-400">
