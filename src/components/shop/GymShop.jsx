@@ -193,7 +193,7 @@ export default function GymShop({ account, onPurchase, onEquip, onSetAccessories
 
       {/* Above the shelves, because "I cannot afford this" is the thought
           it answers, and below the balance it is about. */}
-      <AdRewardCard />
+      <AdRewardCard lastAdRewardAt={account?.lastAdRewardAt ?? null} />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Dances</h2>

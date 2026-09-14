@@ -468,6 +468,14 @@ export function useAuth() {
       if (!trimmed) throw new Error('Enter a name.');
       await setDoc(doc(db, 'users', user.uid), { displayName: trimmed, usernameChangedOnce: true }, { merge: true });
       updateProfile(user, { displayName: trimmed }).catch(() => {});
+      // The rename above only changes the copy YOU read. Friends read
+      // users/{uid}/public/summary, which a client is not allowed to write
+      // (and should not be — see functions/publicName.js), so without this
+      // the new name is invisible to everybody else until the next logged
+      // workout rewrites the summary. Awaited, not fire-and-forget: "it
+      // didn't change" is precisely the bug being fixed, and swallowing a
+      // failure here would reintroduce it silently.
+      await httpsCallable(functions, 'syncPublicDisplayName')({});
     },
     [user],
   );

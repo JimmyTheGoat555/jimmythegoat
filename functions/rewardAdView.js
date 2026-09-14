@@ -55,7 +55,19 @@ exports.rewardAdView = onCall(async (request) => {
       throw new HttpsError('failed-precondition', "Your profile doc doesn't exist yet — try again in a moment.");
     }
     const coins = Number(snap.data().coins) || 0;
-    tx.update(userRef, { coins: FieldValue.increment(AD_REWARD_COINS) });
+    tx.update(userRef, {
+      coins: FieldValue.increment(AD_REWARD_COINS),
+      // Mirrored onto the user's own doc purely so the CLIENT can know
+      // the daily reward is spent without asking. The authoritative
+      // counter is rateLimits/{uid}, which is closed to clients by rule
+      // (and must stay that way — it is the thing a devtools session
+      // would reset), so without this mirror a refresh wipes the app's
+      // only memory of the claim and the card cheerfully offers an ad
+      // that can no longer pay. The cap never depended on this and still
+      // does not: it is a hint for the UI, and the limiter above is the
+      // boundary.
+      lastAdRewardAt: new Date().toISOString(),
+    });
     return coins + AD_REWARD_COINS;
   });
 

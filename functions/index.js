@@ -68,6 +68,18 @@ exports.searchUsers = searchUsers;
 const { rewardAdView } = require('./rewardAdView');
 exports.rewardAdView = rewardAdView;
 
+// One-time sweep that makes every EXISTING account a friend of the
+// official Jimmy account; new accounts get it at signup
+// (onboarding.js). Runnable only by that account itself.
+const { friendEveryoneWithJimmy } = require('./officialFriendships');
+exports.friendEveryoneWithJimmy = friendEveryoneWithJimmy;
+
+// Pushes a renamed account's new name onto the surfaces other people read
+// — the public summary and the friend-code lookup. See the file header for
+// why this is not a rules change.
+const { syncPublicDisplayName } = require('./publicName');
+exports.syncPublicDisplayName = syncPublicDisplayName;
+
 const { sendFriendNudge } = require('./nudges');
 exports.sendFriendNudge = sendFriendNudge;
 

@@ -3,6 +3,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../lib/firebase';
 import { friendlyAuthError } from '../utils/authErrors';
 import {
+  AD_REWARD_COOLDOWN_MS,
   IS_TESTING,
   REWARD_AD_EVENTS,
   SIMULATED_AD_MS,
@@ -41,7 +42,12 @@ import {
 // before the reward callback — AdMob fires Dismissed in all of those, and
 // paying on Dismissed would pay for closing an ad. So the reward call is
 // made from the Rewarded handler and nowhere else.
-export function useRewardedAd() {
+// `lastAdRewardAt` is users/{uid}.lastAdRewardAt — server-written, so it
+// survives a refresh and a devtools session both. Without it the card
+// forgets the reward was claimed the moment the page reloads, offers the
+// ad again, plays it, and only then learns from the server that it cannot
+// pay: an ad watched for nothing, which is worse than a disabled button.
+export function useRewardedAd(lastAdRewardAt = null) {
   // 'idle' | 'loading' (fetching an ad) | 'playing' | 'rewarding' (server)
   const [status, setStatus] = useState('idle');
   const [isAdLoaded, setIsAdLoaded] = useState(false);
@@ -51,6 +57,13 @@ export function useRewardedAd() {
   // ordinary state red teaches people to ignore red.
   const [limitReached, setLimitReached] = useState(null);
   const [lastReward, setLastReward] = useState(null);
+
+  // Derived, not stored: the account doc is the live source, so this is
+  // right again on its own the moment the cooldown lapses or another
+  // device claims the reward.
+  const claimedAtMs = lastAdRewardAt ? Date.parse(lastAdRewardAt) : NaN;
+  const nextAvailableAt = Number.isFinite(claimedAtMs) ? claimedAtMs + AD_REWARD_COOLDOWN_MS : null;
+  const onCooldown = nextAvailableAt !== null && nextAvailableAt > Date.now();
 
   const native = isNativePlatform();
   // A ref, not state: the guard has to hold for the SECOND tap in the same
@@ -169,6 +182,8 @@ export function useRewardedAd() {
 
   const watchAd = useCallback(async () => {
     if (inFlight.current) return null;
+    // Refuse before the ad plays rather than after the server says no.
+    if (onCooldown) return null;
     inFlight.current = true;
     setError(null);
     setLastReward(null);
@@ -199,7 +214,7 @@ export function useRewardedAd() {
     setStatus('playing');
     await new Promise((resolve) => setTimeout(resolve, SIMULATED_AD_MS));
     return claimReward();
-  }, [native, isAdLoaded, claimReward, prepare]);
+  }, [native, isAdLoaded, claimReward, prepare, onCooldown]);
 
   return {
     status,
@@ -209,7 +224,13 @@ export function useRewardedAd() {
     isAdLoaded,
     isNative: native,
     error,
-    limitReached,
+    // Today's view is spent — either because the server just said so, or
+    // because the account doc records a claim inside the window. Same
+    // fact, two sources; the second is the one that survives a refresh,
+    // which is the whole point of mirroring lastAdRewardAt.
+    limitReached:
+      limitReached ?? (onCooldown ? "You've claimed today's ad reward — come back tomorrow for the next one." : null),
+    nextAvailableAt,
     lastReward,
     watchAd,
   };

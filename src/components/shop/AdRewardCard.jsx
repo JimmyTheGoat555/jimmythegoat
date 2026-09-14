@@ -9,8 +9,9 @@ import { useRewardedAd } from '../../hooks/useRewardedAd';
 // coins BUY, not next to the button that starts a workout. An offer to
 // watch a video where somebody is deciding whether to train is a different
 // product than a gym app.
-export default function AdRewardCard() {
-  const { status, busy, isAdLoaded, isNative, error, limitReached, lastReward, watchAd } = useRewardedAd();
+export default function AdRewardCard({ lastAdRewardAt = null }) {
+  const { status, busy, isAdLoaded, isNative, error, limitReached, lastReward, watchAd } =
+    useRewardedAd(lastAdRewardAt);
   // Fetching an ad is a real state on native and a non-state on web (where
   // there is nothing to fetch and isAdLoaded is always true), so the
   // button only ever shows "Loading ad…" where it means something.

@@ -24,6 +24,7 @@
 const { randomUUID } = require('crypto');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore } = require('firebase-admin/firestore');
+const { friendWithOfficialAccount } = require('./officialAccount');
 
 // Body weight is REQUIRED, not optional — logWorkout scores every set by
 // strength-to-bodyweight, so an account with none on file can log a full
@@ -72,5 +73,13 @@ exports.completeOnboardingProfile = onCall(async (request) => {
     throw new HttpsError('internal', "Couldn't save your body weight — please try again.");
   }
 
-  return { ok: true };
+  // Everyone starts out friends with Jimmy, so nobody's first look at the
+  // Social tab is an empty feed and an empty leaderboard. Deliberately
+  // LAST and deliberately swallowed: the body weight above is the part
+  // that must not fail (a workout cannot be scored without it), and a
+  // missing welcome friendship is worth nothing next to a signup that
+  // rolls back. See officialAccount.js.
+  const friendedOfficial = await friendWithOfficialAccount(uid).catch(() => false);
+
+  return { ok: true, friendedOfficial };
 });

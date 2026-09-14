@@ -90,3 +90,8 @@ export const REWARD_AD_EVENTS = {
 
 // How long the web stand-in "plays" for. Native ignores this entirely.
 export const SIMULATED_AD_MS = 3000;
+
+// Must match guards.js's adReward window. The server owns the real cap;
+// this only lets the UI work out, from users/{uid}.lastAdRewardAt, whether
+// the button can pay before somebody sits through an ad to find out.
+export const AD_REWARD_COOLDOWN_MS = 24 * 60 * 60 * 1000;
