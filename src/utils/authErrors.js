@@ -25,7 +25,12 @@ const MESSAGES = {
   'auth/too-many-requests': 'Too many attempts. Wait a few minutes and try again.',
   'auth/network-request-failed': 'No connection — check your signal and try again.',
   'auth/user-disabled': 'That account has been disabled.',
-  'auth/requires-recent-login': 'Sign out and back in, then try again.',
+  // Changing an email is a "recent login" operation: Firebase refuses it
+  // on a session that has been open for a while, and the only fix is a
+  // fresh sign-in. Said as an instruction, since the button that triggers
+  // this is one line above a sign-out link.
+  'auth/requires-recent-login': 'For security, sign out and back in first — then change your email.',
+  'auth/operation-not-allowed': 'That sign-in method is turned off for this app.',
 };
 
 export function friendlyAuthError(err, fallback = 'Something went wrong — try again.') {

@@ -213,6 +213,7 @@ export default function App() {
     emailVerified,
     resendVerification,
     refreshEmailVerified,
+    changeEmail,
     deleteAccount,
     setSharePRs,
   } = useAuth();
@@ -690,6 +691,7 @@ export default function App() {
         notice={appNotice?.tone === 'warning' ? appNotice.message : null}
         onRecheck={refreshEmailVerified}
         onResend={resendVerification}
+        onChangeEmail={changeEmail}
         onSignOut={signOut}
       />
     );

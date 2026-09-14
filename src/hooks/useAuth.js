@@ -4,6 +4,7 @@ import {
   onAuthStateChanged,
   sendEmailVerification,
   sendPasswordResetEmail,
+  verifyBeforeUpdateEmail,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   updateProfile,
@@ -389,6 +390,28 @@ export function useAuth() {
     await sendEmailVerification(auth.currentUser);
   }, []);
 
+  // Fix a typo'd or throwaway address WITHOUT losing the account.
+  //
+  // This is the escape hatch the hard gate needs. Most of the unverified
+  // accounts on this app are unverified because the address was wrong at
+  // sign-up, and telling those people "verify or leave" strands them next
+  // to a workout history they own. Changing the address keeps the uid,
+  // and therefore keeps everything: workouts, coins, badges, friends,
+  // records. Nothing is migrated because nothing moves.
+  //
+  // verifyBeforeUpdateEmail, NOT updateEmail. The old call changed the
+  // address on the spot and left it unverified, which would have walked
+  // straight back into this gate with a second unconfirmed address — and
+  // Firebase now refuses it outright on projects with email enumeration
+  // protection on (this one). This sends the link to the NEW address and
+  // only swaps it when the link is clicked, so the address that lands on
+  // the account is confirmed by construction. Clicking it also clears the
+  // gate on this tab's next focus, since emailVerified comes back true.
+  const changeEmail = useCallback(async (nextEmail) => {
+    if (!auth.currentUser) throw new Error('Sign in first.');
+    await verifyBeforeUpdateEmail(auth.currentUser, nextEmail.trim());
+  }, []);
+
   // "I Verified! Let Me In". The only way this tab can learn that a link
   // was clicked somewhere else: emailVerified is a property of the token
   // minted at sign-in, and confirming an address does not push a new one
@@ -497,6 +520,7 @@ export function useAuth() {
     emailVerified,
     resendVerification,
     refreshEmailVerified,
+    changeEmail,
     deleteAccount,
     setSharePRs,
   };

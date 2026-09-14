@@ -28,11 +28,17 @@ export default function PendingVerificationScreen({
   notice,
   onRecheck,
   onResend,
+  onChangeEmail,
   onSignOut,
 }) {
   const [checking, setChecking] = useState(false);
   const [stillUnverified, setStillUnverified] = useState(false);
   const [resend, setResend] = useState(null); // null | 'busy' | 'sent' | { error }
+  // Fixing a wrong address. Closed by default — it is the answer to a
+  // question most people will not have.
+  const [changing, setChanging] = useState(false);
+  const [nextEmail, setNextEmail] = useState('');
+  const [change, setChange] = useState(null); // null | 'busy' | { sentTo } | { error }
 
   const handleRecheck = async () => {
     setChecking(true);
@@ -46,6 +52,22 @@ export default function PendingVerificationScreen({
       setStillUnverified(true);
     } finally {
       setChecking(false);
+    }
+  };
+
+  const handleChangeEmail = async (e) => {
+    e.preventDefault();
+    const target = nextEmail.trim();
+    if (!target) return;
+    setChange('busy');
+    try {
+      await onChangeEmail(target);
+      // The address on the account does NOT change yet — Firebase swaps it
+      // only when the link is opened — so the confirmation names where the
+      // link went rather than claiming the change is done.
+      setChange({ sentTo: target });
+    } catch (err) {
+      setChange({ error: friendlyAuthError(err, "Couldn't change the email — try again.") });
     }
   };
 
@@ -122,10 +144,64 @@ export default function PendingVerificationScreen({
 
             {resend?.error && <p className="mt-2 text-xs text-[var(--danger)]">{resend.error}</p>}
 
+            {/* Keeps the account, fixes the address. The whole reason this
+                is here: an account that cannot receive mail is not a
+                throwaway to its owner — their workouts, coins, badges and
+                friends are all on it, and "verify or lose it" is a false
+                choice when the only thing wrong is a typo. */}
+            {change?.sentTo ? (
+              <p className="mt-5 text-sm font-semibold text-[var(--success)]">
+                Link sent to {change.sentTo}. Open it to finish — your account, history and coins stay exactly
+                as they are.
+              </p>
+            ) : changing ? (
+              <form onSubmit={handleChangeEmail} className="mt-5 w-full">
+                <label htmlFor="new-email" className="block text-left text-xs font-semibold text-neutral-400">
+                  New email address
+                </label>
+                <input
+                  id="new-email"
+                  type="email"
+                  value={nextEmail}
+                  onChange={(ev) => setNextEmail(ev.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  autoFocus
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-3 text-base text-neutral-100 placeholder:text-neutral-600 focus:border-[var(--ember)]/50 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={change === 'busy' || !nextEmail.trim()}
+                  className="mt-2 w-full rounded-2xl bg-[var(--ember)] py-3 text-sm font-bold text-white transition active:scale-[0.97] disabled:opacity-50"
+                >
+                  {change === 'busy' ? 'Sending…' : 'Send link to this address'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChanging(false);
+                    setChange(null);
+                  }}
+                  className="mt-1.5 w-full py-2 text-xs font-medium text-neutral-500"
+                >
+                  Cancel
+                </button>
+                {change?.error && <p className="mt-1 text-xs text-[var(--danger)]">{change.error}</p>}
+              </form>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setChanging(true)}
+                className="mt-5 text-sm font-semibold text-[var(--ember)] underline underline-offset-2"
+              >
+                Wrong email? Change it and keep your account
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onSignOut}
-              className="mt-5 text-sm font-medium text-neutral-500 underline underline-offset-2"
+              className="mt-3 text-sm font-medium text-neutral-500 underline underline-offset-2"
             >
               Sign out / use a different account
             </button>

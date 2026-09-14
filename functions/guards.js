@@ -80,6 +80,43 @@ const LIMITS = {
   // what a real invite loop needs and still lets a code go genuinely
   // viral for a day without every referral silently failing to pay out.
   referralCredit: { windowMs: DAY_MS, max: 20 },
+  // Rewarded ad views (functions/rewardAdView.js). This is the ONLY thing
+  // standing between the reward callable and an unbounded coin faucet —
+  // see that file's header for why the callable cannot verify that an ad
+  // was really watched.
+  //
+  // ONE a day, at the owner's call, and it is the right number: a view is
+  // worth 50 coins against a training session's ~200, so a daily cap of
+  // one leaves lifting comfortably the best way to earn and caps a
+  // scripted client at 50 coins a day. Rolling 24h from the last view,
+  // not a midnight reset — same reasoning as the workout window.
+  adReward: { windowMs: DAY_MS, max: 1 },
+};
+
+// Rolling-window caps with no per-target dimension. `field` names a live
+// document key in `rateLimits` — renaming one silently hands every
+// existing user a fresh budget, so don't.
+const WINDOWED_ACTIONS = {
+  friendRequest: {
+    limit: LIMITS.friendRequest,
+    field: 'friendRequests',
+    message: "You're sending friend requests too fast — take a breather and try again later.",
+  },
+  weighInNotify: {
+    limit: LIMITS.weighInNotify,
+    field: 'weighInNotify',
+    message: 'Too many weigh-in updates in a short window — try again later.',
+  },
+  referralCredit: {
+    limit: LIMITS.referralCredit,
+    field: 'referralCredits',
+    message: 'This referral code has reached its daily reward limit.',
+  },
+  adReward: {
+    limit: LIMITS.adReward,
+    field: 'adRewards',
+    message: "You've claimed today's ad reward — come back tomorrow for the next one.",
+  },
 };
 
 // The two actions that reach one named person at a time. Everything in
@@ -116,33 +153,16 @@ async function enforceRateLimit(uid, action, targetUid) {
     const snap = await tx.get(ref);
     const data = snap.exists ? snap.data() : {};
 
-    if (action === 'friendRequest') {
-      const recent = withinWindow(data.friendRequests, LIMITS.friendRequest.windowMs, now);
-      if (recent.length >= LIMITS.friendRequest.max) {
-        throw new HttpsError('resource-exhausted', "You're sending friend requests too fast — take a breather and try again later.");
-      }
+    // Plain rolling-window caps. Four of these now, so they are a table
+    // rather than four copies of the same six lines — the copies are how
+    // the fifth one gets written with the wrong field name.
+    const windowedSpec = WINDOWED_ACTIONS[action];
+    if (windowedSpec) {
+      const { limit, field, message } = windowedSpec;
+      const recent = withinWindow(data[field], limit.windowMs, now);
+      if (recent.length >= limit.max) throw new HttpsError('resource-exhausted', message);
       recent.push(now);
-      tx.set(ref, { friendRequests: recent }, { merge: true });
-      return;
-    }
-
-    if (action === 'weighInNotify') {
-      const recent = withinWindow(data.weighInNotify, LIMITS.weighInNotify.windowMs, now);
-      if (recent.length >= LIMITS.weighInNotify.max) {
-        throw new HttpsError('resource-exhausted', 'Too many weigh-in updates in a short window — try again later.');
-      }
-      recent.push(now);
-      tx.set(ref, { weighInNotify: recent }, { merge: true });
-      return;
-    }
-
-    if (action === 'referralCredit') {
-      const recent = withinWindow(data.referralCredits, LIMITS.referralCredit.windowMs, now);
-      if (recent.length >= LIMITS.referralCredit.max) {
-        throw new HttpsError('resource-exhausted', "This referral code has reached its daily reward limit.");
-      }
-      recent.push(now);
-      tx.set(ref, { referralCredits: recent }, { merge: true });
+      tx.set(ref, { [field]: recent }, { merge: true });
       return;
     }
 

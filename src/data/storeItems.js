@@ -33,6 +33,13 @@ export const STORE_ITEMS = [
 // shades paint last so nothing crosses the lenses. Iterating slots in this order is
 // what produces the z-stack, so reordering this array restyles the whole
 // paper doll — don't sort it alphabetically.
+// Coins paid for one rewarded ad view. DISPLAY ONLY, like every price in
+// this file — the amount actually credited comes from the server's own
+// copy (functions/storeCatalog.js's AD_REWARD_COINS, which the callable
+// reads), so this going stale can misprint a button, never mispay a
+// balance. Keep them the same anyway.
+export const AD_REWARD_COINS = 50;
+
 export const ACCESSORY_SLOT_ORDER = ['legs', 'body', 'neck', 'head', 'eyes'];
 
 // Border/label colours in the shop. Deliberately the classic loot ladder

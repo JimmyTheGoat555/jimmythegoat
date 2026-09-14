@@ -62,6 +62,12 @@ exports.suggestFriends = suggestFriends;
 const { searchUsers } = require('./userSearch');
 exports.searchUsers = searchUsers;
 
+// Coins for a rewarded ad view. Server-side because the client may never
+// write its own balance — though see that file on why "server-side" is
+// not the same as "verified" until AdMob's SSV callback replaces it.
+const { rewardAdView } = require('./rewardAdView');
+exports.rewardAdView = rewardAdView;
+
 const { sendFriendNudge } = require('./nudges');
 exports.sendFriendNudge = sendFriendNudge;
 

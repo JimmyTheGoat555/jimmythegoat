@@ -124,6 +124,22 @@ const MAX_COINS_PER_WORKOUT = 500;
 // never per session — see functions/acceptRecommendation.js.
 const RECOMMENDATION_BOUNTY_COINS = 50;
 
+// ---- Rewarded ads ----
+// Paid for watching a sponsor video (functions/rewardAdView.js).
+//
+// THE NUMBER MATTERS MORE THAN IT LOOKS. Coins are what this app pays for
+// TRAINING — a typical session earns around 200 (COINS_PER_RELATIVE_POINT
+// above), and the store prices everything against that. At 50 a view and
+// one view a day (guards.js), ads top out at a quarter of a session: a
+// nudge toward the shop, never a substitute for the gym. Raising either
+// number past that inverts the app's own incentive, so raise neither
+// without deciding to.
+//
+// Never, under any circumstances, does an ad grant volume, score, a PR or
+// a badge. Coins are a currency; the rest is a record of what somebody
+// actually lifted.
+const AD_REWARD_COINS = 50;
+
 // Divisor for workouts logged BEFORE relative scoring existed (no stored
 // `score` / per-set `relativeVolume`): their raw kg volume is mapped onto
 // the new scale against an average 75 kg lifter, so existing users don't
@@ -195,6 +211,7 @@ module.exports = {
   COINS_PER_RELATIVE_POINT,
   MAX_COINS_PER_WORKOUT,
   RECOMMENDATION_BOUNTY_COINS,
+  AD_REWARD_COINS,
   LEGACY_BODYWEIGHT_KG,
   STORE_ITEMS,
   STORE_ITEMS_BY_ID,

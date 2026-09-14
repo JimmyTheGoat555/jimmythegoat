@@ -348,6 +348,17 @@ button.card:hover {
    feedback" the hero button gives instead of a slower hold-to-charge
    mechanic (this app's whole ethos is logging a set as fast as possible,
    so the punch is instant, not gated behind a hold timer). */
+/* The stand-in ad's progress bar. Duration is hard-coded to match
+   useRewardedAd's SIMULATED_AD_MS — when the real SDK lands, both go. */
+@keyframes ad-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 @keyframes button-burst {
   from {
     opacity: 1;

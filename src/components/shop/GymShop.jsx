@@ -15,6 +15,7 @@ import JimmyAvatar from '../evolution/JimmyAvatar';
 // how far down it goes.
 const PORTRAIT_SLOTS = new Set(['head', 'eyes', 'neck']);
 import { useJimmyLook } from '../../context/JimmyLook';
+import AdRewardCard from './AdRewardCard';
 import { danceNumberForItemId, getDancePreviewPath } from '../../utils/danceAnimations';
 
 // A dance's/accessory's cost here is display-only — see storeItems.js.
@@ -189,6 +190,10 @@ export default function GymShop({ account, onPurchase, onEquip, onSetAccessories
           {error}
         </p>
       )}
+
+      {/* Above the shelves, because "I cannot afford this" is the thought
+          it answers, and below the balance it is about. */}
+      <AdRewardCard />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Dances</h2>
