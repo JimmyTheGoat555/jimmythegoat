@@ -186,14 +186,25 @@ export default function ActiveWorkoutLogger({
   const [priorityOn, setPriorityOn] = useLocalStorage('jimmys-priority-sort', false);
   // Whether checking a set starts a rest countdown at all.
   //
-  // PERSISTED rather than component state, for two reasons that pull the
-  // same way. An active workout survives a refresh (useWorkouts keeps it in
-  // localStorage), so plain state would resurrect a timer somebody had
-  // deliberately switched off, mid-session, with no explanation. And the
-  // two people this is for — someone who never tracks rest, and someone
-  // typing up a session they finished an hour ago — both want the answer
-  // to outlive one screen. Same treatment as the priority sort above.
-  const [restTimerEnabled, setRestTimerEnabled] = useLocalStorage('rest-timer-enabled', true);
+  // ON IS THE DEFAULT, EVERY SESSION. What is stored is not a preference
+  // but the id of the ONE workout the timer was switched off for — a new
+  // workout has a different id, does not match, and rests normally.
+  //
+  // This started as a plain persisted boolean, and that was wrong. It made
+  // "off" permanent: one retroactive log, or one stray tap, and every
+  // session after it was silent, the only evidence a switch at the bottom
+  // of a list nobody scrolls to. A rest timer that has quietly stopped
+  // working is worse than one you switch off again on the days you want it
+  // off, which is the trade this makes.
+  //
+  // Still persisted rather than component state, for the reason it always
+  // was: an active workout survives a refresh (useWorkouts keeps it in
+  // localStorage), and plain state would resurrect a timer somebody
+  // silenced two sets ago. Scoping it to the workout id keeps that and
+  // drops the part that outstayed its welcome. One key holding at most one
+  // id, so nothing accumulates.
+  const [restTimerOffFor, setRestTimerOffFor] = useLocalStorage('rest-timer-off-for', null);
+  const restTimerEnabled = !(workout.id && restTimerOffFor === workout.id);
   // Reorder mode collapses every card to a draggable row. Deliberately NOT
   // persisted, unlike the two switches above: this is a thing you are
   // doing for the next ten seconds, not a preference. Coming back to a
@@ -201,7 +212,7 @@ export default function ActiveWorkoutLogger({
   const [isReordering, setIsReordering] = useState(false);
 
   const handleRestTimerToggle = (next) => {
-    setRestTimerEnabled(next);
+    setRestTimerOffFor(next ? null : (workout.id ?? null));
     navigator.vibrate?.([30]);
     // Switching it off mid-rest kills the running countdown. Leaving it to
     // finish would make the switch look broken for the next 90 seconds —
@@ -472,7 +483,9 @@ export default function ActiveWorkoutLogger({
             icon="⏱️"
             title="Auto-Rest Timer"
             subtitle={
-              restTimerEnabled ? 'Turn off for retroactive logging' : 'Off — sets are marked done, no countdown'
+              restTimerEnabled
+                ? 'Turn off for retroactive logging'
+                : 'Off for this workout — back on for the next one'
             }
             checked={restTimerEnabled}
             onChange={handleRestTimerToggle}
