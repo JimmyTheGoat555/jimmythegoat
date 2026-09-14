@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../lib/firebase';
+import { auth, functions } from '../lib/firebase';
 import { friendlyAuthError } from '../utils/authErrors';
 import {
   AD_REWARD_COOLDOWN_MS,
   IS_TESTING,
+  SSV_ENABLED,
   REWARD_AD_EVENTS,
   SIMULATED_AD_MS,
   adUnitIdFor,
@@ -98,6 +99,14 @@ export function useRewardedAd(lastAdRewardAt = null) {
     setStatus('loading');
     setIsAdLoaded(false);
     try {
+      // WHO GETS PAID, decided before the ad is even fetched. AdMob sends
+      // this back to the verification callback as `user_id`, and it is the
+      // only thing tying a signed reward to an account — an ad shown
+      // without it is an ad nobody can be credited for.
+      const uid = auth.currentUser?.uid;
+      if (SSV_ENABLED && uid) {
+        await AdMob.setServerSideVerificationOptions({ userId: uid, customData: '' });
+      }
       await AdMob.prepareRewardVideoAd({ adId: adUnitIdFor(currentPlatform()), isTesting: IS_TESTING });
       // Loaded arrives as an event, not as this promise resolving — the
       // listener below is what flips isAdLoaded.
@@ -147,8 +156,16 @@ export function useRewardedAd(lastAdRewardAt = null) {
         setStatus('idle');
       });
       await listen(REWARD_AD_EVENTS.rewarded, () => {
-        // The one place a reward is earned.
         earned.current = true;
+        if (SSV_ENABLED) {
+          // Nothing to ask for. AdMob is calling the verification endpoint
+          // right now and the coins will arrive on the account doc, which
+          // the balance already reads live. Claiming here as well would be
+          // the unverified path this whole mechanism exists to remove.
+          setStatus('idle');
+          inFlight.current = false;
+          return;
+        }
         claimReward();
       });
       await listen(REWARD_AD_EVENTS.failedToShow, () => {
@@ -223,6 +240,10 @@ export function useRewardedAd(lastAdRewardAt = null) {
     // there is nothing to fetch.
     isAdLoaded,
     isNative: native,
+    // True when the reward arrives out of band (AdMob → server), so the
+    // card can say "on its way" instead of showing a receipt it will
+    // never get.
+    awaitsServerReward: native && SSV_ENABLED,
     error,
     // Today's view is spent — either because the server just said so, or
     // because the account doc records a claim inside the window. Same

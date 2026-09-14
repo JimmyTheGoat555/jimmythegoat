@@ -140,6 +140,16 @@ const RECOMMENDATION_BOUNTY_COINS = 50;
 // actually lifted.
 const AD_REWARD_COINS = 50;
 
+// Once real ads are live, AdMob's signed callback (functions/admobSsv.js)
+// is the ONLY thing that may grant an ad reward, and the client-called
+// rewardAdView refuses. Two paths into the coin supply — one proven, one
+// taken on trust — means only the second one ever gets used.
+//
+// Flip this to true in the SAME change that sets USE_TEST_ADS = false in
+// src/config/ads.js. They are the two halves of going live and a build
+// with one without the other is either paying twice or not at all.
+const AD_REWARD_REQUIRES_SSV = false;
+
 // Divisor for workouts logged BEFORE relative scoring existed (no stored
 // `score` / per-set `relativeVolume`): their raw kg volume is mapped onto
 // the new scale against an average 75 kg lifter, so existing users don't
@@ -212,6 +222,7 @@ module.exports = {
   MAX_COINS_PER_WORKOUT,
   RECOMMENDATION_BOUNTY_COINS,
   AD_REWARD_COINS,
+  AD_REWARD_REQUIRES_SSV,
   LEGACY_BODYWEIGHT_KG,
   STORE_ITEMS,
   STORE_ITEMS_BY_ID,

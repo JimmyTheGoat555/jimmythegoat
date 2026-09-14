@@ -86,6 +86,12 @@ exports.syncPublicDisplayName = syncPublicDisplayName;
 const { claimWelcomeFriend } = require('./welcomeFriend');
 exports.claimWelcomeFriend = claimWelcomeFriend;
 
+// AdMob's server-side verification callback — the ONLY trustworthy source
+// of an ad reward. A public HTTP endpoint by necessity (Google calls it);
+// its security is the ECDSA signature, not the URL.
+const { admobRewardCallback } = require('./admobSsv');
+exports.admobRewardCallback = admobRewardCallback;
+
 const { sendFriendNudge } = require('./nudges');
 exports.sendFriendNudge = sendFriendNudge;
 

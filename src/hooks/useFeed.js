@@ -1,9 +1,39 @@
 import { useCallback, useEffect, useState } from 'react';
-import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, setDoc, where } from 'firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  where,
+} from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
-// Same 30-value ceiling as useFriendsGraph.js — see there for why.
+// Firestore's own ceiling on an `in` filter. Not a choice — the query is
+// rejected above this — which is why the feed is assembled from several
+// queries rather than one.
 const FIRESTORE_IN_LIMIT = 30;
+
+// Newest posts fetched PER CHUNK of 30 friends. Merging the chunks and
+// taking the newest N overall is exact as long as each chunk offers at
+// least N candidates, so this doubles as the cap on the whole feed.
+//
+// It is also the ceiling on what the weekly leaderboard can see, since
+// that aggregates the same array (see Leaderboard.tsx): at ~2 workouts a
+// day per person, 150 covers a week of thirty very busy friends. If this
+// app ever outgrows that, the honest fix is a `timestamp >=` window
+// rather than a bigger number.
+const POSTS_PER_CHUNK = 150;
+
+function chunk(array, size) {
+  const chunks = [];
+  for (let i = 0; i < array.length; i += size) chunks.push(array.slice(i, i + size));
+  return chunks;
+}
 
 // Live feed of the current user's friends' verified workouts (written by
 // logWorkout() — see functions/economy.js and firestore.rules' feedPosts
@@ -31,26 +61,66 @@ export function useFeed(friendUids) {
       setPosts([]);
       setLoading(false);
       setError(null);
-      return;
+      return undefined;
     }
     setLoading(true);
     setError(null);
-    const q = query(
-      collection(db, 'feedPosts'),
-      where('userId', 'in', friendUids.slice(0, FIRESTORE_IN_LIMIT)),
-      orderBy('timestamp', 'desc'),
+
+    // ONE LISTENER PER 30 FRIENDS, merged.
+    //
+    // This used to be a single query over `friendUids.slice(0, 30)`, which
+    // did not fail, warn, or degrade — it just silently stopped showing
+    // anyone past the thirtieth, permanently, in whatever order the
+    // friends array happened to be in. Harmless while everybody had two
+    // friends; a guaranteed bug the moment one account is friends with
+    // every user, which is now the design (see functions/welcomeFriend.js).
+    //
+    // Same chunking useFriendsGraph already does to resolve names, just
+    // live: each chunk keeps its own latest snapshot and the merge runs
+    // whenever any of them changes.
+    const groups = chunk(friendUids, FIRESTORE_IN_LIMIT);
+    const byChunk = new Array(groups.length).fill(null);
+
+    const publish = () => {
+      // A chunk that has not reported yet is null rather than empty, so
+      // the first snapshot of a two-chunk feed does not render as "these
+      // are all the posts" for a frame.
+      if (byChunk.some((c) => c === null)) return;
+      const merged = byChunk.flat();
+      // Dedupe by id before sorting. Chunks are disjoint by construction
+      // (a uid appears in exactly one), so this only matters if `friends`
+      // ever contains a duplicate — cheap insurance against a feed showing
+      // the same workout twice.
+      const unique = [...new Map(merged.map((post) => [post.id, post])).values()];
+      unique.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
+      setPosts(unique.slice(0, POSTS_PER_CHUNK));
+      setLoading(false);
+    };
+
+    const unsubscribes = groups.map((group, i) =>
+      onSnapshot(
+        query(
+          collection(db, 'feedPosts'),
+          where('userId', 'in', group),
+          orderBy('timestamp', 'desc'),
+          limit(POSTS_PER_CHUNK),
+        ),
+        (snap) => {
+          byChunk[i] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          publish();
+        },
+        (err) => {
+          // One failing chunk should not blank the whole feed: report it,
+          // and let the chunks that did arrive render. Treating the failed
+          // one as empty is what lets publish() proceed.
+          byChunk[i] = [];
+          setError(err.message);
+          publish();
+        },
+      ),
     );
-    return onSnapshot(
-      q,
-      (snap) => {
-        setPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setLoading(false);
-      },
-      (err) => {
-        setError(err.message);
-        setLoading(false);
-      },
-    );
+
+    return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
   }, [friendUidsKey]);
 
   return { posts, loading, error };

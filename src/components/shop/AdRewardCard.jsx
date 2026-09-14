@@ -10,7 +10,7 @@ import { useRewardedAd } from '../../hooks/useRewardedAd';
 // watch a video where somebody is deciding whether to train is a different
 // product than a gym app.
 export default function AdRewardCard({ lastAdRewardAt = null }) {
-  const { status, busy, isAdLoaded, isNative, error, limitReached, lastReward, watchAd } =
+  const { status, busy, isAdLoaded, isNative, awaitsServerReward, error, limitReached, lastReward, watchAd } =
     useRewardedAd(lastAdRewardAt);
   // Fetching an ad is a real state on native and a non-state on web (where
   // there is nothing to fetch and isAdLoaded is always true), so the
@@ -62,6 +62,12 @@ export default function AdRewardCard({ lastAdRewardAt = null }) {
               disagree with the real one a moment later. */}
           {lastReward !== null && !error && (
             <p className="mt-2 text-xs font-semibold text-[var(--success)]">🪙 +{lastReward} coins added!</p>
+          )}
+          {/* With verification on, nothing here confirms the payout — the
+              balance in the HUD does, when AdMob's callback lands a moment
+              later. Saying "on its way" beats a receipt that never comes. */}
+          {awaitsServerReward && status === 'idle' && lastReward === null && !limitReached && !error && (
+            <p className="mt-2 text-[11px] text-neutral-500">Rewards are verified by AdMob and land within a few seconds.</p>
           )}
           {/* Amber, not red: "you already had today's" is the ordinary
               state of a once-a-day reward, not a failure. */}

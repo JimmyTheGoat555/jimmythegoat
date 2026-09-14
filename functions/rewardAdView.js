@@ -13,15 +13,13 @@
 // per account (guards.js). That is the whole security model while the ad
 // is simulated, and it is a budget cap rather than a proof.
 //
-// THE REAL FIX, when AdMob goes in: Server-Side Verification. AdMob calls
-// a URL you register with a signed query string (ad_network, ad_unit,
-// reward_amount, user_id, signature, key_id); you verify the ECDSA
-// signature against Google's published keys, and reward from THAT request
-// — not from the app. The app stops being in the reward path entirely.
-// When that happens, this file becomes an onRequest handler that verifies
-// the signature, and this callable is deleted rather than kept "just for
-// testing", because a second unverified path into the coin supply is the
-// only thing anyone would ever use.
+// THAT FIX NOW EXISTS: functions/admobSsv.js verifies AdMob's signed
+// callback and grants the reward from it, with the app nowhere in the
+// path. This callable stays only for the pre-launch simulated ad on web,
+// and it switches ITSELF off the moment real ads go live — see
+// AD_REWARD_REQUIRES_SSV below and in storeCatalog.js. Two paths into the
+// coin supply, one proven and one taken on trust, means only the second
+// ever gets used.
 //
 // WHAT AN AD CAN NEVER GRANT: volume, score, a personal record, a badge,
 // a streak day, or anything else that claims somebody lifted something.
@@ -30,11 +28,18 @@
 // remains the only writer of every one of those fields.
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
-const { AD_REWARD_COINS } = require('./storeCatalog');
+const { AD_REWARD_COINS, AD_REWARD_REQUIRES_SSV } = require('./storeCatalog');
 const { enforceRateLimit } = require('./guards');
 
 exports.rewardAdView = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  // Real ads are live: rewards arrive through AdMob's signed callback and
+  // this path is closed. Kept as a refusal rather than deleted so a client
+  // still shipping the old flow gets a clear answer instead of a 404 it
+  // might retry forever.
+  if (AD_REWARD_REQUIRES_SSV) {
+    throw new HttpsError('failed-precondition', 'Ad rewards are granted by AdMob verification now.');
+  }
   const uid = request.auth.uid;
 
   const db = getFirestore();

@@ -42,6 +42,16 @@ export const USE_TEST_ADS = true;
 // id, so a test build never counts as an impression on a real account.
 export const IS_TESTING = USE_TEST_ADS;
 
+// DERIVED, not a second switch. Real ads mean AdMob's signed callback
+// (functions/admobSsv.js) grants the reward and the app never asks for
+// it; test ads mean there is no callback to wait for, so the simulated
+// flow claims through the callable. One flag decides both, because a
+// build where they disagree either pays twice or never pays.
+//
+// The server has a matching AD_REWARD_REQUIRES_SSV in
+// functions/storeCatalog.js — flip that in the same change.
+export const SSV_ENABLED = !USE_TEST_ADS;
+
 export function currentPlatform() {
   // Capacitor puts this on the window inside a native shell. Read off the
   // global rather than importing @capacitor/core so the web build needs no
