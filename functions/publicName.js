@@ -2,10 +2,26 @@
 //
 // THE BUG THIS FIXES. Renaming yourself writes users/{uid}.displayName,
 // which is the copy YOUR app reads — so the change looks instant to you
-// and to nobody else. Everyone else reads users/{uid}/public/summary,
-// whose displayName is written by logWorkout and was left pointing at the
-// old name until the next workout. Reported as "I changed my username and
-// it didn't change", which is exactly right from the outside.
+// and to nobody else. Your name is COPIED onto three other surfaces at
+// the moment things happen, and a rename reached none of them:
+//
+//   users/{uid}/public/summary   what a friend's profile view reads
+//   friendCodes/{code}           what a friends LIST resolves names through
+//   feedPosts/{id}.userName      stamped on every workout you ever logged,
+//                                and therefore what the feed shows AND what
+//                                the leaderboard aggregates its rows from
+//
+// The friend-code copy self-heals (useAuth), which is why the reported
+// symptom was so specific: "it updates on the friends list and stays Big
+// Reef everywhere else".
+//
+// WHY THE FEED POSTS GET REWRITTEN AND THE COSMETICS DO NOT. A feed post
+// deliberately snapshots what you were WEARING when you logged it — see
+// logWorkout — so an old card shows the goat you actually were that day.
+// A name is not in that category. It is identity, not a costume: nobody
+// looking at last week's workout wants to be told it was done by somebody
+// who no longer exists. So the name is brought forward and the gear is
+// left alone.
 //
 // WHY A CALLABLE RATHER THAN JUST WIDENING THE RULE. The obvious fix is
 // to add displayName to public/summary's owner-update allowlist and let
@@ -54,5 +70,19 @@ exports.syncPublicDisplayName = onCall(async (request) => {
   }
 
   await Promise.all(writes);
-  return { displayName, surfaces: writes.length };
+
+  // Every workout this account has ever posted. Bounded by how much
+  // somebody has trained rather than by how many users exist, and paid
+  // once per rename — which the rules cap at one per account anyway
+  // (firestore.rules' usernameChangeValid).
+  const posts = await db.collection('feedPosts').where('userId', '==', uid).get();
+  const stale = posts.docs.filter((d) => d.data().userName !== displayName);
+  const BATCH = 400;
+  for (let i = 0; i < stale.length; i += BATCH) {
+    const batch = db.batch();
+    for (const post of stale.slice(i, i + BATCH)) batch.update(post.ref, { userName: displayName });
+    await batch.commit();
+  }
+
+  return { displayName, surfaces: writes.length, postsRenamed: stale.length };
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -382,6 +382,26 @@ export function useAuth() {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [user]);
+
+  // Everyone is friends with Jimmy — claimed the moment the address is
+  // verified, which is also the moment the app becomes usable at all.
+  //
+  // Fired from the client rather than from a Cloud Functions Auth trigger
+  // because there IS no trigger for "the verification link was clicked",
+  // and one on account CREATION would race sign-up's own users/{uid}
+  // write and break it — see functions/welcomeFriend.js for that in full.
+  //
+  // Once per session. The callable is idempotent (arrayUnion on both
+  // sides), so the ref is about not making a network call on every
+  // emailVerified change rather than about correctness. Silent on failure:
+  // a missing welcome friendship is worth nothing next to an error on
+  // somebody's first launch, and the next launch tries again.
+  const welcomeFriendClaimed = useRef(false);
+  useEffect(() => {
+    if (!user || !emailVerified || welcomeFriendClaimed.current) return;
+    welcomeFriendClaimed.current = true;
+    httpsCallable(functions, 'claimWelcomeFriend')({}).catch(() => {});
+  }, [user, emailVerified]);
 
   // Throws on failure (rate limiting is the common one) so the banner can
   // say what happened instead of pretending a second link is on its way.

@@ -80,6 +80,12 @@ exports.friendEveryoneWithJimmy = friendEveryoneWithJimmy;
 const { syncPublicDisplayName } = require('./publicName');
 exports.syncPublicDisplayName = syncPublicDisplayName;
 
+// Friends a newly-verified account with the official Jimmy account. A
+// callable rather than an Auth onCreate trigger — see that file for why
+// the trigger would have broken sign-up outright.
+const { claimWelcomeFriend } = require('./welcomeFriend');
+exports.claimWelcomeFriend = claimWelcomeFriend;
+
 const { sendFriendNudge } = require('./nudges');
 exports.sendFriendNudge = sendFriendNudge;
 
