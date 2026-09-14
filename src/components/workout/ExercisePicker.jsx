@@ -1,11 +1,44 @@
 import { useState } from 'react';
 import MuscleGroupPicker from './MuscleGroupPicker';
 
-export default function ExercisePicker({ exercises, addedExerciseIds, onAdd, onClose }) {
-  const { muscleGroups, exercisesByGroup, addCustomExercise } = exercises;
+// Picking exercises — and now un-picking them.
+//
+// Two different "removes" live in this sheet and they are not the same
+// thing, so they get different controls:
+//
+//   ✓  tapping an exercise you already added takes it back OUT of the
+//      workout. It used to be a dead, greyed-out row, which meant fixing
+//      a mis-tap involved closing the sheet, finding the card and using
+//      its Remove button. The obvious tap does the obvious thing now.
+//
+//   ✕  on a CUSTOM exercise deletes it from your list entirely. That is a
+//      catalog edit, not a workout edit, and there was no way to do it at
+//      all before this — useExercises has had removeCustomExercise all
+//      along with nothing calling it, so a typo'd "Bnech Press" was
+//      permanent. Past workouts and templates keep their own copy of the
+//      name, so deleting one never rewrites history.
+//
+// `removableExerciseIds` is the caller's answer to "which of the added
+// ones is it SAFE to take out" — the live logger passes only exercises
+// with no completed sets, so one stray tap can never bin logged work.
+// Anything added but not in that list stays disabled, exactly as before.
+export default function ExercisePicker({
+  exercises,
+  addedExerciseIds,
+  removableExerciseIds = [],
+  onAdd,
+  onRemove,
+  onClose,
+}) {
+  const { muscleGroups, exercisesByGroup, addCustomExercise, removeCustomExercise } = exercises;
   const [selectedGroup, setSelectedGroup] = useState(muscleGroups[0].id);
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customName, setCustomName] = useState('');
+  // Which custom exercise is asking "sure?". Inline rather than a
+  // ConfirmDialog because this sheet is already a z-50 overlay, and a
+  // modal on top of a modal to delete one list row is a lot of ceremony
+  // for something that costs nothing to re-create.
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const groupExercises = exercisesByGroup(selectedGroup);
 
   const handleAddCustom = (e) => {
@@ -16,6 +49,15 @@ export default function ExercisePicker({ exercises, addedExerciseIds, onAdd, onC
       setShowCustomForm(false);
       onAdd(exercise);
     }
+  };
+
+  const handleDeleteCustom = (exercise) => {
+    // Out of the workout first if it happens to be in it, then out of the
+    // list — the other order leaves a row in the logger referring to an
+    // exercise that no longer exists in the picker.
+    if (addedExerciseIds.includes(exercise.id)) onRemove?.(exercise.id);
+    removeCustomExercise(exercise.id);
+    setConfirmDeleteId(null);
   };
 
   return (
@@ -42,30 +84,85 @@ export default function ExercisePicker({ exercises, addedExerciseIds, onAdd, onC
         <ul className="flex-1 overflow-y-auto px-5 py-3 flex flex-col gap-2">
           {groupExercises.map((exercise) => {
             const added = addedExerciseIds.includes(exercise.id);
+            const removable = added && Boolean(onRemove) && removableExerciseIds.includes(exercise.id);
+            const confirming = confirmDeleteId === exercise.id;
+
+            if (confirming) {
+              return (
+                <li
+                  key={exercise.id}
+                  className="flex items-center gap-2 rounded-2xl border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-4 py-2.5"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm text-neutral-200">
+                    Delete &ldquo;{exercise.name}&rdquo;?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCustom(exercise)}
+                    className="shrink-0 rounded-lg bg-[var(--danger)] px-3 py-1.5 text-xs font-bold text-white"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="shrink-0 px-2 py-1.5 text-xs font-semibold text-neutral-400"
+                  >
+                    Cancel
+                  </button>
+                </li>
+              );
+            }
+
             return (
-              <li key={exercise.id}>
+              <li key={exercise.id} className="flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={added}
-                  onClick={() => onAdd(exercise)}
-                  className={`w-full flex items-center justify-between rounded-2xl px-4 py-3.5 text-base text-left transition border ${
+                  // Added and safe to take out: the row stays live and the
+                  // tap reverses itself. Added with sets already logged:
+                  // still inert, because the alternative is losing them.
+                  disabled={added && !removable}
+                  onClick={() => (removable ? onRemove(exercise.id) : onAdd(exercise))}
+                  aria-label={
+                    removable ? `Remove ${exercise.name} from this workout` : `Add ${exercise.name}`
+                  }
+                  className={`flex min-w-0 flex-1 items-center justify-between rounded-2xl px-4 py-3.5 text-base text-left transition border ${
                     added
-                      ? 'bg-white/5 border-white/5 text-neutral-600'
+                      ? removable
+                        ? 'bg-white/5 border-white/10 text-neutral-300'
+                        : 'bg-white/5 border-white/5 text-neutral-600'
                       : 'bg-white/10 border-white/10 text-neutral-100'
                   }`}
                 >
-                  <span className="flex items-center gap-2">
-                    {exercise.name}
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate">{exercise.name}</span>
                     {exercise.custom && (
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-white/10 text-neutral-400">
+                      <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full bg-white/10 text-neutral-400">
                         Custom
                       </span>
                     )}
                   </span>
-                  <span className="text-lg leading-none" style={{ color: 'var(--tier-accent)' }}>
-                    {added ? '✓' : '+'}
+                  <span
+                    className="shrink-0 text-lg leading-none"
+                    style={{ color: removable ? undefined : 'var(--tier-accent)' }}
+                  >
+                    {added ? (removable ? '−' : '✓') : '+'}
                   </span>
                 </button>
+
+                {/* Catalog delete, and only ever on your own entries — the
+                    built-in list is not yours to edit and a ✕ on Bench
+                    Press would be a trap. */}
+                {exercise.custom && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteId(exercise.id)}
+                    aria-label={`Delete ${exercise.name} from your exercises`}
+                    className="shrink-0 h-9 w-9 rounded-full bg-white/5 text-sm text-neutral-500 transition active:scale-90"
+                  >
+                    ✕
+                  </button>
+                )}
               </li>
             );
           })}

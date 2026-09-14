@@ -561,7 +561,16 @@ export default function ActiveWorkoutLogger({
         <ExercisePicker
           exercises={exercises}
           addedExerciseIds={workout.exercises.map((e) => e.exerciseId)}
+          // Only exercises with nothing logged against them can be taken
+          // back out from inside the sheet. Once a set is checked off,
+          // that row is work somebody did — removing it stays a
+          // deliberate act on the card itself, not a second tap on the
+          // same row that added it.
+          removableExerciseIds={workout.exercises
+            .filter((e) => !e.sets.some((set) => set.completed))
+            .map((e) => e.exerciseId)}
           onAdd={handleAdd}
+          onRemove={onRemoveExercise}
           onClose={() => setPickerOpen(false)}
         />
       )}

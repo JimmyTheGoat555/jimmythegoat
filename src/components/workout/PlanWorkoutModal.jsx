@@ -156,7 +156,12 @@ export default function PlanWorkoutModal({ exercises, onSave, onClose }) {
         <ExercisePicker
           exercises={exercises}
           addedExerciseIds={picked.map((e) => e.exerciseId)}
+          // Everything in a plan is removable: there are no logged sets in
+          // a routine you have not done yet, so nothing here can be lost
+          // by taking an exercise back out.
+          removableExerciseIds={picked.map((e) => e.exerciseId)}
           onAdd={add}
+          onRemove={remove}
           onClose={() => setPickerOpen(false)}
         />
       )}
