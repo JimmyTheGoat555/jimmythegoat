@@ -4,7 +4,7 @@ import WorkoutHome from './components/workout/WorkoutHome';
 import BottomNav from './components/layout/BottomNav';
 import { TAB_PATHS, TRAINER_TAB_PATH } from './components/layout/tabPaths';
 import AuthScreen from './components/auth/AuthScreen';
-import UnverifiedEmailBanner from './components/auth/UnverifiedEmailBanner';
+import PendingVerificationScreen from './components/auth/PendingVerificationScreen';
 import FirebaseSetupNeeded from './components/auth/FirebaseSetupNeeded';
 import TopHud from './components/layout/TopHud';
 import { useCloudWorkoutHistory } from './hooks/useCloudWorkouts';
@@ -212,6 +212,7 @@ export default function App() {
     resetPassword,
     emailVerified,
     resendVerification,
+    refreshEmailVerified,
     deleteAccount,
     setSharePRs,
   } = useAuth();
@@ -244,15 +245,16 @@ export default function App() {
     // it says something went wrong, and the verification line is only
     // ever a nudge. The banner below carries the verification message
     // anyway until the address is confirmed, so nothing is lost.
+    // The "check your inbox" line is the verification screen's whole job
+    // now, so signing up no longer needs to say it here — this notice
+    // would render behind the gate and never be seen anyway. What still
+    // has to get through is a problem: a trainer code that did not
+    // resolve, or a verification email that failed to send, both of which
+    // the gate renders for us.
     if (warning) setAppNotice({ message: warning, tone: 'warning' });
-    else if (verificationSent) {
+    else if (!verificationSent) {
       setAppNotice({
-        message: 'Account created! Check your inbox to verify your email.',
-        tone: 'success',
-      });
-    } else {
-      setAppNotice({
-        message: "Account created — but we couldn't send the verification email. Use Resend below.",
+        message: "We couldn't send the verification email — use Resend below.",
         tone: 'warning',
       });
     }
@@ -667,6 +669,31 @@ export default function App() {
   if (!firebaseConfigured) return <FirebaseSetupNeeded />;
   if (initializing) return null;
   if (!user) return <AuthScreen onSignUp={handleSignUp} onSignIn={signIn} onResetPassword={resetPassword} />;
+
+  // ── Hard verification gate ───────────────────────────────────────────
+  //
+  // Signed in but unconfirmed means nothing else renders: no nav, no
+  // tabs, no workout screen. Placed ABOVE the profile-loading guard below
+  // on purpose — a brand-new account's Firestore doc is still being
+  // written at this moment, and making someone stare at a blank screen
+  // before being told to check their email would read as the app being
+  // broken rather than as a step.
+  //
+  // `appNotice` rides along because this screen now swallows the only
+  // moment it used to appear for a new account: a trainer code that did
+  // not resolve is worth knowing at sign-up, not discovered later when
+  // the connection silently is not there.
+  if (!emailVerified) {
+    return (
+      <PendingVerificationScreen
+        email={user.email}
+        notice={appNotice?.tone === 'warning' ? appNotice.message : null}
+        onRecheck={refreshEmailVerified}
+        onResend={resendVerification}
+        onSignOut={signOut}
+      />
+    );
+  }
   // Auth resolved but the Firestore profile doc hasn't loaded yet (or, very
   // briefly right after signup, is still being written) — same blank frame
   // rather than flashing the wrong role's UI, UNLESS it's actually broken
@@ -724,16 +751,6 @@ export default function App() {
         <div className="ambient-bg" />
         <div className="ambient-scrim" />
         <div className="max-w-md mx-auto px-4">
-          {/* Above the notice and every screen, because it is about the
-              account rather than about whatever tab you happen to be on.
-              Only ever rendered for a signed-in user whose address is
-              actually unconfirmed — see useAuth's emailVerified, which
-              reloads the Firebase user when the tab regains focus so
-              clicking the link in another app clears this on return. */}
-          {!emailVerified && (
-            <UnverifiedEmailBanner email={user?.email} onResend={resendVerification} />
-          )}
-
           {appNotice && (
             <div
               className={`relative z-10 mt-4 px-4 py-3 rounded-2xl border text-sm flex items-start gap-2 ${

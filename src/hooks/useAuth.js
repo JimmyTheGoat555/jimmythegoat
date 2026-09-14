@@ -355,16 +355,21 @@ export function useAuth() {
       setEmailVerified(true);
       return undefined;
     }
+    // Synchronously first, from the token this session was signed in
+    // with. That value is already correct on a cold load, and setting it
+    // before the await is what stops the app flashing past the gate for
+    // one paint on the way to blocking.
+    setEmailVerified(user.emailVerified === true);
     let cancelled = false;
     const check = async () => {
       try {
         await user.reload();
       } catch {
         // Offline, or the token expired — either way, keep whatever we
-        // last knew rather than accusing someone of being unverified.
+        // last knew rather than locking someone out over a failed read.
         return;
       }
-      if (!cancelled) setEmailVerified(auth.currentUser?.emailVerified ?? true);
+      if (!cancelled) setEmailVerified(auth.currentUser?.emailVerified === true);
     };
     check();
     const onVisible = () => {
@@ -382,6 +387,19 @@ export function useAuth() {
   const resendVerification = useCallback(async () => {
     if (!auth.currentUser) throw new Error('Sign in first.');
     await sendEmailVerification(auth.currentUser);
+  }, []);
+
+  // "I Verified! Let Me In". The only way this tab can learn that a link
+  // was clicked somewhere else: emailVerified is a property of the token
+  // minted at sign-in, and confirming an address does not push a new one
+  // down. Returns the fresh answer so the screen can say "still not
+  // verified" instead of appearing to do nothing.
+  const refreshEmailVerified = useCallback(async () => {
+    if (!auth.currentUser) return false;
+    await auth.currentUser.reload();
+    const verified = auth.currentUser.emailVerified === true;
+    setEmailVerified(verified);
+    return verified;
   }, []);
 
 
@@ -478,6 +496,7 @@ export function useAuth() {
     resetPassword,
     emailVerified,
     resendVerification,
+    refreshEmailVerified,
     deleteAccount,
     setSharePRs,
   };
