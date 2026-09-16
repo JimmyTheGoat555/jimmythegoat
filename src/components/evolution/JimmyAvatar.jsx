@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { getTierByStage } from '../../utils/evolutionTiers';
 import { ACCESSORY_SLOT_ORDER, getStoreItem, readEquippedAccessories } from '../../data/storeItems';
 import { ACCESSORY_ART, artFor } from './accessoryArt';
+import { anchorsFor, placeOnAnchors } from '../../data/avatarAnchors';
 import { FIRE_STREAK_MIN, streakAuraClass } from '../../utils/streak';
 import {
   DEFAULT_MASCOT_ID,
-  MASCOT_GENA,
   accessoryArtStageFor,
+  equippedOutfitFor,
   getMascot,
   mascotCanWear,
   mascotHasAccessories,
@@ -19,25 +20,26 @@ import {
 // (shop preview, profile, leaderboard row, feed post), so an accessory can
 // never look right in one of them and wrong in another.
 //
-// Positioning notes, because these numbers are measured rather than
-// eyeballed. Every tier sprite is ~1466px tall on its own canvas but a
-// DIFFERENT width (528–673px), so horizontal percentages of a fixed box
-// would drift between tiers. Two things make the coordinates below hold:
+// Positioning, in one sentence: every piece of gear hangs off a LANDMARK
+// of the body it is on. The sprite's landmarks (eye line, crown, neck
+// base, hips — per mascot, per tier, per outfit) live in
+// data/avatarAnchors.js; how each piece sits relative to its landmark
+// lives with the artwork in accessoryArt.jsx (`fit`); AccessoryLayer
+// below multiplies the two into CSS percentages of the sprite's own box.
+// Nothing here knows a coordinate. Two things make the percentages hold:
 //
 //   1. The wrapper shrink-wraps the image (`w-auto` + `h-full`), so
 //      percentages are relative to the IMAGE box, not a letterboxed
-//      container.
-//   2. Vertically the sprites agree closely. Scanning the alpha channel:
-//      opaque pixels start at 8–10% of the canvas (horn tips), the silhouette
-//      pinches at ~20% of the body (the neck) and flares at ~25%
-//      (shoulders). So head/eyes/neck land at roughly the same percentage
-//      of canvas height on all four tiers.
+//      container — and where a caller letterboxes, the layer rebuilds
+//      the image box from the sprite's aspect (see AccessoryLayer).
+//   2. Every sprite is on the same canvas contract — feet at 84% of
+//      canvas height (tools/normalize-sprites.mjs) — so the pedestal,
+//      the head crop and the dance clips' settled frames all agree on
+//      where the character stands.
 //
-// Accessory artwork is inline SVG (see accessoryArt.jsx), not emoji and
-// not PNGs: it stays sharp from a 36px leaderboard row to a full-screen
-// hero, costs a couple of KB, and each piece carries its own viewBox and
-// placement, so a pair of shades and a hoodie can have honestly different
-// proportions instead of being forced through one box.
+// Accessory artwork is transparent PNG (see accessoryArt.jsx), each piece
+// pre-trimmed to its alpha bounds and drawn at its natural aspect, so
+// pinning its width alone is what sizes it.
 // A leaderboard row or feed post shows a ~40px round avatar, and a
 // full-body goat at that size is mostly legs. `crop="head"` zooms to the
 // region the gear actually occupies. The transform wraps the image AND the
@@ -53,202 +55,14 @@ const HEAD_CROP = {
   translateY: '-2%',
 };
 
-// Where every accessory sits, per accessory, per evolution stage.
-//
-// It has to be per stage, because the four sprites are not one drawing at
-// four sizes. They share a height (~1466px) but NOT a width — the Legend's
-// traps make his canvas 673px wide against the Goat's 528 for a head that
-// is barely any bigger — and percentages here resolve against the SPRITE
-// box (the wrapper shrink-wraps the image, see below). So a single figure
-// for all four tiers puts the shades on the Goat's eyes and somewhere over
-// the Legend's cheekbones.
-//
-// The numbers come from landmarks read off the sprites, then corrected by
-// eye against the render. The landmark is PUPIL SPAN — the distance between
-// the two pupils as a share of canvas width — because that is what a pair
-// of glasses has to bracket, and unlike "face width" it is unambiguous:
-// these goats have floppy ears that merge into the cheek in the alpha
-// channel, and an outline-derived face width silently includes them.
-//
-//   tier      canvas   pupil span   eye line   face midline
-//   goat      528px    16.6%        16.8%      49.7%
-//   buff      438px    19.0%        17.9%      48.3%
-//   titan     552px    16.9%        15.2%      49.6%
-//   legend    673px    15.0%        16.2%      49.3%
-//
-// Every head/eye/neck piece is authored once against the Goat and then
-// scaled by that tier's pupil span relative to his (buff 1.14x, titan
-// 1.02x, legend 0.90x), with its vertical offset from the eye line scaled
-// the same way. `left` is the face midline: the sprites are not perfectly
-// centred on their canvases, and the Buff's 1.4% offset is ~3px on a phone
-// but very visible once crop="head" magnifies it 3.4x.
-//
-// `top` is the CENTRE of the piece as a % of sprite height, because the
-// overlay is translated -50%,-50%. There is no `height`: every PNG is
-// pre-trimmed to its alpha bounds and drawn at its natural aspect, so
-// pinning width alone is what keeps a 2.6:1 pair of shades from being
-// stretched into a 1:1 box. `z` is a fixed per-slot stack — body behind,
-// lenses in front — so two head items can never argue about order.
-const ACCESSORY_LAYOUT = {
-  'accessory-shades': {
-    z: 40,
-    stages: {
-      1: { top: '16.9%', left: '49.7%', width: '38.0%' },
-      2: { top: '18.0%', left: '48.3%', width: '43.5%' },
-      3: { top: '15.3%', left: '49.6%', width: '38.7%' },
-      4: { top: '16.4%', left: '49.3%', width: '34.3%' },
-    },
-  },
-  // Headphones are the one piece whose art is not centred on what it has
-  // to line up with: the earcups sit at 67% of the PNG's height with the
-  // band arcing above them, so `top` (which positions the PNG's CENTRE) is
-  // well above the ear line. The asset was also widened — see the note in
-  // accessoryArt.jsx — because as drawn the cups nearly touch.
-  'accessory-headphones': {
-    z: 30,
-    stages: {
-      1: { top: '14.4%', left: '49.7%', width: '53.6%' },
-      2: { top: '15.6%', left: '48.3%', width: '61.3%' },
-      3: { top: '12.6%', left: '49.6%', width: '54.6%' },
-      4: { top: '13.4%', left: '49.3%', width: '48.4%' },
-    },
-  },
-  // `left` is NOT the face midline here: the cap is drawn three-quarter-on
-  // with its dome 9.2% of the image width left of the image's centre, so
-  // each of these is the midline pushed right by that much of its own
-  // width. Otherwise the peak balances the dome off Jimmy's ear.
-  'accessory-cap': {
-    z: 30,
-    stages: {
-      1: { top: '11.2%', left: '49.7%', width: '32.5%' },
-      2: { top: '12.6%', left: '48.3%', width: '37.2%' },
-      3: { top: '9.2%', left: '49.6%', width: '33.1%' },
-      4: { top: '9.7%', left: '49.3%', width: '29.4%' },
-    },
-  },
-  // The torso does NOT follow the head's numbers — it is the part of Jimmy
-  // that actually changes between tiers, and it changes the other way: the
-  // Legend's head is the smallest share of his canvas and his chest the
-  // largest. So body pieces get their own landmark, the NECK BASE — the narrowest row of the neck
-  // pinch, before the shoulders flare: goat 24.5% of canvas height, buff
-  // 25.5%, titan 23%, legend 21%. The garment's own collar is lined up
-  // with that, which is the difference between Jimmy wearing a shirt and
-  // Jimmy standing behind one. The first cut anchored to the chin and sat
-  // ~6% too low, leaving his neck above the collar instead of through it.
-  //
-  // Widths are NOT near-constant across tiers the way the head pieces are.
-  // The first cut assumed they were and dressed every goat in the Goat's
-  // size, which left the Legend's chest hanging out either side of a vest
-  // three sizes too small. They climb ~20% from tier 1 to tier 4 (hoodie
-  // 45 -> 54, tank 43 -> 52), tuned against the render because the
-  // silhouette measurements here are too noisy to trust: the arms are
-  // fused to the torso in the alpha channel at exactly the rows that
-  // matter, and each tier holds them at a different angle.
-  //
-  // See accessoryArt.jsx's `behind` for the other half of looking worn:
-  // the strip of each garment that is drawn UNDER the sprite.
-  // Legs. The hip and the sole sit at the same share of canvas height on
-  // all four sprites (45.0% and 84.0%), so only the width changes — scaled
-  // by the leg span at 62% height, where the hands are clear of the thighs.
-  'accessory-jeans': {
-    z: 5,
-    stages: {
-      1: { top: '65.4%', left: '50.6%', width: '58.6%' },
-      2: { top: '65.4%', left: '48.3%', width: '54.7%' },
-      3: { top: '65.4%', left: '50.0%', width: '50.0%' },
-      4: { top: '65.4%', left: '49.1%', width: '46.9%' },
-    },
-  },
-  'accessory-tank': {
-    z: 10,
-    stages: {
-      // Measured from each stage's own composite, not scaled from stage 1.
-      1: { top: '39.2%', left: '50.5%', width: '54.7%' },
-      2: { top: '38.0%', left: '48.4%', width: '47.0%' },
-      3: { top: '36.1%', left: '51.0%', width: '50.7%' },
-      4: { top: '35.2%', left: '48.4%', width: '48.3%' },
-    },
-  },
-  'accessory-hoodie': {
-    z: 10,
-    stages: {
-      1: { top: '38.1%', left: '50.5%', width: '65.9%' },
-      2: { top: '32.0%', left: '48.4%', width: '50.0%' },
-      3: { top: '31.1%', left: '50.4%', width: '66.6%' },
-      4: { top: '30.6%', left: '47.1%', width: '60.4%' },
-    },
-  },
-};
+// The z-stack per slot — body behind, lenses in front. A property of the
+// outfit, not of who is wearing it, so two head pieces can never argue
+// about order on one character and agree on the other.
+const SLOT_Z = { legs: 5, body: 10, neck: 20, head: 30, eyes: 40 };
 
 // Grounds the accessory on the sprite instead of letting it float — the
 // PNGs are lit flat and read as stickers without it.
 const SHADOW = 'drop-shadow(0 2px 3px rgba(0,0,0,0.45))';
-
-// Gena's gear, in the same coordinate system and measured the same way —
-// but ONE entry per accessory rather than four, because her four sprites
-// were normalised onto a single canvas (see data/mascots.js). Her tiers
-// differ in definition, not in silhouette, so a per-stage table here would
-// be four copies of the same numbers pretending to be a calibration.
-//
-// Landmarks read off gena-goat.png, the same way Jimmy's were:
-//
-//   eye line 15.7% of canvas height · pupil span 18.5% of canvas width
-//   face midline 50.5% · shoulder line 26% · hip 45% · sole 84%
-//
-// Head and eye pieces are Jimmy's stage-1 numbers converted through pupil
-// span — his 16.6% of a 528px canvas against her 18.5% of a 285px one —
-// with vertical offsets from the eye line carried across in the SAME
-// physical units, which matters here in a way it never did for Jimmy: his
-// canvases are all ~0.36:1 while hers is 0.28:1, so a percentage of width
-// and a percentage of height do not convert between the two characters at
-// the same rate.
-//
-// Pupil span is the right basis for the SHADES, which sit across the eyes.
-// It is the wrong one for the HEADPHONES, and they were shipped too small
-// because of it: converted through her narrower eye spacing the cups came
-// out at 50% and sat on her cheeks, inside the face, with the ears poking
-// out beside them. Head-hugging pieces scale with the head. On Jimmy the
-// cups are 1.28x his face width at eye level; her face there is ~46%, so
-// 60% — checked side by side with his stage-1 render: cups straddling the
-// face edge over the ear roots, band arched over the crown between the
-// horns, cup top at the brow and bottom at the nose. `top` then follows
-// from holding the band top at ~7% of the canvas, as his is.
-//
-// The three body/leg pieces are a COMPROMISE and worth knowing about. That
-// artwork was cut from Jimmy composites (see accessoryArt.jsx), so it is
-// literally a stocky male goat's garment: his jeans are 0.65:1 where her
-// hip-to-ankle run wants nearer 0.28:1. Fitting them to her height would
-// make them twice as wide as her body, so they are fitted to her WIDTH
-// instead — which lands the tank and hoodie correctly and leaves the jeans
-// reading as cropped ones that stop below the knee. Gena-cut versions of
-// those three are the real fix; nothing in the code changes when they
-// arrive beyond the numbers below.
-const GENA_ACCESSORY_LAYOUT = {
-  'accessory-shades': { top: '15.4%', left: '50.5%', width: '43.0%' },
-  'accessory-headphones': { top: '13.5%', left: '50.5%', width: '60.0%' },
-  'accessory-cap': { top: '10.8%', left: '50.5%', width: '37.0%' },
-  'accessory-tank': { top: '34.8%', left: '50.5%', width: '49.0%' },
-  'accessory-hoodie': { top: '37.4%', left: '50.5%', width: '62.0%' },
-  'accessory-jeans': { top: '58.0%', left: '50.5%', width: '60.0%' },
-};
-
-// Placement is per mascot AND per stage; `z` is neither — the slot stack
-// (body behind, lenses in front) is a property of the outfit, not of who
-// is wearing it, so it is read from ACCESSORY_LAYOUT either way and two
-// head pieces can never argue about order on one character and agree on
-// the other.
-function layoutFor(itemId, stage, mascotId) {
-  const entry = ACCESSORY_LAYOUT[itemId];
-  if (!entry) return null;
-  const place =
-    mascotId === MASCOT_GENA
-      ? GENA_ACCESSORY_LAYOUT[itemId]
-      : entry.stages[stage] ?? entry.stages[1];
-  // A mascot with no entry for this piece wears nothing rather than
-  // wearing it in Jimmy's place on a body that is not his.
-  if (!place) return null;
-  return { ...place, zIndex: entry.z };
-}
 
 // The worn accessories on their own, sized and placed against Jimmy's
 // sprite — no sprite of its own, so it can be dropped over one that is
@@ -308,6 +122,13 @@ export function AccessoryLayer({
       : readEquippedAccessories(equippedAccessories)
   ).filter((id) => mascotCanWear(mascot, id));
 
+  // The body under the gear: this mascot's landmarks at this tier, in
+  // the outfit set they have on (an outfit may move a landmark — see
+  // avatarAnchors' `outfits`). No landmarks means no way to place
+  // anything honestly, so nothing is drawn.
+  const anchors = anchorsFor(mascot, stage, equippedOutfitFor(mascot, equipped));
+  if (!anchors) return null;
+
   // Fixed slot order, not the order things were equipped, so layering is
   // stable: the hoodie paints before the chain that lies on it, and the
   // lenses paint last.
@@ -317,13 +138,15 @@ export function AccessoryLayer({
     if (!id) return [];
     // NOT plain `stage`: a per-stage garment is a cut of a specific tier
     // of a specific mascot, and the later ones have that mascot baked into
-    // them — see accessoryArtStageFor.
+    // them — see accessoryArtStageFor. The PLACEMENT still uses the real
+    // stage's landmarks: the cut is chosen for the art, the body is the
+    // body.
     const art = artFor(ACCESSORY_ART[id], accessoryArtStageFor(mascot, stage));
     // The behind pass draws only the pieces that HAVE a back half.
     if (behindPass && !art.behind) return [];
-    const place = layoutFor(id, stage, mascot);
+    const place = placeOnAnchors(art.fit, anchors, stage);
     if (!place) return [];
-    return [{ id, art, name: getStoreItem(id)?.name ?? id, place }];
+    return [{ id, art, name: getStoreItem(id)?.name ?? id, place: { ...place, zIndex: SLOT_Z[slot] ?? 10 } }];
   });
 
   if (worn.length === 0) return null;

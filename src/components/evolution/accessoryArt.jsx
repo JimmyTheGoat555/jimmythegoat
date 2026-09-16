@@ -20,9 +20,27 @@
 
 
 
-// slot + art, one entry per catalog id. Placement lives in JimmyAvatar's
-// ACCESSORY_LAYOUT, because it is per-EVOLUTION-STAGE and this file has no
-// business knowing which goat it is being drawn on.
+// slot + art + fit, one entry per catalog id.
+//
+// `fit` is how the piece sits on a BODY, not where it sits on a canvas:
+// which landmark it hangs off (data/avatarAnchors.js — eyes, head, neck,
+// hips) and its size and offsets in that landmark's own unit. A pair of
+// shades is 2.29 pupil spans wide and centred on the eye line, whoever is
+// wearing them; the anchors say where that mascot's eyes are, at that
+// tier, in that outfit. AccessoryLayer multiplies the two
+// (placeOnAnchors), which is what lets one fit serve Jimmy's four bodies
+// and Gena's — and any sprite added later, once its landmarks are in.
+//
+//   width  × the landmark's span/width          → the piece's width
+//   dx     × the landmark's span/width          → horizontal offset
+//   dy     × the landmark's span/width, × aspect → vertical offset
+//   widthW / dxW: fractions of canvas WIDTH; dyH: of canvas HEIGHT —
+//          absolute forms, for the per-stage garments below; any may be
+//          a {1,2,3,4} map when the four cuts genuinely differ.
+//
+// The numbers were derived from the per-tier placements this replaced,
+// which were themselves measured off the sprites and corrected by eye —
+// so every piece lands where it did before, now by rule.
 //
 // `src` and `aspect` are EITHER a single value used on every tier, OR a
 // {1,2,3,4} map when a piece is drawn per stage. Use the map whenever the
@@ -45,10 +63,44 @@
 // neck was standing in the collar when the composite was made, so the
 // hole it left is genuinely transparent and his neck shows through it.
 export const ACCESSORY_ART = {
-  'accessory-shades': { slot: 'eyes', src: '/assets/accessories/shades.png', aspect: 3.298 },
-  'accessory-headphones': { slot: 'head', src: '/assets/accessories/headphones.png', aspect: 1.280 },
-  'accessory-cap': { slot: 'head', src: '/assets/accessories/cap.png', aspect: 1.389 },
-  'accessory-jeans': { slot: 'legs', src: '/assets/accessories/jeans.png', aspect: 0.654 },
+  // Across the eyes: 2.29 pupil spans wide, centred a hair below the eye
+  // line so the bridge sits on the nose rather than the brow.
+  'accessory-shades': {
+    slot: 'eyes',
+    src: '/assets/accessories/shades.png',
+    aspect: 3.298,
+    fit: { anchor: 'eyes', width: 2.29, dy: 0.02 },
+  },
+  // Head-hugging, so sized by the HEAD, not the eyes: cups 1.28× the head
+  // width, straddling the face edge over the ear roots. The art is not
+  // centred on what it lines up with — the cups sit at 67% of the PNG's
+  // height with the band arcing above — so the centre lands 0.32 head
+  // widths below the crown, which puts the band top just over the skull.
+  'accessory-headphones': {
+    slot: 'head',
+    src: '/assets/accessories/headphones.png',
+    aspect: 1.28,
+    fit: { anchor: 'head', width: 1.28, dy: 0.32 },
+  },
+  // 0.78 head widths across, its band 0.11 head widths below the crown —
+  // drawn three-quarter-on, so the dome reads centred while the peak
+  // hangs to one side.
+  'accessory-cap': {
+    slot: 'head',
+    src: '/assets/accessories/cap.png',
+    aspect: 1.389,
+    fit: { anchor: 'head', width: 0.776, dy: 0.113 },
+  },
+  // 93% of the leg span, centred 20.4% of canvas height below the hip
+  // line — an absolute vertical because the hip-to-sole run is the same
+  // share of every sprite (hips 45%, ground 84%), so the garment's
+  // vertical extent is fixed by the contract rather than by a landmark.
+  'accessory-jeans': {
+    slot: 'legs',
+    src: '/assets/accessories/jeans.png',
+    aspect: 0.654,
+    fit: { anchor: 'hips', width: 0.93, dyH: 0.204 },
+  },
   // Drawn per stage — the user made a version for each Jimmy, and the
   // Legend's is not the Goat's garment at a bigger size. Stage 1 and 2 came
   // out of folder-of-composites extraction; 3 and 4 from single images,
@@ -62,6 +114,15 @@ export const ACCESSORY_ART = {
       4: '/assets/accessories/tank-4.png',
     },
     aspect: { 1: 0.732, 2: 0.639, 3: 0.706, 4: 0.732 },
+    // Four different cuts of four different Jimmys, so the size and the
+    // offset from the neck base are per cut, in absolute canvas units —
+    // measured from each stage's own composite, not scaled from stage 1.
+    fit: {
+      anchor: 'neck',
+      widthW: { 1: 0.547, 2: 0.47, 3: 0.507, 4: 0.483 },
+      dxW: { 1: 0.008, 2: 0.001, 3: 0.014, 4: -0.009 },
+      dyH: { 1: 0.147, 2: 0.125, 3: 0.131, 4: 0.142 },
+    },
   },
   // All four are their own. They needed two different techniques, and which
   // one wins is not predictable: Canva re-renders the whole character per
@@ -83,6 +144,15 @@ export const ACCESSORY_ART = {
       4: '/assets/accessories/hoodie-4.png',
     },
     aspect: { 1: 0.757, 2: 0.476, 3: 0.562, 4: 0.642 },
+    // Same story as the tank. The hood is why the centre sits so much
+    // closer to the neck on the later cuts: those PNGs include the hooded
+    // head, so their centre is higher up the garment.
+    fit: {
+      anchor: 'neck',
+      widthW: { 1: 0.659, 2: 0.5, 3: 0.666, 4: 0.604 },
+      dxW: { 1: 0.008, 2: 0.001, 3: 0.008, 4: -0.022 },
+      dyH: { 1: 0.136, 2: 0.065, 3: 0.081, 4: 0.096 },
+    },
   },
 };
 
