@@ -48,7 +48,7 @@ export default function ProgressView({ workouts, exercises, bodyWeightKg = 0, mi
     : [];
 
   return (
-    <div className="flex flex-col gap-6 pt-6 pb-24">
+    <div className="flex flex-col gap-6 pt-6 pb-nav">
       <header className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-neutral-50">Progress</h1>
         <Link

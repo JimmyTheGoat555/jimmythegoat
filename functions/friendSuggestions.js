@@ -141,6 +141,11 @@ exports.suggestFriends = onCall(async (request) => {
       equippedAccessories: data.equippedAccessories ?? null,
       equippedAccessory: data.equippedAccessory ?? null,
       currentStreak: data.currentStreak ?? 0,
+      // Named here like every other field, per the note above. Already
+      // derived when the summary was written (functions/mascots.js), so
+      // this passes the id straight through and never sees the `gender`
+      // it may have come from.
+      mascot: data.mascot ?? null,
       mutualCount: count,
       mutualNames: via,
     });

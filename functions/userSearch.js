@@ -133,6 +133,11 @@ exports.searchUsers = onCall(async (request) => {
       equippedAccessories: summary.equippedAccessories ?? null,
       equippedAccessory: summary.equippedAccessory ?? null,
       currentStreak: summary.currentStreak ?? 0,
+      // Already derived at write time — see functions/mascots.js. A row
+      // with no summary yet has no mascot either and draws as Jimmy,
+      // which is the same base-tier-no-gear fallback the note above
+      // describes.
+      mascot: summary.mascot ?? null,
       // Drives which control the row renders. Deliberately three separate
       // booleans rather than one status string: they are independent
       // facts, and collapsing them here would mean re-deriving them in the

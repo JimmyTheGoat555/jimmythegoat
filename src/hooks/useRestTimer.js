@@ -2,13 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadJSON } from '../lib/storage';
 import { randomRestOverdueMessage } from '../utils/restMessages';
 import { playRestAlarm, unlockRestAlarm } from '../utils/restAlarm';
+import { DEFAULT_REST_SECONDS } from '../utils/restPresets';
 import {
   askRestNotificationPermission,
   cancelRestNotification,
   scheduleRestNotification,
 } from '../utils/restNotification';
 
-export const DEFAULT_REST_SECONDS = 90;
+// Re-exported so nothing that already imports the fallback from here has
+// to know it moved; utils/restPresets.js is the single definition, shared
+// with the Settings dropdown.
+export { DEFAULT_REST_SECONDS };
 export const REST_STEP_SECONDS = 30;
 // How long the timer can sit at 0:00 before Jimmy's attitude kicks in — the
 // grace period the "hit zero" beep/vibrate already covers isn't a nag yet,
@@ -19,8 +23,9 @@ export const OVERDUE_THRESHOLD_SECONDS = 30;
 // needs the CURRENT value at the moment the rest period actually ends,
 // not a live-updating subscription, and reading it fresh each time (see
 // alertRestOver's call site below) means a toggle flipped mid-workout
-// takes effect on the very next beep instead of waiting for
-// ActiveWorkoutLogger to remount.
+// takes effect on the very next beep. That mattered more than ever once
+// this hook moved up to App: it now only remounts on a full page load, so
+// a value captured at mount would be stale for the whole session.
 const SOUND_EFFECTS_KEY = 'sound-effects-enabled';
 
 // Vibration always fires — haptic feedback isn't really "sound", and
@@ -60,6 +65,23 @@ function alertRestOver(soundEnabled) {
 // past OVERDUE_THRESHOLD_SECONDS, Jimmy escalates — see
 // isOverdue/overdueMessage below. `overdueSeconds` is derived from the
 // same timestamp, so it too is correct after a freeze.
+//
+// CALLED FROM App, not from the workout screen. That is deliberate and
+// load-bearing: ActiveWorkoutLogger is mounted by the /workout route, so
+// while this hook lived there, tapping any bottom tab mid-rest unmounted
+// it and destroyed the countdown — no clock, no alarm, and no trace that
+// either had existed. Above the router it outlives every route change,
+// which is also what lets FloatingWorkoutBar show the rest on the screen
+// the lifter wandered off to. App ends the rest when the session ends; see
+// the activeWorkoutId effect there.
+//
+// `defaultSeconds` is the length of a rest started with no argument, which
+// is every rest the app starts by itself (checking a set off). It comes
+// from the signed-in account's `defaultRestTimer` — see App.jsx's call
+// site and SettingsPanel's dropdown — and falls back to 90 for accounts
+// that have never set one. Changing it mid-workout is safe: `start` closes
+// over it, so the NEXT rest uses the new length and a rest already
+// counting down is left alone.
 export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
   const [endsAt, setEndsAt] = useState(null);
   const [now, setNow] = useState(() => Date.now());

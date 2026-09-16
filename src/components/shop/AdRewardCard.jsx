@@ -1,5 +1,6 @@
 import { AD_REWARD_COINS } from '../../data/storeItems';
 import { useRewardedAd } from '../../hooks/useRewardedAd';
+import AdPlayingOverlay from '../shared/AdPlayingOverlay';
 
 // "Need more Coins?" — the one place in this app where currency comes from
 // something other than training.
@@ -9,9 +10,12 @@ import { useRewardedAd } from '../../hooks/useRewardedAd';
 // coins BUY, not next to the button that starts a workout. An offer to
 // watch a video where somebody is deciding whether to train is a different
 // product than a gym app.
-export default function AdRewardCard({ lastAdRewardAt = null }) {
+// `isAdmin` skips the once-a-day client cooldown so the owner can test the
+// ad flow back to back. Visibility only — functions/guards.js holds the
+// matching server-side exemption, and that is what actually pays out.
+export default function AdRewardCard({ lastAdRewardAt = null, isAdmin = false }) {
   const { status, busy, isAdLoaded, isNative, awaitsServerReward, error, limitReached, lastReward, watchAd } =
-    useRewardedAd(lastAdRewardAt);
+    useRewardedAd(lastAdRewardAt, { bypass: isAdmin });
   // Fetching an ad is a real state on native and a non-state on web (where
   // there is nothing to fetch and isAdLoaded is always true), so the
   // button only ever shows "Loading ad…" where it means something.
@@ -76,32 +80,13 @@ export default function AdRewardCard({ lastAdRewardAt = null }) {
         </div>
       </section>
 
-      {/* WEB ONLY. On native the AdMob SDK draws its own full-screen ad
-          over the app and this would sit uselessly behind it.
-
-          Full screen and NOT dismissible, because a rewarded ad is not:
-          closing it early is exactly the case where a real SDK pays
-          nothing, and a fake one that can be tapped away in half a second
-          would teach the wrong habit before the real thing lands. */}
+      {/* The stand-in ad itself — see AdPlayingOverlay for why it is
+          web-only and cannot be dismissed. */}
       {busy && !isNative && (
-        <div
-          className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-neutral-950/97 px-6"
-          role="status"
-          aria-live="polite"
-        >
-          <span aria-hidden="true" className="text-5xl leading-none">
-            🎬
-          </span>
-          <p className="text-xl font-bold text-neutral-50">
-            {status === 'rewarding' ? 'Adding your coins…' : 'Watching Ad…'}
-          </p>
-          <p className="text-sm text-neutral-500">
-            {status === 'rewarding' ? 'One moment.' : `Hang tight — ${AD_REWARD_COINS} coins on the way.`}
-          </p>
-          <span aria-hidden="true" className="mt-2 h-1 w-40 overflow-hidden rounded-full bg-white/10">
-            <span className="block h-full w-full origin-left animate-[ad-progress_3s_linear_forwards] bg-[var(--ember)]" />
-          </span>
-        </div>
+        <AdPlayingOverlay
+          rewarding={status === 'rewarding'}
+          caption={`Hang tight — ${AD_REWARD_COINS} coins on the way.`}
+        />
       )}
     </>
   );

@@ -14,7 +14,14 @@ function GearIcon() {
 // state" reasoning as everywhere else the economy shows up.
 export default function TopHud({ coins, onOpenSettings }) {
   return (
-    <div className="relative z-10 flex items-center justify-between pt-4">
+    // pt-4's worth of breathing room PLUS whatever the notch/status bar
+    // occupies. With viewport-fit=cover (index.html) the page paints
+    // under the status bar, so without this the coin counter and the gear
+    // sit behind the clock and battery on a notched phone.
+    <div
+      className="relative z-10 flex items-center justify-between"
+      style={{ paddingTop: 'calc(var(--safe-t) + 1rem)' }}
+    >
       <button
         type="button"
         onClick={onOpenSettings}

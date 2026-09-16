@@ -51,6 +51,11 @@ exports.completeOnboardingProfile = completeOnboardingProfile;
 const { setSharePRs } = require('./publicProfile');
 exports.setSharePRs = setSharePRs;
 
+// The second half of the finish flow's record sharing — see
+// publishRecords.js for why the answer arrives after the post is written.
+const { publishWorkoutRecords } = require('./publishRecords');
+exports.publishWorkoutRecords = publishWorkoutRecords;
+
 const { sendFriendRequest, respondToFriendRequest, removeFriend } = require('./social');
 exports.sendFriendRequest = sendFriendRequest;
 exports.respondToFriendRequest = respondToFriendRequest;
@@ -62,17 +67,48 @@ exports.suggestFriends = suggestFriends;
 const { searchUsers } = require('./userSearch');
 exports.searchUsers = searchUsers;
 
+// The Admin dashboard's numbers. Gated on the admin account's uid inside
+// (functions/appAdmin.js), not on the route the client happens to render
+// — the /admin route is a convenience, this is the actual boundary.
+const { adminAnalytics } = require('./adminAnalytics');
+exports.adminAnalytics = adminAnalytics;
+
 // Coins for a rewarded ad view. Server-side because the client may never
 // write its own balance — though see that file on why "server-side" is
 // not the same as "verified" until AdMob's SSV callback replaces it.
 const { rewardAdView } = require('./rewardAdView');
 exports.rewardAdView = rewardAdView;
 
+// The rest-timer ad. Arms a one-use 2× coin token on meta/economy that
+// logWorkout redeems against one exercise — coins only, never volume or
+// records. See functions/restBoost.js for why it is a server-held token
+// and not a flag on the payload.
+const { claimRestBoost } = require('./restBoost');
+exports.claimRestBoost = claimRestBoost;
+
 // One-time sweep that makes every EXISTING account a friend of the
 // official Jimmy account; new accounts get it at signup
 // (onboarding.js). Runnable only by that account itself.
 const { friendEveryoneWithJimmy } = require('./officialFriendships');
 exports.friendEveryoneWithJimmy = friendEveryoneWithJimmy;
+
+// Globally unique display names — see functions/usernames.js.
+const {
+  claimUsername,
+  checkUsernameAvailable,
+  requireUsernameChange,
+  backfillUsernames,
+} = require('./usernames');
+exports.claimUsername = claimUsername;
+exports.checkUsernameAvailable = checkUsernameAvailable;
+exports.requireUsernameChange = requireUsernameChange;
+exports.backfillUsernames = backfillUsernames;
+
+// One-time migration: every female account onto Gena, including the
+// snapshots on their existing feed posts and public summary. Admin-only,
+// idempotent, and takes { dryRun: true }. See functions/mascotBackfill.js.
+const { backfillFemaleMascots } = require('./mascotBackfill');
+exports.backfillFemaleMascots = backfillFemaleMascots;
 
 // Pushes a renamed account's new name onto the surfaces other people read
 // — the public summary and the friend-code lookup. See the file header for

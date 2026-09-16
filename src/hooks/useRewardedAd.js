@@ -48,7 +48,42 @@ import {
 // forgets the reward was claimed the moment the page reloads, offers the
 // ad again, plays it, and only then learns from the server that it cannot
 // pay: an ad watched for nothing, which is worse than a disabled button.
-export function useRewardedAd(lastAdRewardAt = null) {
+// `bypass` is the admin testing exemption: it skips the 24h client-side
+// cooldown so the card stays tappable. It does NOT skip the server's own
+// one-a-day cap — that lives in functions/guards.js, which has its own
+// admin bypass for the same account, so the two agree without this hook
+// needing to know anything about the server's rules.
+//
+// TWO REWARDS RIDE THIS ONE HOOK. The Store's coin ad is the default. The
+// rest timer's 2× offer passes:
+//
+//   `callable`          which Cloud Function the Rewarded event claims
+//                       through ('claimRestBoost' — functions/restBoost.js)
+//   `customData`        what AdMob echoes back in its signed callback so
+//                       the server knows which reward a verified view was
+//                       for (see functions/admobSsv.js)
+//   `unavailableReason` a caller-side reason the reward cannot pay right
+//                       now — today's boosts spent, say — surfaced as
+//                       `limitReached` and refused by watchAd before an ad
+//                       plays, exactly as the cooldown is
+//   `onClaimed`         told the callable's response on both paths (the
+//                       web stand-in and native-without-SSV), which is how
+//                       a caller learns a token id without polling
+//
+// The ad flow itself — load, show, pay only on Rewarded — is identical for
+// both, which is the reason they share a hook rather than each owning a
+// copy of the SDK plumbing.
+export function useRewardedAd(
+  lastAdRewardAt = null,
+  { bypass = false, callable = 'rewardAdView', customData = '', unavailableReason = null, onClaimed } = {},
+) {
+  // A ref so claimReward (and the native listeners that call it) stay
+  // stable across renders — the caller's callback can change identity
+  // every render without re-registering AdMob listeners.
+  const onClaimedRef = useRef(onClaimed);
+  useEffect(() => {
+    onClaimedRef.current = onClaimed;
+  }, [onClaimed]);
   // 'idle' | 'loading' (fetching an ad) | 'playing' | 'rewarding' (server)
   const [status, setStatus] = useState('idle');
   const [isAdLoaded, setIsAdLoaded] = useState(false);
@@ -64,7 +99,24 @@ export function useRewardedAd(lastAdRewardAt = null) {
   // device claims the reward.
   const claimedAtMs = lastAdRewardAt ? Date.parse(lastAdRewardAt) : NaN;
   const nextAvailableAt = Number.isFinite(claimedAtMs) ? claimedAtMs + AD_REWARD_COOLDOWN_MS : null;
-  const onCooldown = nextAvailableAt !== null && nextAvailableAt > Date.now();
+  // Sampled into state rather than read during render. Date.now() in a
+  // render body is impure — the project's own linter flags it — and the
+  // practical cost is that the cooldown could not expire on its own: the
+  // card stayed disabled until some unrelated state change happened to
+  // repaint it, which on a screen the user is sitting on can be forever.
+  // One timeout for the exact moment it lapses, no ticking interval.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (nextAvailableAt === null || nextAvailableAt <= now) return undefined;
+    const id = setTimeout(() => setNow(Date.now()), nextAvailableAt - now);
+    return () => clearTimeout(id);
+  }, [nextAvailableAt, now]);
+  // ADMIN BYPASS — see the `bypass` note on the signature.
+  const onCooldown = !bypass && nextAvailableAt !== null && nextAvailableAt > now;
+  // The caller's own "cannot pay right now" — same treatment as the
+  // cooldown, same bypass, so the two reasons an ad should not play are
+  // one condition everywhere below.
+  const unavailable = !bypass && unavailableReason != null;
 
   const native = isNativePlatform();
   // A ref, not state: the guard has to hold for the SECOND tap in the same
@@ -78,8 +130,11 @@ export function useRewardedAd(lastAdRewardAt = null) {
   const claimReward = useCallback(async () => {
     setStatus('rewarding');
     try {
-      const { data } = await httpsCallable(functions, 'rewardAdView')({});
+      const { data } = await httpsCallable(functions, callable)({});
+      // Null for a reward that is not coins (the rest-timer boost) — the
+      // card's "+N coins" receipt simply does not render.
       setLastReward(data?.coinsAwarded ?? null);
+      onClaimedRef.current?.(data);
       return data;
     } catch (err) {
       const message = friendlyAuthError(err, "Couldn't award the coins — try again.");
@@ -90,7 +145,7 @@ export function useRewardedAd(lastAdRewardAt = null) {
       setStatus('idle');
       inFlight.current = false;
     }
-  }, []);
+  }, [callable]);
 
   // ── Native: initialise once, keep one ad warm ───────────────────────────
   const prepare = useCallback(async () => {
@@ -105,7 +160,9 @@ export function useRewardedAd(lastAdRewardAt = null) {
       // without it is an ad nobody can be credited for.
       const uid = auth.currentUser?.uid;
       if (SSV_ENABLED && uid) {
-        await AdMob.setServerSideVerificationOptions({ userId: uid, customData: '' });
+        // `customData` rides along signed, so the callback can tell which
+        // reward this ad was for — see functions/admobSsv.js.
+        await AdMob.setServerSideVerificationOptions({ userId: uid, customData });
       }
       await AdMob.prepareRewardVideoAd({ adId: adUnitIdFor(currentPlatform()), isTesting: IS_TESTING });
       // Loaded arrives as an event, not as this promise resolving — the
@@ -114,7 +171,7 @@ export function useRewardedAd(lastAdRewardAt = null) {
       setError(friendlyAuthError(err, 'No ad available right now — try again in a minute.'));
       setStatus('idle');
     }
-  }, []);
+  }, [customData]);
 
   useEffect(() => {
     if (!native) {
@@ -200,7 +257,7 @@ export function useRewardedAd(lastAdRewardAt = null) {
   const watchAd = useCallback(async () => {
     if (inFlight.current) return null;
     // Refuse before the ad plays rather than after the server says no.
-    if (onCooldown) return null;
+    if (onCooldown || unavailable) return null;
     inFlight.current = true;
     setError(null);
     setLastReward(null);
@@ -231,7 +288,7 @@ export function useRewardedAd(lastAdRewardAt = null) {
     setStatus('playing');
     await new Promise((resolve) => setTimeout(resolve, SIMULATED_AD_MS));
     return claimReward();
-  }, [native, isAdLoaded, claimReward, prepare, onCooldown]);
+  }, [native, isAdLoaded, claimReward, prepare, onCooldown, unavailable]);
 
   return {
     status,
@@ -250,7 +307,12 @@ export function useRewardedAd(lastAdRewardAt = null) {
     // fact, two sources; the second is the one that survives a refresh,
     // which is the whole point of mirroring lastAdRewardAt.
     limitReached:
-      limitReached ?? (onCooldown ? "You've claimed today's ad reward — come back tomorrow for the next one." : null),
+      limitReached ??
+      (onCooldown
+        ? "You've claimed today's ad reward — come back tomorrow for the next one."
+        : unavailable
+          ? unavailableReason
+          : null),
     nextAvailableAt,
     lastReward,
     watchAd,

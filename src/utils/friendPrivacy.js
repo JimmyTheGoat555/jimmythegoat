@@ -1,4 +1,5 @@
 import { getEvolutionProgress } from './evolutionTiers';
+import { mascotCanWear, mascotHasDances, resolveMascotId } from '../data/mascots';
 import { readEquippedAccessories, STORE_ITEMS } from '../data/storeItems';
 import { BADGES } from '../data/badges';
 import { isOnFire } from './streak';
@@ -199,6 +200,11 @@ export function sanitizeFriendData(rawData) {
     minStage: Number(raw.minStage) || 1,
   });
 
+  // Resolved before the fields below, several of which are gated on it:
+  // a mascot with no cosmetic art of its own publishes no gear and no
+  // dances (see data/mascots.js).
+  const mascot = resolveMascotId(raw);
+
   // Absent means never shared. `isPublic !== false` rather than
   // `=== true` on purpose: today the server publishes an all-or-nothing
   // list with no per-record flag, so requiring `true` would hide every
@@ -219,7 +225,21 @@ export function sanitizeFriendData(rawData) {
     evolutionStage: current.stage,
     tierId: current.id,
     tierLabel: current.label,
-    equippedAccessories: readEquippedAccessories(raw),
+    // Emptied for a mascot with no accessory art of its own. AccessoryLayer
+    // would refuse to draw them anyway, so this is belt to that braces —
+    // but it is the belt that matters for the parts of a profile that are
+    // NOT the avatar: a visitor should not be offered a dance to play on
+    // somebody who cannot perform it.
+    // Per item: what this mascot can actually wear, and nothing else —
+    // the same allowlist AccessoryLayer enforces, applied before publish.
+    equippedAccessories: readEquippedAccessories(raw).filter((id) => mascotCanWear(mascot, id)),
+    // Which character they are. Passed through the same resolver the owner
+    // of the account uses, so a summary written before the mascot field
+    // existed still lands on the right goat via its `gender` — and note
+    // that neither field is published on its own: only this derived id
+    // leaves here, so a friend's client learns which sprite to draw and
+    // never reads their gender off the wire.
+    mascot,
 
     // Their workout streak, and whether it is long enough to set them
     // alight. The threshold is imported rather than re-typed as `>= 2`
@@ -245,12 +265,16 @@ export function sanitizeFriendData(rawData) {
     // Cosmetic and published on purpose (economy.js writes it into
     // public/summary); there is no opt-out the way there is for PRs,
     // because a showcase nobody can see is not a showcase.
-    unlockedDances: sanitizeDances(raw.unlockedDances, raw.equippedDance),
-    equippedDance: DANCE_IDS.includes(raw.equippedDance) ? raw.equippedDance : null,
+    unlockedDances: mascotHasDances(mascot) ? sanitizeDances(raw.unlockedDances, raw.equippedDance) : [],
+    equippedDance:
+      mascotHasDances(mascot) && DANCE_IDS.includes(raw.equippedDance) ? raw.equippedDance : null,
     // Distinguishes "owns no dances" from "their summary predates the
     // field" — the second is fixed by them logging a workout, the first
     // is not, and the two want different copy.
-    dancesPublished: Array.isArray(raw.unlockedDances),
+    // False for a mascot with no clips, which is the honest answer: the
+    // showcase is not "empty pending their next workout", it does not
+    // apply to them at all.
+    dancesPublished: mascotHasDances(mascot) && Array.isArray(raw.unlockedDances),
 
     // The bar, without the numbers behind it. `percent` is a position, not
     // a measurement — you cannot read a volume back off a rounded

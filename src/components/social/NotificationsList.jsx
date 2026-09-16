@@ -22,6 +22,10 @@ const ICONS = {
   workout_recommendation: '📋',
   // Someone finished a workout you recommended, and it paid.
   reward_bounty: '🪙',
+  // A friend crossed an evolution threshold — written by logWorkout's
+  // fan-out (functions/economy.js), capped so the official account cannot
+  // push the whole user base.
+  friend_evolved: '🎉',
 };
 
 // The shared inbox surface — lives on the Social tab (see SocialPage.jsx),

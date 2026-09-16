@@ -41,7 +41,15 @@ function formatRemaining(ms) {
 // `isHourCooldown` and an `isDailyLimitReached`. The cap is gone; there is
 // one number now, so there is one state, and a `isDailyLimitReached` that
 // can never be true would just be a lie the next reader has to disprove.
-export function useWorkoutCooldown(uid) {
+// `bypass` skips the gate entirely — the admin testing exemption. Passed
+// in rather than resolved here so this hook keeps knowing nothing about
+// who the admin is: App.jsx already derives `isAdmin` for the Admin route,
+// and one source for that answer is the point (see src/utils/appAdmin.js).
+//
+// It short-circuits the DERIVED values only. The listener still runs, so
+// `unlocksAt` stays truthful if you ever want to show the admin what a
+// real user would be seeing right now.
+export function useWorkoutCooldown(uid, { bypass = false } = {}) {
   const [lastWorkoutMs, setLastWorkoutMs] = useState(null);
   // Distinct from "not cooling down": until the economy doc has been read
   // once we do not know, and the two must not look the same. Guessing
@@ -81,9 +89,14 @@ export function useWorkoutCooldown(uid) {
     );
   }, [uid]);
 
-  const unlocksAt = lastWorkoutMs === null ? null : lastWorkoutMs + WORKOUT_COOLDOWN_MS;
-  const remainingMs = unlocksAt === null ? 0 : Math.max(0, unlocksAt - now);
-  const isCoolingDown = !loading && remainingMs > 0;
+  const realUnlocksAt = lastWorkoutMs === null ? null : lastWorkoutMs + WORKOUT_COOLDOWN_MS;
+  const realRemainingMs = realUnlocksAt === null ? 0 : Math.max(0, realUnlocksAt - now);
+  // ADMIN BYPASS. Reported as "not cooling down, nothing remaining" — not
+  // as "still loading" — so WorkoutHome shows a live START button rather
+  // than a disabled one waiting on a read that already came back.
+  const unlocksAt = bypass ? null : realUnlocksAt;
+  const remainingMs = bypass ? 0 : realRemainingMs;
+  const isCoolingDown = !bypass && !loading && remainingMs > 0;
 
   // Ticks only while it is counting; the moment it reaches zero
   // isCoolingDown flips false and this clears itself. Keyed on the boolean,
@@ -96,7 +109,9 @@ export function useWorkoutCooldown(uid) {
   }, [isCoolingDown]);
 
   return {
-    loading,
+    // Never "loading" under a bypass: there is nothing to wait for when
+    // the answer is already known.
+    loading: bypass ? false : loading,
     isCoolingDown,
     remainingMs,
     remaining: formatRemaining(remainingMs),

@@ -95,7 +95,19 @@ export default function BottomNav({ isTrainer, unreadNotifications = 0, unequipp
   const currentIndex = tabs.findIndex((t) => t.to === location.pathname);
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-30 bg-neutral-950/92 border-t border-white/10">
+    // min-h pinned to the same --nav-total the floating workout bar
+    // offsets itself by, so the two can never drift apart (index.css).
+    //
+    // The bar still reaches bottom-0 — its background and border should
+    // run to the physical edge of the screen rather than leaving a strip
+    // of page showing under it — but the TAPPABLE row is lifted clear of
+    // the home indicator by padding, since a tab target underneath it is
+    // a target the OS swallows. min-height covers both (box-sizing is
+    // border-box app-wide), so the row itself still gets its full --nav-h.
+    <nav
+      className="fixed bottom-0 inset-x-0 z-30 border-t border-white/10 bg-neutral-950/92"
+      style={{ minHeight: 'var(--nav-total)', paddingBottom: 'var(--safe-b)' }}
+    >
       <div className={`max-w-md mx-auto grid ${GRID_COLS[tabs.length]}`}>
         {tabs.map(({ to, label, Icon, end }, index) => (
           <NavLink

@@ -18,6 +18,8 @@ import {
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, firebaseConfigured, functions } from '../lib/firebase';
+import { normalizeRestSeconds } from '../utils/restPresets';
+import { MASCOTS, resolveMascotId } from '../data/mascots';
 
 // Short, human-typeable code — used for both a trainer's trainerCode (a
 // trainee enters it once at signup) and now every account's friendCode
@@ -217,6 +219,14 @@ export function useAuth() {
         // `birthday` is a plain YYYY-MM-DD string.
         if (gender) onboardingPrefs.gender = gender;
         if (birthday) onboardingPrefs.birthday = birthday;
+        // Which mascot this account wears, written EXPLICITLY at signup
+        // rather than left to be derived every time it is read. The
+        // derivation (data/mascots.js) still exists and is what covers
+        // every account created before this field — but a new account
+        // should carry its own answer, so that a later change to the
+        // gender default cannot silently restyle people who already
+        // started, and so Settings has something to toggle against.
+        onboardingPrefs.mascot = resolveMascotId({ gender });
       }
 
       await setDoc(doc(db, 'users', cred.user.uid), {
@@ -278,6 +288,15 @@ export function useAuth() {
         heightCm: onboarding?.heightCm,
         primaryGoal: onboarding?.primaryGoal,
         targetDaysPerWeek: onboarding?.targetDaysPerWeek,
+        // The wizard's gender answer, sent so the server can re-derive the
+        // mascot and write it with the Admin SDK. The setDoc above already
+        // wrote both — this is the backstop for exactly the failure this
+        // callable was created for: a users/{uid} write from the client
+        // being lost to a rules race. The character someone picked at
+        // signup is the first thing they see on every screen afterwards,
+        // so it should not be the one field still riding the path that
+        // once silently dropped their body weight.
+        gender: onboarding?.gender,
       });
 
       // Lookup-table entries, so a code is resolvable the moment the
@@ -396,11 +415,24 @@ export function useAuth() {
   // emailVerified change rather than about correctness. Silent on failure:
   // a missing welcome friendship is worth nothing next to an error on
   // somebody's first launch, and the next launch tries again.
-  const welcomeFriendClaimed = useRef(false);
+  // The callable hands back the official account's uid, kept here so the
+  // Social tab can say "you're connected with Jimmy" about the right
+  // person rather than matching on a display name anyone can copy.
+  const [officialFriendUid, setOfficialFriendUid] = useState(null);
+  const welcomeFriendClaimed = useRef(null);
   useEffect(() => {
-    if (!user || !emailVerified || welcomeFriendClaimed.current) return;
-    welcomeFriendClaimed.current = true;
-    httpsCallable(functions, 'claimWelcomeFriend')({}).catch(() => {});
+    const uid = user?.uid ?? null;
+    if (!uid || !emailVerified) return;
+    // Keyed on the uid, not a boolean: signing out and into a SECOND
+    // account on the same device left the old flag set, so that account
+    // never claimed at all. Comparing uids re-arms per account and still
+    // fires exactly once each.
+    if (welcomeFriendClaimed.current === uid) return;
+    welcomeFriendClaimed.current = uid;
+    setOfficialFriendUid(null);
+    httpsCallable(functions, 'claimWelcomeFriend')({})
+      .then((res) => setOfficialFriendUid(res?.data?.officialUid ?? null))
+      .catch(() => {});
   }, [user, emailVerified]);
 
   // Throws on failure (rate limiting is the common one) so the banner can
@@ -472,6 +504,63 @@ export function useAuth() {
     await httpsCallable(functions, 'setSharePRs')({ share });
   }, []);
 
+  // "Ask me for my locker number" — turned off from the prompt itself or
+  // from Settings, back on from Settings. A plain owner write (see
+  // firestore.rules' userUpdateFieldsAllowed), NOT a callable like
+  // setSharePRs above: nothing else in the system reads this field, there
+  // is no mirror to keep in sync and no privacy consequence, so a round
+  // trip through a Cloud Function would buy nothing. The field is absent
+  // on every account that predates the feature and absence reads as ON,
+  // which is why only turning it off ever writes anything.
+  const setAskForLocker = useCallback(
+    async (ask) => {
+      if (!user) return;
+      await setDoc(doc(db, 'users', user.uid), { askForLocker: ask === true }, { merge: true });
+    },
+    [user],
+  );
+
+  // Settings' rest-length dropdown. Same shape and same reasoning as
+  // setAskForLocker above — a plain owner write, because this value is
+  // read by exactly one thing (the lifter's own rest countdown) and has
+  // no mirror, no economy effect and nothing to verify server-side.
+  // Normalized here as well as in the UI: this is the last point before
+  // the value reaches Firestore, and a rules rejection for an
+  // out-of-bounds number would surface as an unexplained "permission
+  // denied" on a settings screen.
+  const setDefaultRestTimer = useCallback(
+    async (seconds) => {
+      if (!user) return;
+      const value = normalizeRestSeconds(seconds);
+      await setDoc(doc(db, 'users', user.uid), { defaultRestTimer: value }, { merge: true });
+    },
+    [user],
+  );
+
+  // Settings' mascot switch. Same shape and same reasoning as the two
+  // above — a plain owner write, not a callable: this changes which sprite
+  // is drawn and nothing else. No coins move, no privacy flag flips, and
+  // the server has nothing to verify that the rules cannot (see
+  // firestore.rules, which pins the value to the two known ids).
+  //
+  // It deliberately does NOT touch `gender`. That field is demographic
+  // data the trainer-side view renders as a fact about the person; a
+  // cosmetic preference must not rewrite it, and the two are separate
+  // precisely so a user can have either without implying the other — see
+  // the header note in data/mascots.js.
+  //
+  // Unknown ids are refused here rather than written and filtered on read:
+  // the field is snapshotted onto every future feed post, so a bad value
+  // would outlive the write in a dozen documents.
+  const setMascot = useCallback(
+    async (mascotId) => {
+      if (!user) return;
+      if (!MASCOTS[mascotId]) throw new Error('Unknown mascot.');
+      await setDoc(doc(db, 'users', user.uid), { mascot: mascotId }, { merge: true });
+    },
+    [user],
+  );
+
   const signOutUser = useCallback(() => firebaseSignOut(auth), []);
 
   // Settings' username field — see firestore.rules' usernameChangeValid()
@@ -486,16 +575,24 @@ export function useAuth() {
     async (newName) => {
       const trimmed = newName.trim();
       if (!trimmed) throw new Error('Enter a name.');
-      await setDoc(doc(db, 'users', user.uid), { displayName: trimmed, usernameChangedOnce: true }, { merge: true });
-      updateProfile(user, { displayName: trimmed }).catch(() => {});
-      // The rename above only changes the copy YOU read. Friends read
-      // users/{uid}/public/summary, which a client is not allowed to write
-      // (and should not be — see functions/publicName.js), so without this
-      // the new name is invisible to everybody else until the next logged
-      // workout rewrites the summary. Awaited, not fire-and-forget: "it
-      // didn't change" is precisely the bug being fixed, and swallowing a
-      // failure here would reintroduce it silently.
-      await httpsCallable(functions, 'syncPublicDisplayName')({});
+      // ONE call, doing what three writes used to. This wrote
+      // users/{uid}.displayName directly and then asked the server to
+      // mirror it; a client that can write its own displayName can take a
+      // name somebody else already holds, so the write moved server-side
+      // where the reservation in `usernames/{key}` can be taken in the
+      // SAME transaction (functions/usernames.js). The profile doc updates
+      // through its existing onSnapshot, and the mirror to public/summary,
+      // friendCodes and past feed posts now runs inside the callable.
+      //
+      // Errors are deliberately NOT swallowed: "that name is taken" is the
+      // whole point, and it arrives as the HttpsError message the panel
+      // already renders.
+      const res = await httpsCallable(functions, 'claimUsername')({ displayName: trimmed });
+      const saved = res?.data?.displayName ?? trimmed;
+      // The Auth record's own displayName is a fourth copy, used by
+      // nothing that matters here — best effort, exactly as before.
+      updateProfile(user, { displayName: saved }).catch(() => {});
+      return saved;
     },
     [user],
   );
@@ -551,5 +648,9 @@ export function useAuth() {
     changeEmail,
     deleteAccount,
     setSharePRs,
+    setAskForLocker,
+    setDefaultRestTimer,
+    setMascot,
+    officialFriendUid,
   };
 }

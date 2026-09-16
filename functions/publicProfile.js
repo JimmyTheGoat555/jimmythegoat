@@ -16,6 +16,7 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { bestWeightPerExercise, lifetimeVolumeOf, publishableRecord } = require('./records');
+const { resolveMascotId } = require('./mascots');
 
 exports.setSharePRs = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -37,6 +38,11 @@ exports.setSharePRs = onCall(async (request) => {
     displayName: userSnap.data().displayName ?? 'Someone',
     lifetimeVolume: Math.round(lifetimeVolumeOf(workouts)),
     sharePRs: share,
+    // Refreshed here as well as in logWorkout, because this is the other
+    // writer of the same document and a merge that omitted it would leave
+    // a stale character behind on any account that switched mascot before
+    // its next workout.
+    mascot: resolveMascotId(userSnap.data()),
   };
   // Field PRESENCE is the visibility control, not a value a reader has to
   // check — a friend's client only ever looks at whether personalRecords

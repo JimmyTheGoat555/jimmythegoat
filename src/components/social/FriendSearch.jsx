@@ -92,7 +92,8 @@ function ResultRow({ result, onAdd }) {
           <JimmyAvatar
             evolutionStage={person.evolutionStage}
             equippedAccessories={person.equippedAccessories}
-            showFire={person.showFire}
+            streak={person.currentStreak ?? (person.showFire ? 2 : 0)}
+            mascot={person.mascot}
             crop="head"
             size={40}
             className="bg-neutral-800"

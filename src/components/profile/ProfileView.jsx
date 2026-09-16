@@ -104,7 +104,7 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
   const weighInTomorrow = isWeighInDayTomorrow(profile.weighInDay);
 
   return (
-    <div className="flex flex-col gap-6 pt-6 pb-24">
+    <div className="flex flex-col gap-6 pt-6 pb-nav">
       <div>
         <button type="button" onClick={() => navigate(-1)} className="text-sm text-neutral-500 mb-1">
           ← Back

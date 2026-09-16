@@ -21,7 +21,7 @@ export default function WorkoutDetail({ workouts, updateWorkout, deleteWorkout }
 
   if (!workout) {
     return (
-      <div className="pt-6 pb-24 flex flex-col items-center gap-4 text-center">
+      <div className="pt-6 pb-nav flex flex-col items-center gap-4 text-center">
         <p className="text-sm text-neutral-500">This workout wasn't found — it was probably deleted.</p>
         <button type="button" onClick={() => navigate('/history')} className="text-sm font-medium text-[var(--ember)]">
           Back to History
@@ -83,7 +83,7 @@ export default function WorkoutDetail({ workouts, updateWorkout, deleteWorkout }
   };
 
   return (
-    <div className="flex flex-col gap-4 pt-6 pb-24">
+    <div className="flex flex-col gap-4 pt-6 pb-nav">
       <header className="flex items-start justify-between">
         <div>
           <button type="button" onClick={() => navigate(-1)} className="text-sm text-neutral-500 mb-1">

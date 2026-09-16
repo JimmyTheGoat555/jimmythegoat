@@ -150,6 +150,42 @@ const AD_REWARD_COINS = 50;
 // with one without the other is either paying twice or not at all.
 const AD_REWARD_REQUIRES_SSV = false;
 
+// ---- Rest-timer coin boost ----
+// The second thing an ad can buy, and it is deliberately NOT coins: a
+// multiplier on coins the lifter has still to EARN. Watching an ad during
+// a rest arms a one-use token (functions/restBoost.js) that logWorkout
+// redeems against exactly one exercise of the workout it is spent on,
+// doubling that exercise's share of the payout. The line drawn for
+// AD_REWARD_COINS holds here too: the boost multiplies coins and nothing
+// else — volume, score, records, badges and the tier come out of a boosted
+// session exactly as they would have without the ad.
+//
+// Still inside MAX_COINS_PER_WORKOUT. A boosted session cannot outrun the
+// cap any more than a heavy one can.
+const REST_BOOST_MULTIPLIER = 2;
+// How long a token stays redeemable after the ad. Long enough to cover any
+// real session that was already under way when it was claimed; short
+// enough that one cannot be banked for next week. An expired token is
+// dropped, never refunded — the ad was the price, and the ad was watched.
+const REST_BOOST_TTL_MS = 3 * 60 * 60 * 1000;
+// Tokens per rolling 24h. guards.js enforces it; the client reads the
+// mirrored claim times off meta/economy to hide the offer once today's are
+// spent (see useRestBoost). A boost is worth roughly one exercise's coins
+// — call it +40 on an average session — so three a day tops out well under
+// one workout's own payout, which keeps lifting the best way to earn. Same
+// note as AD_REWARD_COINS above: raise this only having decided to.
+const REST_BOOSTS_PER_DAY = 3;
+// Hard bound on the pending-token array on meta/economy. Unreachable
+// through the callable (the daily cap and the TTL both sit under it) — it
+// exists so the AdMob callback, which has no per-day gate of its own,
+// cannot grow the document without limit either.
+const MAX_PENDING_REST_BOOSTS = 10;
+// What the client puts in AdMob's `custom_data` for a rest-timer ad, so the
+// signed callback (functions/admobSsv.js) can tell "pay 50 coins" from
+// "arm a boost" with the app nowhere in the reward path. Twin of
+// REST_BOOST_SSV_CUSTOM_DATA in src/config/ads.js.
+const REST_BOOST_SSV_CUSTOM_DATA = 'rest-boost';
+
 // Divisor for workouts logged BEFORE relative scoring existed (no stored
 // `score` / per-set `relativeVolume`): their raw kg volume is mapped onto
 // the new scale against an average 75 kg lifter, so existing users don't
@@ -158,21 +194,33 @@ const AD_REWARD_REQUIRES_SSV = false;
 const LEGACY_BODYWEIGHT_KG = 75;
 
 // ---- Item catalog ----
-// type: 'dance' | 'accessory'. An equipped dance now actually plays: the
+// type: 'dance' | 'accessory'. An equipped dance actually plays: the
 // client maps its id to a numbered animated-WebP clip (per evolution
-// stage) that Jimmy performs on WorkoutHome and in the Shop preview — see
-// src/utils/danceAnimations.js and JimmyAnimation.jsx. Accessories are
-// still just a cosmetic flag — shown as an emoji + name badge on the
-// Shop/Profile/FriendProfile, nothing overlaid on the character yet.
-// Either way the server only ever cares that these are ids living in the
-// user's unlockedDances/unlockedAccessories arrays; all rendering is
-// client-side.
+// stage, per mascot) that the character performs on WorkoutHome and in
+// the Shop preview — see src/utils/danceAnimations.js and
+// JimmyAnimation.jsx. Accessories are drawn ON the character: Jimmy's
+// pieces as transparent overlays placed per tier (JimmyAvatar's
+// AccessoryLayer), Gena's outfit sets as whole replacement sprites, one
+// per tier (data/mascots.js `outfits`). Either way the server only ever
+// cares that these are ids living in the user's
+// unlockedDances/unlockedAccessories arrays; all rendering is client-side.
+//
+// `mascot` says which character a piece was drawn for — 'jimmy' for his
+// garments (cut from composites of him), 'gena' for her sets (rendered on
+// her) — and absent means a shared piece both can wear (the head gear).
+// `slot: 'outfit'` is a whole-body set: one at a time, and it replaces the
+// sprite rather than sitting on it. Both fields are read only by the
+// client (the Store shelf, the renderer and the friend-profile sanitiser
+// go through data/mascots.js's mascotCanWear). The server does NOT gate
+// purchases on them: buying the other character's clothes through a
+// forged call spends your own coins on something your mascot will not
+// draw until you switch, which is not an exploit worth a transaction.
 //
 // Repriced so the catalog reads as a real status ladder against the
 // ~200-coin/workout payout above (COINS_PER_RELATIVE_POINT): accessories
 // are a session or three, dances are a deliberate, multi-session flex —
-// the Crown and Moonwalk are the two "I've clearly put in the time" items
-// at the top of each track.
+// the Pink Set and Moonwalk are the two "I've clearly put in the time"
+// items at the top of each track.
 const STORE_ITEMS = [
   { id: 'dance-shuffle', type: 'dance', name: 'The Shuffle', emoji: '🕺', cost: 600 },
   { id: 'dance-headbang', type: 'dance', name: 'Headbanger', emoji: '🤘', cost: 800 },
@@ -180,10 +228,18 @@ const STORE_ITEMS = [
   { id: 'dance-moonwalk', type: 'dance', name: 'Moonwalk', emoji: '🌙', cost: 1500 },
   { id: 'accessory-cap', type: 'accessory', name: 'Ball Cap', emoji: '🧢', cost: 150, slot: 'head', rarity: 'common' },
   { id: 'accessory-shades', type: 'accessory', name: 'Shades', emoji: '🕶️', cost: 250, slot: 'eyes', rarity: 'common' },
-  { id: 'accessory-tank', type: 'accessory', name: 'White Tank', emoji: '🎽', cost: 300, slot: 'body', rarity: 'common' },
-  { id: 'accessory-jeans', type: 'accessory', name: 'Ripped Jeans', emoji: '👖', cost: 400, slot: 'legs', rarity: 'rare' },
-  { id: 'accessory-hoodie', type: 'accessory', name: 'Cutoff Hoodie', emoji: '🧥', cost: 450, slot: 'body', rarity: 'rare' },
+  { id: 'accessory-tank', type: 'accessory', name: 'White Tank', emoji: '🎽', cost: 300, slot: 'body', rarity: 'common', mascot: 'jimmy' },
+  { id: 'accessory-jeans', type: 'accessory', name: 'Ripped Jeans', emoji: '👖', cost: 400, slot: 'legs', rarity: 'rare', mascot: 'jimmy' },
+  { id: 'accessory-hoodie', type: 'accessory', name: 'Cutoff Hoodie', emoji: '🧥', cost: 450, slot: 'body', rarity: 'rare', mascot: 'jimmy' },
   { id: 'accessory-headphones', type: 'accessory', name: 'Studio Headphones', emoji: '🎧', cost: 700, slot: 'head', rarity: 'rare' },
+  // Gena's outfit sets — a sports top and shorts, one render per tier
+  // (public/assets/outfits/gena-<set>-<tier>.png). A set covers what two
+  // of Jimmy's garments do (body + legs), so the ladder sits a step above
+  // his single pieces: a session and a half, two and a half, and just
+  // under four for the top one.
+  { id: 'accessory-gena-yellow', type: 'accessory', name: 'Yellow Set', emoji: '💛', cost: 350, slot: 'outfit', rarity: 'common', mascot: 'gena' },
+  { id: 'accessory-gena-blue', type: 'accessory', name: 'Blue Set', emoji: '💙', cost: 500, slot: 'outfit', rarity: 'rare', mascot: 'gena' },
+  { id: 'accessory-gena-pink', type: 'accessory', name: 'Pink Set', emoji: '🎀', cost: 750, slot: 'outfit', rarity: 'legendary', mascot: 'gena' },
 ];
 
 const STORE_ITEMS_BY_ID = new Map(STORE_ITEMS.map((item) => [item.id, item]));
@@ -223,6 +279,11 @@ module.exports = {
   RECOMMENDATION_BOUNTY_COINS,
   AD_REWARD_COINS,
   AD_REWARD_REQUIRES_SSV,
+  REST_BOOST_MULTIPLIER,
+  REST_BOOST_TTL_MS,
+  REST_BOOSTS_PER_DAY,
+  MAX_PENDING_REST_BOOSTS,
+  REST_BOOST_SSV_CUSTOM_DATA,
   LEGACY_BODYWEIGHT_KG,
   STORE_ITEMS,
   STORE_ITEMS_BY_ID,

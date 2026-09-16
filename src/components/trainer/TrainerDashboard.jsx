@@ -21,7 +21,7 @@ export default function TrainerDashboard({ profile, workouts, minStage = 1 }) {
   });
 
   return (
-    <div className="flex flex-col gap-4 pt-6 pb-24">
+    <div className="flex flex-col gap-4 pt-6 pb-nav">
       <div className="flex items-center gap-3">
         {/* `object-top` used to be a crude head crop — JimmyAvatar does it
             properly, and brings the coach's own gear with it. */}

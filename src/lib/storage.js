@@ -4,6 +4,15 @@ const PREFIX = 'jimmy-goat';
 
 const key = (name) => `${PREFIX}:${name}`;
 
+// The same key, exported. A `storage` event hands you the RAW, fully
+// namespaced key string, so a listener deciding "is this event about my
+// value?" needs to build the prefixed form itself rather than
+// re-implementing the template and drifting from it (see
+// hooks/useLocalStorage.js).
+export function storageKeyFor(name) {
+  return key(name);
+}
+
 export function loadJSON(name, fallback) {
   try {
     const raw = window.localStorage.getItem(key(name));

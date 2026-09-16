@@ -5,6 +5,28 @@
      so every screen/component still referencing var(--ember) for a small
      accent (links, focus rings, icons) picks up the new identity for
      free, without a per-file rewrite. */
+  /* Height of the fixed bottom tab row (BottomNav). Declared once here so
+     anything that has to sit directly above it — the floating
+     active-workout bar — stays glued to it rather than to a number copied
+     into a component that will not be updated when the row changes. */
+  --nav-h: 4.25rem;
+
+  /* Physical no-go zones on a notched/gesture-bar phone. These read 0px
+     everywhere they don't apply (desktop, a plain browser tab, an older
+     handset), so every consumer below can use them unconditionally —
+     there is no "is this an iPhone" branch anywhere in the app.
+     Non-zero values require viewport-fit=cover on the viewport meta tag
+     (index.html); without it env() is always 0 and this is a no-op. */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+
+  /* What the bottom tab row ACTUALLY occupies: its own height plus the
+     home-indicator strip it has to sit above. Anything stacking on top of
+     BottomNav (the floating workout bar, the logger's finish bar, page
+     bottom padding) offsets by this, not by --nav-h — --nav-h alone put
+     them exactly one home indicator too low. */
+  --nav-total: calc(var(--nav-h) + var(--safe-b));
+
   --ember: #ff8c1a;
   --success: #39ff14;
   --danger: #ff1744;
@@ -41,16 +63,30 @@ body {
   background: #06021c;
 }
 
-/* Locked, non-resizable feel (explicit request): no pinch-zoom, no
-   double-tap-to-zoom. The viewport meta tag (index.html) already sets
-   user-scalable=no/maximum-scale=1, this is the CSS-level backstop for
-   browsers (mainly iOS Safari) that partially ignore that for
-   accessibility reasons. */
+/* `manipulation` = everything except double-tap-to-zoom. That keeps the
+   thing this rule was originally added for — a fast double-tap on a set
+   button zooming the page instead of logging two sets — while leaving
+   PINCH-zoom working, which the old `pan-x pan-y` also killed.
+   Deliberately different from the viewport meta tag it used to back up
+   (index.html): zoom you ask for is an accessibility control, zoom that
+   fires by accident is a bug, and touch-action can tell the two apart
+   where user-scalable=no cannot. */
 html,
 body {
-  touch-action: pan-x pan-y;
+  touch-action: manipulation;
   -webkit-text-size-adjust: 100%;
   overscroll-behavior-y: none;
+}
+
+/* Bottom padding for a full-screen tab page, so its last card can't hide
+   behind the fixed tab row. This was a hand-copied `pb-24` on sixteen
+   screens, which was exactly right while the row was --nav-h tall and
+   quietly six pixels short the moment --safe-b made it taller. Named once
+   here so the next change to the row's height doesn't need sixteen edits
+   to land. 1.75rem of slack on top of the row keeps the visible gap
+   identical to what pb-24 gave on a phone with no home indicator. */
+.pb-nav {
+  padding-bottom: calc(var(--nav-total) + 1.75rem);
 }
 
 /* Portrait-only guard for a plain (non-installed) browser tab — see the
@@ -766,23 +802,135 @@ button.card:hover {
   pointer-events: none;
   will-change: opacity, transform;
 }
+/* Colours come from the tier skins below; everything structural —
+   position, layering, the keyframes — is shared, so a tier is only ever
+   two gradients and two durations. */
 .streak-fire::before {
-  background: radial-gradient(
+  background: var(--aura-outer);
+  animation: streak-fire var(--aura-slow, 2.4s) ease-in-out infinite;
+}
+.streak-fire::after {
+  background: var(--aura-inner);
+  animation: streak-fire var(--aura-fast, 1.7s) ease-in-out infinite reverse;
+}
+
+/* ---- Tier 1 · Warm Fire (2-4) ---- */
+/* The original flame, and deliberately the quietest of the three: at two
+   workouts this is an encouragement, not a trophy, and it has to survive
+   being the most common state in a scrolling feed. */
+.streak-fire--t1 {
+  --aura-outer: radial-gradient(
     circle at 50% 62%,
     rgba(255, 148, 32, 0.55) 0%,
     rgba(255, 78, 20, 0.32) 42%,
     rgba(255, 40, 0, 0) 72%
   );
-  animation: streak-fire 2.4s ease-in-out infinite;
-}
-.streak-fire::after {
-  background: radial-gradient(
+  --aura-inner: radial-gradient(
     circle at 50% 70%,
     rgba(255, 226, 130, 0.5) 0%,
     rgba(255, 136, 24, 0.22) 38%,
     rgba(255, 96, 0, 0) 66%
   );
-  animation: streak-fire 1.7s ease-in-out infinite reverse;
+}
+
+/* ---- Tier 2 · Hot Flame (5-9) ---- */
+/* Hotter hue, wider reach, quicker breath. The durations drop rather than
+   the opacity climbing to the ceiling, because *rate* is what reads as
+   intensity at avatar size — a brighter static glow just looks bigger. */
+.streak-fire--t2 {
+  --aura-slow: 1.9s;
+  --aura-fast: 1.35s;
+  --aura-outer: radial-gradient(
+    circle at 50% 60%,
+    rgba(255, 60, 120, 0.6) 0%,
+    rgba(232, 20, 60, 0.38) 40%,
+    rgba(190, 0, 60, 0) 74%
+  );
+  --aura-inner: radial-gradient(
+    circle at 50% 70%,
+    rgba(255, 190, 120, 0.55) 0%,
+    rgba(255, 60, 90, 0.28) 36%,
+    rgba(220, 0, 80, 0) 68%
+  );
+}
+.streak-fire--t2::before,
+.streak-fire--t2::after {
+  inset: -24%;
+}
+
+/* ---- Tier 3 · Legendary (10+) ---- */
+/* Gold with a blue-flame core, plus a third layer: a conic sweep that
+   rotates slowly behind the other two. `transform: rotate()` on an already
+   promoted layer is a compositor transform — it never repaints — which is
+   why the rotation is a whole extra element rather than an animated
+   `background-position` or a gradient angle, both of which repaint every
+   frame and would be felt immediately on a feed full of these. */
+.streak-fire--t3 {
+  --aura-slow: 2.6s;
+  --aura-fast: 1.55s;
+  --aura-outer: radial-gradient(
+    circle at 50% 60%,
+    rgba(255, 214, 80, 0.62) 0%,
+    rgba(255, 158, 20, 0.4) 40%,
+    rgba(255, 120, 0, 0) 74%
+  );
+  --aura-inner: radial-gradient(
+    circle at 50% 74%,
+    rgba(190, 240, 255, 0.6) 0%,
+    rgba(90, 175, 255, 0.34) 30%,
+    rgba(40, 110, 255, 0) 60%
+  );
+}
+.streak-fire--t3::before,
+.streak-fire--t3::after {
+  inset: -28%;
+}
+/* The rotating halo. A real element, not a pseudo — ::before and ::after
+   are both already spoken for, and this needs its own transform to spin
+   on while the other two are busy scaling. */
+.streak-halo {
+  position: absolute;
+  /* Sized off HEIGHT with aspect-ratio 1, not `inset`, so it is a true
+     circle on both shapes this draws on: a tall full-body goat and a
+     square head crop. `inset` made it an ellipse on the tall one, and a
+     conic gradient inside an ellipse reads as a diagonal smear rather
+     than a halo — which is exactly how the first version looked. */
+  left: 50%;
+  top: 50%;
+  height: 118%;
+  aspect-ratio: 1;
+  z-index: -2;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.85;
+  will-change: transform;
+  background: conic-gradient(
+    from 0deg,
+    rgba(255, 205, 60, 0) 0deg,
+    rgba(255, 205, 60, 0.95) 55deg,
+    rgba(255, 240, 170, 0.8) 95deg,
+    rgba(110, 200, 255, 0.85) 165deg,
+    rgba(255, 205, 60, 0) 235deg,
+    rgba(255, 170, 30, 0.75) 305deg,
+    rgba(255, 205, 60, 0) 360deg
+  );
+  animation: streak-halo 6s linear infinite;
+  /* Fades to nothing at the rim so the conic reads as a halo rather than
+     a hard-edged disc behind a round avatar. */
+  -webkit-mask-image: radial-gradient(circle, transparent 46%, #000 62%, #000 74%, transparent 84%);
+  mask-image: radial-gradient(circle, transparent 46%, #000 62%, #000 74%, transparent 84%);
+}
+
+/* The centring translate has to live inside the keyframes: `transform` is
+   one property, so animating rotate() alone would drop the translate and
+   fling the halo off-centre on the first frame. */
+@keyframes streak-halo {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
 }
 
 @keyframes streak-fire {
@@ -810,6 +958,13 @@ button.card:hover {
     animation: none;
     opacity: 0.7;
     transform: none;
+  }
+  /* The halo keeps its colour and loses its spin — a legendary streak
+     should still look legendary to someone who asked for less motion. */
+  .streak-halo {
+    animation: none;
+    /* Without the animation nothing applies the centring transform. */
+    transform: translate(-50%, -50%);
   }
 }
 

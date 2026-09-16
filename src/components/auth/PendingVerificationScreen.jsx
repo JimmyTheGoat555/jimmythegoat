@@ -116,8 +116,49 @@ export default function PendingVerificationScreen({
               it to unlock your account.
             </p>
 
-            <p className="mt-1.5 text-xs text-neutral-600">
-              Nothing there? Check spam — and check the address above is spelled right.
+            {/* The spam reminder, promoted out of body text.
+
+                It was already here as a `text-neutral-600` line — the
+                dimmest type on the screen, sitting directly under the one
+                sentence people actually read, which is a good way to be
+                present and still not be seen. Since a mail in the junk
+                folder is currently the most common reason someone stalls
+                here, it gets a box of its own.
+
+                Deliberately NOT the amber treatment the `notice` slot
+                below uses. That styling means "something went wrong" —
+                a trainer code that did not resolve, a verification mail
+                that failed to send — and spending it on routine advice
+                would leave a real failure looking exactly like a tip. So:
+                same shape, same radius, neutral fill, with the icon
+                carrying the emphasis instead of the colour. */}
+            <div className="mt-3 flex w-full items-start gap-2.5 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 text-left">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className="mt-px h-4 w-4 shrink-0 text-neutral-400"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4M12 8h.01" />
+              </svg>
+              <p className="text-xs leading-snug text-neutral-300">
+                <span className="font-semibold text-neutral-100">Note:</span> If you don&rsquo;t see the
+                email within a minute, please check your spam or junk folder.
+              </p>
+            </div>
+
+            {/* Kept, and kept quiet. A mistyped address is the other
+                reason no mail arrives, and unlike spam it cannot be fixed
+                by looking harder — hence the separate line pointing back
+                at the address above, and the change-email button further
+                down that actually resolves it. */}
+            <p className="mt-2 text-xs text-neutral-600">
+              Still nothing? Check the address above is spelled right.
             </p>
 
             {notice && (

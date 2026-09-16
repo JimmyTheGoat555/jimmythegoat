@@ -16,6 +16,7 @@
 // see.
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
+const { liveUidsOf } = require('./liveUsers');
 
 const OFFICIAL_ACCOUNT_EMAIL = 'jimmythegoat.app@gmail.com';
 
@@ -88,13 +89,35 @@ async function backfillOfficialFriendships(callerUid) {
   if (callerUid !== officialUid) return { ran: false, reason: 'not-official-account' };
 
   const db = getFirestore();
-  const users = await db.collection('users').get();
-  const others = users.docs.map((d) => d.id).filter((id) => id !== officialUid);
-  if (others.length === 0) return { ran: true, friended: 0 };
+  const officialRef = db.collection('users').doc(officialUid);
+  // Same guard friendWithOfficialAccount has, for the same reason: an
+  // update() against a document that does not exist throws, and Jimmy
+  // signed up in Auth without finishing onboarding is a real state.
+  if (!(await officialRef.get()).exists) return { ran: false, reason: 'no-official-account' };
 
-  // Their side one write each; Jimmy's side ONE write holding every uid,
-  // rather than one per user — an arrayUnion of everybody is a single
-  // atomic change to that document instead of N contended ones.
+  const users = await db.collection('users').get();
+  const candidates = users.docs.map((d) => d.id).filter((id) => id !== officialUid);
+
+  // ── ORPHANS ARE SKIPPED ────────────────────────────────────────────
+  //
+  // `users` is the wrong list to trust on its own. A console deletion
+  // removes the Auth record and leaves users/{uid} behind (see
+  // liveUsers.js), and this project is mostly those: 33 of 49 documents
+  // have no account. Friending Jimmy to every document would put 33 dead
+  // uids into a `friends` array that live code then acts on — useFeed
+  // opens a listener per 30 friends, useFriendsGraph resolves a display
+  // name for each, and the friends list would show ghosts nobody can
+  // remove. The write is also permanent in the direction that matters:
+  // arrayUnion makes re-running this free, but it has no idea which
+  // entries IT added, so there is no equally cheap way back out.
+  //
+  // One Auth lookup per 100 candidates buys a list that is actually true.
+  const live = await liveUidsOf(candidates);
+  const others = candidates.filter((id) => live.has(id));
+  const skippedOrphans = candidates.length - others.length;
+  if (others.length === 0) return { ran: true, friended: 0, skippedOrphans };
+
+  // Their side, one write each, batched.
   const CHUNK = 400;
   for (let i = 0; i < others.length; i += CHUNK) {
     const batch = db.batch();
@@ -103,12 +126,19 @@ async function backfillOfficialFriendships(callerUid) {
     }
     await batch.commit();
   }
-  await db
-    .collection('users')
-    .doc(officialUid)
-    .update({ friends: FieldValue.arrayUnion(...others) });
 
-  return { ran: true, friended: others.length };
+  // Jimmy's side. This used to be a single arrayUnion spreading every uid
+  // as an argument, which is fine at tens of users and is a trap at tens
+  // of thousands: one document has a 1 MB ceiling and one call would carry
+  // the whole roster. Chunked, so the ceiling is approached by a document
+  // that is genuinely too big rather than by one oversized request —
+  // and if it is ever reached, the fix is a different shape for `friends`
+  // entirely, not a bigger write.
+  for (let i = 0; i < others.length; i += CHUNK) {
+    await officialRef.update({ friends: FieldValue.arrayUnion(...others.slice(i, i + CHUNK)) });
+  }
+
+  return { ran: true, friended: others.length, skippedOrphans };
 }
 
 module.exports.backfillOfficialFriendships = backfillOfficialFriendships;

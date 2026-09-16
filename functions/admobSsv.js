@@ -39,7 +39,8 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const { createVerify } = require('crypto');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
-const { AD_REWARD_COINS } = require('./storeCatalog');
+const { AD_REWARD_COINS, REST_BOOST_SSV_CUSTOM_DATA } = require('./storeCatalog');
+const { grantRestBoost } = require('./restBoost');
 
 const VERIFIER_KEYS_URL = 'https://www.gstatic.com/admob/reward/verifier-keys.json';
 // Keys rotate on the order of months; an hour of cache turns a per-callback
@@ -86,6 +87,12 @@ exports.admobRewardCallback = onRequest({ cors: false }, async (req, res) => {
   const userId = params.get('user_id');
   const transactionId = params.get('transaction_id');
   const timestamp = Number(params.get('timestamp'));
+  // Which reward this ad was shown for. The client sets it with the user
+  // id before the ad is fetched (useRewardedAd's prepare) and AdMob echoes
+  // it back inside the signed query, so it is as trustworthy as user_id:
+  // the app cannot change it after the fact, and a callback without it is
+  // the ordinary coin ad.
+  const armsBoost = params.get('custom_data') === REST_BOOST_SSV_CUSTOM_DATA;
 
   const message = signedMessage(rawQuery);
   if (!signature || !keyId || !userId || !transactionId || !message) {
@@ -144,6 +151,27 @@ exports.admobRewardCallback = onRequest({ cors: false }, async (req, res) => {
         tx.set(seenRef, { userId, at: FieldValue.serverTimestamp(), paid: false, reason: 'unknown-user' });
         return false;
       }
+
+      // A rest-timer ad arms a 2× token instead of paying coins — see
+      // functions/restBoost.js. Read before the writes below, as every
+      // read in a transaction must be. No daily gate on this path: Google
+      // is the caller, and refusing a verified view would charge someone
+      // an ad for nothing. The client hides the offer once the day's
+      // budget is spent, and the pending-list bound inside grantRestBoost
+      // is the backstop.
+      if (armsBoost) {
+        const economyRef = userRef.collection('meta').doc('economy');
+        const economySnap = await tx.get(economyRef);
+        const grant = grantRestBoost(economySnap.exists ? economySnap.data() : {}, Date.now());
+        if (!grant) {
+          tx.set(seenRef, { userId, at: FieldValue.serverTimestamp(), paid: false, reason: 'boost-cap' });
+          return false;
+        }
+        tx.set(seenRef, { userId, at: FieldValue.serverTimestamp(), paid: true, reward: 'rest-boost' });
+        tx.set(economyRef, grant.update, { merge: true });
+        return true;
+      }
+
       tx.set(seenRef, { userId, at: FieldValue.serverTimestamp(), paid: true });
       tx.update(userRef, {
         coins: FieldValue.increment(AD_REWARD_COINS),

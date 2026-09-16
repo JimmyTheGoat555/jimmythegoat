@@ -2,10 +2,26 @@
 <html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
-    <!-- maximum-scale=1 + user-scalable=no locks out pinch/double-tap zoom
-         (Safari on iOS 10+ ignores user-scalable for accessibility, so
-         touch-action: manipulation in index.css backs this up there). -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- viewport-fit=cover lets the page paint edge to edge on notched
+         devices — required for env(safe-area-inset-*) to report anything
+         but 0px, which is what --safe-t/--safe-b in index.css are built
+         on. Without it the insets are all zero and the tab row sits under
+         the home indicator.
+
+         interactive-widget=resizes-content asks the browser to shrink the
+         layout viewport when the soft keyboard opens rather than pan the
+         page over it, so fixed bottom chrome stays reachable. Chrome/
+         Android honours it; iOS ignores it, which is why bottom sheets
+         also measure the real occluded height themselves (see
+         src/hooks/useKeyboardInset.js).
+
+         maximum-scale=1 + user-scalable=no are GONE on purpose: they
+         locked out pinch-zoom, which is an accessibility control, not a
+         polish detail — someone who needs to magnify a weight they just
+         logged could not. Double-tap-to-zoom (the one that fires by
+         accident on a fast double-tap of a set button) is still off, via
+         touch-action: manipulation in index.css. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#0a0a0a" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

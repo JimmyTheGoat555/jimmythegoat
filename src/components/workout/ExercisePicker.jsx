@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import MuscleGroupPicker from './MuscleGroupPicker';
 
 // Picking exercises — and now un-picking them.
@@ -22,16 +23,41 @@ import MuscleGroupPicker from './MuscleGroupPicker';
 // ones is it SAFE to take out" — the live logger passes only exercises
 // with no completed sets, so one stray tap can never bin logged work.
 // Anything added but not in that list stays disabled, exactly as before.
+//
+// `initialGroup` is which muscle-group filter the sheet OPENS on. Absent
+// for every ordinary "+ Add exercise" tap, which is why it defaults to the
+// first group exactly as this always did. The abs interceptor passes
+// 'core', so accepting the roast lands the lifter on core exercises
+// instead of on Chest with six chips of scrolling between them and the
+// thing they just agreed to do.
 export default function ExercisePicker({
   exercises,
   addedExerciseIds,
   removableExerciseIds = [],
+  initialGroup,
   onAdd,
   onRemove,
   onClose,
 }) {
   const { muscleGroups, exercisesByGroup, addCustomExercise, removeCustomExercise } = exercises;
-  const [selectedGroup, setSelectedGroup] = useState(muscleGroups[0].id);
+  // This sheet's footer holds a text field, so it is one of the few that
+  // the software keyboard can bury — see the padding it feeds below.
+  const keyboardInset = useKeyboardInset();
+  // VALIDATED, not trusted. An id that is not one of the catalog's groups
+  // would be a silent dead end: MuscleGroupPicker draws its chips from
+  // MUSCLE_GROUPS, so nothing would highlight, and exercisesByGroup would
+  // return only custom exercises carrying that exact string — an empty
+  // sheet with no visible way back to a real filter. Falling back to the
+  // first group makes a bad `initialGroup` merely ignored.
+  //
+  // Read once, as initial state: this sheet is unmounted when it closes
+  // (see the `pickerOpen &&` guard at its call sites), so every open gets
+  // a fresh initial group, and changing the prop on an OPEN sheet
+  // deliberately does nothing — that would yank the filter out from under
+  // whoever is using it.
+  const [selectedGroup, setSelectedGroup] = useState(() =>
+    muscleGroups.some((group) => group.id === initialGroup) ? initialGroup : muscleGroups[0].id,
+  );
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customName, setCustomName] = useState('');
   // Which custom exercise is asking "sure?". Inline rather than a
@@ -61,9 +87,21 @@ export default function ExercisePicker({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
+    // Two jobs, one padding value. With no keyboard up, --safe-b lifts
+    // the sheet off the home indicator (index.css). With one up, the
+    // measured occluded height lifts it clear of the KEYS — otherwise the
+    // field being typed into, and the button that submits it, sit
+    // underneath them on iOS. The max-height comes down by the same amount
+    // so a taller sheet grows upward instead of off the top of the screen.
+    // Both are 0 on desktop, where this is a no-op.
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60"
+      style={{ paddingBottom: keyboardInset ? `${keyboardInset}px` : 'var(--safe-b)' }}
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-md bg-neutral-950/94 border-t border-x border-white/10 rounded-t-[28px] max-h-[80vh] flex flex-col"
+        style={keyboardInset ? { maxHeight: `calc(80vh - ${keyboardInset}px)` } : undefined}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-2">

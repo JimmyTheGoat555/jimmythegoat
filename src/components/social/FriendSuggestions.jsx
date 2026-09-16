@@ -69,7 +69,8 @@ function SuggestionCard({ suggestion, onAdd }) {
         <JimmyAvatar
           evolutionStage={person.evolutionStage}
           equippedAccessories={person.equippedAccessories}
-          showFire={person.showFire}
+          streak={person.currentStreak ?? (person.showFire ? 2 : 0)}
+          mascot={person.mascot}
           crop="head"
           size={56}
           className="bg-neutral-800"

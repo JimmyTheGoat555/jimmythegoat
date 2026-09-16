@@ -5,10 +5,14 @@ import WorkoutTimer from './WorkoutTimer';
 import FullScreenTimer from './FullScreenTimer';
 import ReorderableList from './ReorderableList';
 import WorkoutSummaryModal from './WorkoutSummaryModal';
+import LockerPromptModal from './LockerPromptModal';
 import ConfirmDialog from '../shared/ConfirmDialog';
-import { useRestTimer } from '../../hooks/useRestTimer';
 import { DEFAULT_SETS_PER_EXERCISE } from '../../hooks/useWorkouts';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useRestBoost } from '../../hooks/useRestBoost';
+import { useRewardedAd } from '../../hooks/useRewardedAd';
+import { REST_BOOST_SSV_CUSTOM_DATA } from '../../config/ads';
+import AdPlayingOverlay from '../shared/AdPlayingOverlay';
 import { lastPerformance, seedSetsFromHistory } from '../../utils/lastPerformance';
 import { sortExercisesByPriority, isPrioritySorted } from '../../utils/exerciseSorting';
 import { randomGymQuote } from '../../data/gymQuotes';
@@ -153,6 +157,23 @@ export function hasCoreWork(exercises) {
   return (exercises ?? []).some((e) => CORE_GROUPS.has(String(e.muscleGroup ?? '').toLowerCase()));
 }
 
+// Which catalog group the picker should open on when the roast is
+// accepted. Derived from the SAME CORE_GROUPS set hasCoreWork tests
+// against rather than a hardcoded 'core', so the two can never drift: the
+// modal appears because nothing in this set was found, and it opens the
+// picker on something from this set. Rename the catalog id and both move
+// together.
+//
+// null when the catalog has no core group at all, which ExercisePicker
+// treats as "no preference" and falls back to its first chip — a missing
+// group must not open an empty sheet.
+export function coreGroupId(muscleGroups) {
+  return (
+    (muscleGroups ?? []).find((group) => CORE_GROUPS.has(String(group.id ?? '').toLowerCase()))?.id ??
+    null
+  );
+}
+
 export default function ActiveWorkoutLogger({
   workout,
   exercises,
@@ -163,24 +184,68 @@ export default function ActiveWorkoutLogger({
   onUpdateSet,
   onRemoveSet,
   onFinish,
-  personalRecords = [],
+  // Hides this screen without touching the session — App navigates away
+  // and the floating bar appears. Distinct from onDiscard, which ends it.
+  onMinimize,
   history = [],
   bodyWeightKg = 0,
   onDiscard,
-  onSaveTemplate,
+  // `personalRecords` and `onSaveTemplate` used to live here, feeding the
+  // summary modal's PR switch and "Save as Template" toggle. Both
+  // decisions moved to Phase 2 of the finish flow (App.jsx), so this
+  // screen no longer needs to know what a record is or how to save a
+  // routine — it logs sets and hands off.
   onReorderExercises,
   onLinkSuperset,
   onUnlinkSuperset,
+  // The locker question. Mounted HERE rather than beside the /workout
+  // route in App.jsx so it is route-scoped for free, and so every way a
+  // session can begin — freestyle, a saved routine, a trainer assignment —
+  // gets it from one place instead of three start handlers.
+  askForLocker = true,
+  onAnswerLocker,
+  onDisableLockerPrompt,
+  // The rest countdown, owned by App and handed down.
+  //
+  // This screen used to call useRestTimer itself, which tied the rest's
+  // lifetime to this component's — and this component is mounted by the
+  // /workout route, so tapping any bottom tab mid-rest silently destroyed
+  // the countdown and its alarm. It lives above the router now (App.jsx),
+  // which is why the floating bar can show it on every other screen. The
+  // controls are unchanged: this screen still starts a rest when a set is
+  // checked off, and the full-screen timer still adds time and skips.
+  rest,
+  // For the rest-timer 2× offer: whose boosts to read (useRestBoost), the
+  // admin testing exemption, and where a claimed token gets pinned
+  // (useWorkouts' bindRestBoost). See the block below the switches.
+  uid = null,
+  isAdmin = false,
+  onBindRestBoost,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Which muscle group the picker should OPEN on, or null for its default.
+  // Held next to `pickerOpen` rather than passed at the call site because
+  // the sheet has two entrances now — the ordinary "+ Add exercise", which
+  // wants no opinion, and the abs interceptor, which wants Core — and the
+  // one that opened it has to survive until it renders.
+  const [pickerGroup, setPickerGroup] = useState(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [showCoreRoast, setShowCoreRoast] = useState(false);
   // Fresh gym-bro line each time a workout starts (this component mounts);
   // tapping it rolls another, never the same one twice running.
   const [quote, setQuote] = useState(() => randomGymQuote());
-  const rest = useRestTimer();
-  const [timerMinimized, setTimerMinimized] = useState(false);
+  // Minimised iff a rest was ALREADY running when this screen mounted —
+  // which only happens when the lifter left mid-rest and has just come
+  // back. The full-screen timer is a takeover, and that is earned by the
+  // action that starts a rest (checking a set off, below), not by walking
+  // back into the room: arriving from the floating bar to find the workout
+  // covered again would undo the navigation they just performed. The
+  // countdown is still right there in the finish bar's pill, one tap from
+  // full-screen, and a rest that reaches 0:00 re-opens it regardless (see
+  // the isDone effect below), so nobody can navigate their way out of the
+  // alarm.
+  const [timerMinimized, setTimerMinimized] = useState(() => Boolean(rest.isVisible));
   // Remembered across workouts — someone who lifts to Jimmy's order wants
   // it every session, and someone who arranges their own does too.
   const [priorityOn, setPriorityOn] = useLocalStorage('jimmys-priority-sort', false);
@@ -210,6 +275,52 @@ export default function ActiveWorkoutLogger({
   // doing for the next ten seconds, not a preference. Coming back to a
   // workout to find every set hidden would read as data loss.
   const [isReordering, setIsReordering] = useState(false);
+
+  // ── The rest-timer 2× offer ─────────────────────────────────────────
+  //
+  // Three pieces, kept apart on purpose:
+  //
+  //   * useRestBoost reads what the SERVER says is armed and how much of
+  //     today's budget is left, off meta/economy — the very document
+  //     logWorkout will redeem from;
+  //   * useRewardedAd plays the ad and claims through claimRestBoost —
+  //     the Store's coin-ad flow with a different callable;
+  //   * the workout itself records WHICH exercise a token is pinned to
+  //     (`boostTokenId` on the exercise — useWorkouts' bindRestBoost),
+  //     which is what rides to the server in the finish payload.
+  //
+  // "Armed" means a live token no exercise has claimed yet. Binding
+  // happens in handleUpdateSet below, on the next set checked off — the
+  // plain reading of "your next exercise": the one you log a set in next.
+  // Mid-way through bench, that is bench, and the whole exercise pays
+  // double. The server is not told any of this; it sees one token id on
+  // one exercise and checks it against its own list.
+  const restBoost = useRestBoost(uid, { bypass: isAdmin });
+  const liveTokenIds = new Set(restBoost.pendingTokens.map((token) => token.id));
+  const boundTokenIds = new Set(workout.exercises.map((e) => e.boostTokenId).filter(Boolean));
+  const unboundBoosts = restBoost.pendingTokens.filter((token) => !boundTokenIds.has(token.id));
+  const boostAd = useRewardedAd(null, {
+    bypass: isAdmin,
+    callable: 'claimRestBoost',
+    customData: REST_BOOST_SSV_CUSTOM_DATA,
+    unavailableReason: restBoost.remainingToday <= 0 ? "Today's 2× boosts are used up." : null,
+    onClaimed: restBoost.addLocalToken,
+  });
+  const boostOffer = {
+    armed: unboundBoosts.length > 0,
+    // Hidden, not disabled, for every reason it could not pay: today's
+    // budget is spent, the server has not answered yet, no ad is loaded,
+    // one is already playing. The window on the clock is the one thing
+    // decided by FullScreenTimer instead, since it is drawing the clock.
+    available:
+      unboundBoosts.length === 0 && !restBoost.loading && !boostAd.limitReached && boostAd.isAdLoaded && !boostAd.busy,
+    busy: boostAd.busy,
+    error: boostAd.error,
+    onWatch: boostAd.watchAd,
+  };
+  // A token is only worth drawing as "2×" on its card while the server
+  // would still honour it — an expired one is a plain exercise again.
+  const isBoosted = (exercise) => Boolean(exercise.boostTokenId) && liveTokenIds.has(exercise.boostTokenId);
 
   const handleRestTimerToggle = (next) => {
     setRestTimerOffFor(next ? null : (workout.id ?? null));
@@ -266,6 +377,19 @@ export default function ActiveWorkoutLogger({
   // (see utils/lastPerformance.js). `history` is the already-cached cloud
   // workout list this component is given for its "Last time ·" line, so
   // this is a scan of data in memory — no extra Firestore read per add.
+  // Both entrances go through here so the filter is always set
+  // deliberately. The reset on close is the load-bearing half: without it,
+  // accepting the roast once would leave every later "+ Add exercise" tap
+  // opening on Core.
+  const openPicker = (group = null) => {
+    setPickerGroup(group);
+    setPickerOpen(true);
+  };
+  const closePicker = () => {
+    setPickerOpen(false);
+    setPickerGroup(null);
+  };
+
   const handleAdd = (exercise) => {
     const last = lastPerformance(exercise.id, history);
     onAddExercise(
@@ -316,6 +440,14 @@ export default function ActiveWorkoutLogger({
   // editing weight/reps leaves any running rest alone.
   const handleUpdateSet = (exerciseId, setId, patch) => {
     onUpdateSet(exerciseId, setId, patch);
+    // An armed boost lands on the exercise this set belongs to — unless
+    // that exercise already carries a live token, in which case it rolls
+    // on to the next exercise that logs a set, so a second claim in a
+    // later rest is never spent on an exercise that is already doubled.
+    if (patch.completed === true && unboundBoosts.length > 0) {
+      const current = workout.exercises.find((e) => e.exerciseId === exerciseId);
+      if (current && !isBoosted(current)) onBindRestBoost?.(exerciseId, unboundBoosts[0].id);
+    }
     // The set is marked done either way — the only thing the switch
     // decides is whether a countdown follows it. Nothing else about
     // logging changes, which is what makes it safe to leave off.
@@ -335,9 +467,40 @@ export default function ActiveWorkoutLogger({
   }, [rest.isDone]);
 
   return (
-    <div className={`flex flex-col gap-4 pt-6 ${rest.isVisible && timerMinimized ? 'pb-40' : 'pb-28'}`}>
+    // Bottom padding has to clear BOTH fixed layers now — the finish bar
+    // and the tab row beneath it — or the last exercise card hides behind
+    // them. Expressed against --nav-total rather than re-guessed as a
+    // bigger Tailwind step so a change to the nav's height, or a phone
+    // with a home indicator under it, carries through here.
+    //
+    // Top padding carries --safe-t as well: this screen is the only one
+    // that renders without TopHud above it (see App.jsx's Layout), so it
+    // is its own status-bar clearance.
+    <div
+      className="flex flex-col gap-4"
+      style={{
+        paddingTop: 'calc(var(--safe-t) + 1.5rem)',
+        paddingBottom: `calc(${rest.isVisible && timerMinimized ? '10rem' : '7rem'} + var(--nav-total))`,
+      }}
+    >
       <header className="flex items-center justify-between">
         <div className="flex items-baseline gap-2">
+          {/* Minimize. Leaves the session running and drops the user back
+              on the landing screen, where the floating bar takes over as
+              the way back in (see FloatingWorkoutBar.jsx). Deliberately
+              NOT next to Cancel: one of these two ends your workout and
+              the other does not, and putting them side by side is how a
+              mis-tap costs somebody their session. */}
+          <button
+            type="button"
+            onClick={onMinimize}
+            aria-label="Minimize workout and keep it running"
+            className="-ml-1 mr-0.5 self-center rounded-full p-1.5 text-neutral-400 transition active:scale-90"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
           <h1 className="text-2xl font-bold text-neutral-50">Workout</h1>
           <WorkoutTimer startedAt={workout.startedAt} />
           {screenLockActive && (
@@ -365,7 +528,7 @@ export default function ActiveWorkoutLogger({
           <p className="text-base text-neutral-400">No exercises yet</p>
           <button
             type="button"
-            onClick={() => setPickerOpen(true)}
+            onClick={() => openPicker()}
             className="bg-[var(--ember)] text-white font-semibold text-base px-6 py-3.5 rounded-2xl active:scale-[0.97] transition"
           >
             Pick First Exercise
@@ -452,6 +615,7 @@ export default function ActiveWorkoutLogger({
                     supersetPosition === 'first' ? () => onUnlinkSuperset(exercise.exerciseId) : null
                   }
                   compact={isReordering}
+                  boosted={isBoosted(exercise)}
                   onAddSet={() => onAddSet(exercise.exerciseId)}
                   onUpdateSet={(setId, patch) => handleUpdateSet(exercise.exerciseId, setId, patch)}
                   onRemoveSet={(setId) => onRemoveSet(exercise.exerciseId, setId)}
@@ -467,7 +631,7 @@ export default function ActiveWorkoutLogger({
           {!isReordering && (
             <button
               type="button"
-              onClick={() => setPickerOpen(true)}
+              onClick={() => openPicker()}
               className="w-full py-4 text-base font-medium text-neutral-300 bg-neutral-900 rounded-2xl"
             >
               + Add Another Exercise
@@ -494,7 +658,13 @@ export default function ActiveWorkoutLogger({
         </div>
       )}
 
-      <div className="fixed bottom-0 inset-x-0 z-30 bg-neutral-950/92 border-t border-white/10 p-4">
+      {/* Sits ON TOP of BottomNav, not over it. This was `bottom-0`, which
+          was correct while /workout rendered outside <Layout> and had the
+          screen to itself — now that the tab row is on this route too,
+          bottom-0 would bury it under this bar at the same z-30. Offset by
+          the same --nav-total variable BottomNav sets its own min-height
+          from, so the two cannot drift apart. */}
+      <div className="fixed bottom-[var(--nav-total)] inset-x-0 z-30 bg-neutral-950/92 border-t border-white/10 p-4">
         <div className="max-w-md mx-auto flex flex-col gap-3">
           {/* Only ever shown while the full-screen timer is deliberately
               minimised — a way back to it, not a second timer UI. */}
@@ -533,12 +703,34 @@ export default function ActiveWorkoutLogger({
           onAddTime={rest.addTime}
           onSkip={rest.dismiss}
           onMinimize={() => setTimerMinimized(true)}
+          boostOffer={boostOffer}
+        />
+      )}
+
+      {/* The stand-in ad for the 2× offer, drawn over the full-screen
+          timer — which keeps counting underneath; see AdPlayingOverlay.
+          Rendered here rather than inside the timer so minimising the
+          timer mid-ad cannot unmount the ad. */}
+      {boostAd.busy && !boostAd.isNative && (
+        <AdPlayingOverlay
+          rewarding={boostAd.status === 'rewarding'}
+          caption="Your rest timer keeps counting."
+          rewardingTitle="Arming your 2×…"
+          rewardingCaption="Almost there — the clock is still running."
         />
       )}
 
       {showCoreRoast && (
         <JimmyRoastModal
-          onDoAbs={() => setShowCoreRoast(false)}
+          // Straight from "you're right" into the core catalog. The
+          // workout is untouched by this — nothing finishes, nothing is
+          // logged, the session simply stays open with the picker over it,
+          // so the sets they are about to do land in it like any others
+          // and Finish re-runs the same check afterwards.
+          onDoAbs={() => {
+            setShowCoreRoast(false);
+            openPicker(coreGroupId(exercises.muscleGroups));
+          }}
           onSkip={() => {
             setShowCoreRoast(false);
             setShowSummary(true);
@@ -549,8 +741,6 @@ export default function ActiveWorkoutLogger({
       {showSummary && (
         <WorkoutSummaryModal
           workout={workout}
-          onSaveTemplate={onSaveTemplate}
-          personalRecords={personalRecords}
           bodyWeightKg={bodyWeightKg}
           onDone={onFinish}
           onBack={() => setShowSummary(false)}
@@ -569,9 +759,35 @@ export default function ActiveWorkoutLogger({
           removableExerciseIds={workout.exercises
             .filter((e) => !e.sets.some((set) => set.completed))
             .map((e) => e.exerciseId)}
+          initialGroup={pickerGroup}
           onAdd={handleAdd}
           onRemove={onRemoveExercise}
-          onClose={() => setPickerOpen(false)}
+          onClose={closePicker}
+        />
+      )}
+
+      {/* Before anything else on the screen can be touched: the answer is
+          persisted on the workout itself (useWorkouts' answerLocker), so a
+          mid-session refresh doesn't ask twice.
+
+          The "nothing logged yet" clause is for one narrow case — a
+          session already in progress on someone's phone when this feature
+          shipped has no `lockerAsked` at all, and being asked for a locker
+          number three exercises into a workout is worse than not being
+          asked. It costs nothing afterwards: the prompt is modal, so a
+          brand-new workout cannot have a completed set yet. */}
+      {askForLocker && !workout.lockerAsked && !workout.exercises.some((e) => e.sets.some((set) => set.completed)) && (
+        <LockerPromptModal
+          onSave={(number) => onAnswerLocker(number)}
+          onSkip={() => onAnswerLocker(null)}
+          onDisable={() => {
+            // Both, and in this order: the account-level flag is an async
+            // Firestore write, while marking the session answered is local
+            // and instant — without it the modal would sit there until the
+            // write round-tripped.
+            onAnswerLocker(null);
+            onDisableLockerPrompt();
+          }}
         />
       )}
 

@@ -2,6 +2,18 @@ import { useState } from 'react';
 import { getTierByStage } from '../../utils/evolutionTiers';
 import { ACCESSORY_SLOT_ORDER, getStoreItem, readEquippedAccessories } from '../../data/storeItems';
 import { ACCESSORY_ART, artFor } from './accessoryArt';
+import { FIRE_STREAK_MIN, streakAuraClass } from '../../utils/streak';
+import {
+  DEFAULT_MASCOT_ID,
+  MASCOT_GENA,
+  accessoryArtStageFor,
+  getMascot,
+  mascotCanWear,
+  mascotHasAccessories,
+  mascotSpriteAspect,
+  mascotSpriteFor,
+  outfitSpriteFor,
+} from '../../data/mascots';
 
 // Jimmy with his gear on — one renderer for every place an avatar appears
 // (shop preview, profile, leaderboard row, feed post), so an accessory can
@@ -172,15 +184,71 @@ const ACCESSORY_LAYOUT = {
 // PNGs are lit flat and read as stickers without it.
 const SHADOW = 'drop-shadow(0 2px 3px rgba(0,0,0,0.45))';
 
-function layoutFor(itemId, stage) {
+// Gena's gear, in the same coordinate system and measured the same way —
+// but ONE entry per accessory rather than four, because her four sprites
+// were normalised onto a single canvas (see data/mascots.js). Her tiers
+// differ in definition, not in silhouette, so a per-stage table here would
+// be four copies of the same numbers pretending to be a calibration.
+//
+// Landmarks read off gena-goat.png, the same way Jimmy's were:
+//
+//   eye line 15.7% of canvas height · pupil span 18.5% of canvas width
+//   face midline 50.5% · shoulder line 26% · hip 45% · sole 84%
+//
+// Head and eye pieces are Jimmy's stage-1 numbers converted through pupil
+// span — his 16.6% of a 528px canvas against her 18.5% of a 285px one —
+// with vertical offsets from the eye line carried across in the SAME
+// physical units, which matters here in a way it never did for Jimmy: his
+// canvases are all ~0.36:1 while hers is 0.28:1, so a percentage of width
+// and a percentage of height do not convert between the two characters at
+// the same rate.
+//
+// Pupil span is the right basis for the SHADES, which sit across the eyes.
+// It is the wrong one for the HEADPHONES, and they were shipped too small
+// because of it: converted through her narrower eye spacing the cups came
+// out at 50% and sat on her cheeks, inside the face, with the ears poking
+// out beside them. Head-hugging pieces scale with the head. On Jimmy the
+// cups are 1.28x his face width at eye level; her face there is ~46%, so
+// 60% — checked side by side with his stage-1 render: cups straddling the
+// face edge over the ear roots, band arched over the crown between the
+// horns, cup top at the brow and bottom at the nose. `top` then follows
+// from holding the band top at ~7% of the canvas, as his is.
+//
+// The three body/leg pieces are a COMPROMISE and worth knowing about. That
+// artwork was cut from Jimmy composites (see accessoryArt.jsx), so it is
+// literally a stocky male goat's garment: his jeans are 0.65:1 where her
+// hip-to-ankle run wants nearer 0.28:1. Fitting them to her height would
+// make them twice as wide as her body, so they are fitted to her WIDTH
+// instead — which lands the tank and hoodie correctly and leaves the jeans
+// reading as cropped ones that stop below the knee. Gena-cut versions of
+// those three are the real fix; nothing in the code changes when they
+// arrive beyond the numbers below.
+const GENA_ACCESSORY_LAYOUT = {
+  'accessory-shades': { top: '15.4%', left: '50.5%', width: '43.0%' },
+  'accessory-headphones': { top: '13.5%', left: '50.5%', width: '60.0%' },
+  'accessory-cap': { top: '10.8%', left: '50.5%', width: '37.0%' },
+  'accessory-tank': { top: '34.8%', left: '50.5%', width: '49.0%' },
+  'accessory-hoodie': { top: '37.4%', left: '50.5%', width: '62.0%' },
+  'accessory-jeans': { top: '58.0%', left: '50.5%', width: '60.0%' },
+};
+
+// Placement is per mascot AND per stage; `z` is neither — the slot stack
+// (body behind, lenses in front) is a property of the outfit, not of who
+// is wearing it, so it is read from ACCESSORY_LAYOUT either way and two
+// head pieces can never argue about order on one character and agree on
+// the other.
+function layoutFor(itemId, stage, mascotId) {
   const entry = ACCESSORY_LAYOUT[itemId];
   if (!entry) return null;
-  return { ...(entry.stages[stage] ?? entry.stages[1]), zIndex: entry.z };
+  const place =
+    mascotId === MASCOT_GENA
+      ? GENA_ACCESSORY_LAYOUT[itemId]
+      : entry.stages[stage] ?? entry.stages[1];
+  // A mascot with no entry for this piece wears nothing rather than
+  // wearing it in Jimmy's place on a body that is not his.
+  if (!place) return null;
+  return { ...place, zIndex: entry.z };
 }
-
-// Each sprite's canvas aspect (width / height). Needed by AccessoryLayer —
-// see the note there.
-const SPRITE_ASPECT = { 1: 528 / 1466, 2: 438 / 1467, 3: 552 / 1467, 4: 673 / 1462 };
 
 // The worn accessories on their own, sized and placed against Jimmy's
 // sprite — no sprite of its own, so it can be dropped over one that is
@@ -202,11 +270,43 @@ const SPRITE_ASPECT = { 1: 528 / 1466, 2: 438 / 1467, 3: 552 / 1467, 4: 673 / 14
 // least as wide as it is tall. True everywhere Jimmy is drawn (every box
 // is square) and the widest sprite is 0.46:1, but `max-w-full` keeps it
 // from overflowing rather than silently mis-anchoring if that changes.
-export function AccessoryLayer({ evolutionStage, equippedAccessories = [], depth = 'front', className = '' }) {
+export function AccessoryLayer({
+  evolutionStage,
+  equippedAccessories = [],
+  // Which character the gear is being placed on. Defaults to Jimmy so
+  // every existing call site keeps its exact behaviour.
+  mascot = DEFAULT_MASCOT_ID,
+  depth = 'front',
+  className = '',
+}) {
   const stage = getTierByStage(evolutionStage)?.stage ?? 1;
-  const equipped = Array.isArray(equippedAccessories)
-    ? equippedAccessories
-    : readEquippedAccessories(equippedAccessories);
+
+  // A mascot with no accessory art of its own wears nothing, whatever the
+  // account happens to have equipped.
+  //
+  // This one line is the enforcement for the whole feature, and it is
+  // here rather than at the twelve call sites for the reason the file
+  // header already gives about equippedAccessories: a rule applied at call
+  // sites is a rule that one forgotten prop undoes, silently, on exactly
+  // the screen nobody rechecked. Everything that draws gear — your own
+  // avatar, a feed row, a leaderboard row, a friend's profile, a shop
+  // card, the evolution crossfade — goes through this component.
+  //
+  // It hides rather than clears: the ids stay on the account and on every
+  // feed post, so switching back to Jimmy puts the outfit straight back on.
+  if (!mascotHasAccessories(mascot)) return null;
+
+  // ...and per item, the same way: only what this mascot can wear (the
+  // catalog locks Jimmy's garments to him and Gena's sets to her — see
+  // mascotCanWear), whatever else is equipped. Filtered before the slot
+  // pass, so a hoodie she cannot wear does not even claim its slot. An
+  // outfit set passes the filter but has no overlay art, so it draws
+  // nothing here: it was already drawn, as the sprite itself.
+  const equipped = (
+    Array.isArray(equippedAccessories)
+      ? equippedAccessories
+      : readEquippedAccessories(equippedAccessories)
+  ).filter((id) => mascotCanWear(mascot, id));
 
   // Fixed slot order, not the order things were equipped, so layering is
   // stable: the hoodie paints before the chain that lies on it, and the
@@ -215,10 +315,13 @@ export function AccessoryLayer({ evolutionStage, equippedAccessories = [], depth
   const worn = ACCESSORY_SLOT_ORDER.flatMap((slot) => {
     const id = equipped.find((itemId) => ACCESSORY_ART[itemId]?.slot === slot);
     if (!id) return [];
-    const art = artFor(ACCESSORY_ART[id], stage);
+    // NOT plain `stage`: a per-stage garment is a cut of a specific tier
+    // of a specific mascot, and the later ones have that mascot baked into
+    // them — see accessoryArtStageFor.
+    const art = artFor(ACCESSORY_ART[id], accessoryArtStageFor(mascot, stage));
     // The behind pass draws only the pieces that HAVE a back half.
     if (behindPass && !art.behind) return [];
-    const place = layoutFor(id, stage);
+    const place = layoutFor(id, stage, mascot);
     if (!place) return [];
     return [{ id, art, name: getStoreItem(id)?.name ?? id, place }];
   });
@@ -237,7 +340,7 @@ export function AccessoryLayer({ evolutionStage, equippedAccessories = [], depth
     >
       <div
         className="relative h-full max-w-full"
-        style={{ aspectRatio: `${SPRITE_ASPECT[stage] ?? SPRITE_ASPECT[1]}` }}
+        style={{ aspectRatio: `${mascotSpriteAspect(mascot, stage)}` }}
       >
         {worn.map(({ id, art, name, place }) => {
           const style = { ...place, transform: 'translate(-50%, -50%)', filter: SHADOW };
@@ -295,14 +398,31 @@ export default function JimmyAvatar({
   // 'head' zooms to the head/collarbone for small round avatars.
   crop = null,
   // A live workout streak sets him alight (.streak-fire in index.css).
-  // A plain boolean rather than the streak number, because this component
-  // renders a goat and should not also own the question of how long a run
-  // has to be before it counts — that threshold lives with the data, at
-  // the call site. Not read from JimmyLook either: every friend's avatar
-  // on the leaderboard, the feed and their profile is somebody ELSE's, and
-  // a context fallback here would quietly set them on fire whenever YOU
-  // were on a streak. Same reasoning as equippedAccessories.
-  showFire = false,
+  //
+  // Now the streak LENGTH rather than a boolean, because the aura has
+  // three tiers and the component has to know which one to draw. The
+  // thresholds still are not decided here — streakAuraClass owns them
+  // (utils/streak.js) so the feed, the leaderboard, a friend's profile and
+  // your own goat cannot disagree about what "on fire" looks like.
+  //
+  // Still never read from JimmyLook: every friend's avatar on the
+  // leaderboard, the feed and their profile is somebody ELSE's, and a
+  // context fallback here would quietly set them alight whenever YOU were
+  // on a streak. Same reasoning as equippedAccessories.
+  //
+  // A boolean is still accepted, and means "tier 1" — a handful of call
+  // sites only ever had the pre-derived flag (friendPrivacy.js publishes
+  // one), and silently drawing nothing for them would be a worse failure
+  // than drawing the modest tier.
+  streak = 0,
+  // Which character to draw — 'jimmy' (the default) or 'gena'. Same
+  // reasoning as equippedAccessories and streak above: NEVER read from
+  // JimmyLook, because every avatar on the leaderboard, the feed and a
+  // friend's profile belongs to somebody else, and a context fallback here
+  // would quietly redraw all of them as your own mascot. The value travels
+  // with the row — see friendPrivacy.js and the feedPosts snapshot in
+  // functions/economy.js for where it comes from.
+  mascot = DEFAULT_MASCOT_ID,
   // Any extra layer to sit under the accessories (the dance animation on
   // WorkoutHome, say) — handed in rather than imported so this stays a
   // pure renderer.
@@ -310,7 +430,17 @@ export default function JimmyAvatar({
   alt,
 }) {
   const [spriteBroken, setSpriteBroken] = useState(false);
+  // An outfit set's file failing is not the same failure as the character
+  // failing: drop back to the plain sprite, not to the emoji. The outfit
+  // sprites are not in the service worker's precache (vite.config.js) the
+  // way the base sprites are, so offline this is the branch that runs.
+  const [outfitBroken, setOutfitBroken] = useState(false);
   const tier = getTierByStage(evolutionStage);
+  const character = getMascot(mascot);
+  // The equipped outfit set's render of this character at this tier, or
+  // null for the plain sprite. Same inputs as the accessory layer below,
+  // so an outfit on the account draws on every avatar the gear does.
+  const outfitSrc = outfitBroken ? null : outfitSpriteFor(mascot, tier?.stage, equippedAccessories);
 
   const cropped = crop === 'head';
   const px = typeof size === 'number' ? size : SIZES[size] ?? null;
@@ -323,15 +453,27 @@ export default function JimmyAvatar({
           matter the DOM order, so the sprite below carries an explicit
           z-index rather than relying on being written after this. */}
       {!spriteBroken && (
-        <AccessoryLayer evolutionStage={tier?.stage} equippedAccessories={equippedAccessories} depth="behind" />
+        <AccessoryLayer
+          evolutionStage={tier?.stage}
+          equippedAccessories={equippedAccessories}
+          mascot={mascot}
+          depth="behind"
+        />
       )}
       {spriteBroken ? (
-        <span className="flex h-full items-center justify-center text-[4em] leading-none">{tier?.emoji ?? '🐐'}</span>
+        <span className="flex h-full items-center justify-center text-[4em] leading-none">
+          {character.emoji ?? tier?.emoji ?? '🐐'}
+        </span>
       ) : (
         <img
-          src={tier?.image}
-          alt={alt ?? tier?.label ?? 'Jimmy'}
-          onError={() => setSpriteBroken(true)}
+          // The TIER decides the stage, the MASCOT decides whose sprite,
+          // and an equipped OUTFIT decides which render of them —
+          // tier.image is Jimmy's copy of the same lookup and is left
+          // alone so the couple of call sites that legitimately want the
+          // franchise goat (the sign-in screen's tier strip) keep working.
+          src={outfitSrc ?? mascotSpriteFor(mascot, tier?.stage)}
+          alt={alt ?? tier?.label ?? character.name}
+          onError={() => (outfitSrc ? setOutfitBroken(true) : setSpriteBroken(true))}
           className="relative z-[5] h-full w-auto object-contain"
           draggable={false}
         />
@@ -344,7 +486,11 @@ export default function JimmyAvatar({
           rectangle. Sharing it anyway is the point: the coordinates can
           only ever be calibrated once. */}
       {!spriteBroken && (
-        <AccessoryLayer evolutionStage={tier?.stage} equippedAccessories={equippedAccessories} />
+        <AccessoryLayer
+          evolutionStage={tier?.stage}
+          equippedAccessories={equippedAccessories}
+          mascot={mascot}
+        />
       )}
     </div>
   );
@@ -360,7 +506,12 @@ export default function JimmyAvatar({
   // a deliberate accept, not an oversight — punching the aura out through
   // the ring would mean dropping the circular mask that makes those
   // avatars avatars.
-  const fireClass = showFire ? 'streak-fire' : '';
+  const fireClass = streakAuraClass(streak === true ? FIRE_STREAK_MIN : streak);
+  // Tier 3 gets a third, slowly rotating layer that the two pseudo-
+  // elements have no room for. Rendered as a real child, so it only exists
+  // for the avatars that have earned it rather than sitting invisible
+  // behind every other one in the feed.
+  const halo = fireClass.includes('--t3') ? <span className="streak-halo" aria-hidden="true" /> : null;
 
   if (!cropped) {
     return (
@@ -368,6 +519,7 @@ export default function JimmyAvatar({
         className={`inline-block ${px == null ? 'h-full' : ''} ${fireClass} ${className}`}
         style={sizeStyle}
       >
+        {halo}
         {inner}
       </div>
     );
@@ -375,6 +527,7 @@ export default function JimmyAvatar({
 
   return (
     <div className={`${fireClass} ${className}`} style={sizeStyle}>
+      {halo}
       <div className="relative h-full w-full overflow-hidden">
         <div
           className="flex h-full w-full items-start justify-center"

@@ -6,6 +6,7 @@ import { tierGradientCss } from '../../utils/tierTheme';
 import GradientBorder from '../shared/GradientBorder';
 import { AccessoryLayer } from './JimmyAvatar';
 import { useJimmyLook } from '../../context/JimmyLook';
+import { mascotSpriteFor } from '../../data/mascots';
 
 // Workouts aren't a typed model anywhere else in this JS codebase yet, so
 // this stays loose rather than inventing a shape nothing else honors.
@@ -36,7 +37,9 @@ const LAST_SEEN_KEY = 'last-evolution-tier';
 // sprite file is missing, each layer falls back to the tier's emoji
 // instead of a broken-image icon.
 export default function JimmyEvolution({ workouts, bodyWeightKg = 0, minStage = 1 }: JimmyEvolutionProps) {
-  const { equippedAccessories } = useJimmyLook();
+  // Your own card, so reading the mascot from context is correct here —
+  // unlike the feed and the board, this component never draws anyone else.
+  const { equippedAccessories, mascot } = useJimmyLook();
   const totalVolume = lifetimeVolume(workouts);
   const { current, next, percent, isMaxTier, neglected, baseTier } = getEvolutionProgress(totalVolume, {
     minStage,
@@ -63,9 +66,30 @@ export default function JimmyEvolution({ workouts, bodyWeightKg = 0, minStage = 
     return lastSeenTier.stage < current.stage ? lastSeenTier : false;
   });
 
-  const [baseImage, setBaseImage] = useState(justEvolved ? justEvolved.image : current.image);
-  const [incomingImage, setIncomingImage] = useState(justEvolved ? current.image : null);
+  // Both layers of the crossfade come from the mascot, not from the tier's
+  // own `image`: the animation is the SAME character growing a tier, and
+  // taking one frame from each would make it a species change. The gear
+  // goes in too, because for Gena an equipped outfit set IS the sprite
+  // (data/mascots.js `outfits`) — evolving in the Pink Set crossfades
+  // from her in pink to her in pink, one tier up.
+  const [baseImage, setBaseImage] = useState(
+    mascotSpriteFor(mascot, justEvolved ? justEvolved.stage : current.stage, equippedAccessories),
+  );
+  const [incomingImage, setIncomingImage] = useState(
+    justEvolved ? mascotSpriteFor(mascot, current.stage, equippedAccessories) : null,
+  );
   const [brokenImages, setBrokenImages] = useState(new Set());
+
+  // Between crossfades the resting layer simply IS the current sprite —
+  // re-derived during render (React's documented pattern, as in
+  // JimmyAnimation) so changing outfit or mascot while this card is
+  // mounted redraws it, rather than holding whatever was true on mount.
+  // Never mid-crossfade: the incoming layer owns the transition then and
+  // promotes itself into this state when it lands.
+  const restingImage = mascotSpriteFor(mascot, current.stage, equippedAccessories);
+  if (!incomingImage && baseImage !== restingImage) {
+    setBaseImage(restingImage);
+  }
 
   useEffect(() => {
     saveJSON(LAST_SEEN_KEY, baseTier.id);
@@ -87,7 +111,12 @@ export default function JimmyEvolution({ workouts, bodyWeightKg = 0, minStage = 
             layers below are absolutely positioned, so DOM order is enough
             here; AccessoryLayer also pins z-index for the cases where it
             isn't. */}
-        <AccessoryLayer evolutionStage={current.stage} equippedAccessories={equippedAccessories} depth="behind" />
+        <AccessoryLayer
+          evolutionStage={current.stage}
+          equippedAccessories={equippedAccessories}
+          mascot={mascot}
+          depth="behind"
+        />
         {brokenImages.has(baseImage) ? (
           <span className="text-6xl leading-none">{current.emoji}</span>
         ) : (
@@ -121,7 +150,11 @@ export default function JimmyEvolution({ workouts, bodyWeightKg = 0, minStage = 
             is on screen for 0.8s wearing the new tier's fit, which is the
             right trade — the alternative is gear that jumps a frame after
             the crossfade lands. */}
-        <AccessoryLayer evolutionStage={current.stage} equippedAccessories={equippedAccessories} />
+        <AccessoryLayer
+          evolutionStage={current.stage}
+          equippedAccessories={equippedAccessories}
+          mascot={mascot}
+        />
       </div>
       {justEvolved && incomingImage && (
         <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--tier-accent)' }}>

@@ -23,6 +23,14 @@ function tidySets(exercise) {
       // put back in the belt field. `addedWeight` is the only part that
       // was actually the lifter's choice, so that's what gets re-seeded.
       addedWeight: Number(s.addedWeight) || 0,
+      // The input sheet's own context, carried through so repeating last
+      // week's session re-opens with the same bar and the same plates
+      // rather than back-solving them from the total. Copied verbatim,
+      // including `isPerHand`, which is the marker that says whether
+      // `weight` above is one dumbbell or the pair — see utils/setLoad.js.
+      ...(s.barWeight !== undefined ? { barWeight: Number(s.barWeight) } : {}),
+      ...(s.weightPerSide !== undefined ? { weightPerSide: Number(s.weightPerSide) } : {}),
+      ...(s.isPerHand === true ? { isPerHand: true, perHandWeight: Number(s.perHandWeight) } : {}),
     }))
     // weight >= 0 (not > 0): a bodyweight movement legitimately logs 0 kg.
     // reps > 0 drops the blank "typed but never filled in" rows.
@@ -72,6 +80,15 @@ export function seedSetsFromHistory(last, { count, isBodyweight = false } = {}) 
       ? // The load is the lifter's body weight (folded in server-side), so
         // only the belt and the reps are theirs to repeat.
         { ...base, addedWeight: historical.addedWeight, reps: historical.reps }
-      : { ...base, weight: historical.weight, reps: historical.reps };
+      : {
+          ...base,
+          weight: historical.weight,
+          reps: historical.reps,
+          ...(historical.barWeight !== undefined ? { barWeight: historical.barWeight } : {}),
+          ...(historical.weightPerSide !== undefined ? { weightPerSide: historical.weightPerSide } : {}),
+          ...(historical.isPerHand === true
+            ? { isPerHand: true, perHandWeight: historical.perHandWeight }
+            : {}),
+        };
   });
 }

@@ -25,15 +25,34 @@ export function useTrainerTrainees(trainerUid) {
     });
   }, [trainerUid]);
 
+  // `trainees` is a brand-new array identity on EVERY roster snapshot —
+  // `snap.docs.map(...)` rebuilds it even when the update touched
+  // something these listeners don't care about, which is most of the time
+  // (a trainee's coins ticking up after a workout rewrites their user
+  // doc). Depending on the array directly tore down and re-opened all N
+  // workout subscriptions on each of those, and a fresh onSnapshot always
+  // replays the whole collection — so one trainee earning a coin cost a
+  // full re-read of every trainee's entire workout history.
+  //
+  // Only the SET OF IDS actually matters to this effect, so it depends on
+  // a stringified list of them: same ids, same string, no re-subscribe.
+  // Same idiom as useFeed.js's `friendUidsKey`, and safe for the same
+  // reason — Firestore uids are alphanumeric, so a comma can't appear
+  // inside one and split() is the exact inverse of join().
+  const traineeIdsKey = trainees.map((t) => t.id).join(',');
+
   useEffect(() => {
-    const unsubs = trainees.map((trainee) =>
-      onSnapshot(collection(db, 'users', trainee.id, 'workouts'), (snap) => {
+    // '' is the empty roster; ''.split(',') would hand back [''] and open
+    // a listener on users//workouts.
+    const traineeIds = traineeIdsKey ? traineeIdsKey.split(',') : [];
+    const unsubs = traineeIds.map((traineeId) =>
+      onSnapshot(collection(db, 'users', traineeId, 'workouts'), (snap) => {
         const workouts = snap.docs.map((d) => d.data());
-        setVolumeByUid((prev) => ({ ...prev, [trainee.id]: lifetimeVolume(workouts) }));
+        setVolumeByUid((prev) => ({ ...prev, [traineeId]: lifetimeVolume(workouts) }));
       }),
     );
     return () => unsubs.forEach((unsub) => unsub());
-  }, [trainees]);
+  }, [traineeIdsKey]);
 
   const roster = trainees.map((trainee) => {
     const totalVolume = volumeByUid[trainee.id] ?? 0;

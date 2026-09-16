@@ -101,6 +101,13 @@ export const REWARD_AD_EVENTS = {
 // How long the web stand-in "plays" for. Native ignores this entirely.
 export const SIMULATED_AD_MS = 3000;
 
+// What a rest-timer ad carries in AdMob's `custom_data`, so the signed
+// callback can tell "pay 50 coins" from "arm a 2× token" without the app
+// in the reward path. Twin of functions/storeCatalog.js's
+// REST_BOOST_SSV_CUSTOM_DATA — change them together or a live boost ad
+// quietly pays coins instead.
+export const REST_BOOST_SSV_CUSTOM_DATA = 'rest-boost';
+
 // Must match guards.js's adReward window. The server owns the real cap;
 // this only lets the UI work out, from users/{uid}.lastAdRewardAt, whether
 // the button can pay before somebody sits through an ad to find out.

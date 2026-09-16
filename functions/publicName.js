@@ -38,17 +38,17 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore } = require('firebase-admin/firestore');
 
-exports.syncPublicDisplayName = onCall(async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
-  const uid = request.auth.uid;
-
+// Pushes `displayName` onto every surface that holds a COPY of it. Split
+// out of the callable below so usernames.js's claimUsername can run the
+// same mirror in the same breath as the rename itself — a name that is
+// unique in `usernames` but stale in `feedPosts` is two bugs, not one.
+//
+// Takes the name as an argument rather than re-reading it, because its
+// other caller has just written it inside a transaction and would
+// otherwise race its own commit.
+async function mirrorDisplayName(uid, displayName) {
   const db = getFirestore();
   const userSnap = await db.collection('users').doc(uid).get();
-  const displayName = userSnap.data()?.displayName;
-  if (typeof displayName !== 'string' || !displayName.trim()) {
-    throw new HttpsError('failed-precondition', 'No display name on your profile yet.');
-  }
-
   const writes = [];
 
   // The friend-visible surface. Updated only if it already exists —
@@ -85,4 +85,17 @@ exports.syncPublicDisplayName = onCall(async (request) => {
   }
 
   return { displayName, surfaces: writes.length, postsRenamed: stale.length };
+}
+
+exports.mirrorDisplayName = mirrorDisplayName;
+
+exports.syncPublicDisplayName = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const uid = request.auth.uid;
+
+  const displayName = (await getFirestore().collection('users').doc(request.auth.uid).get()).data()?.displayName;
+  if (typeof displayName !== 'string' || !displayName.trim()) {
+    throw new HttpsError('failed-precondition', 'No display name on your profile yet.');
+  }
+  return mirrorDisplayName(uid, displayName);
 });

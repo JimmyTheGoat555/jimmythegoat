@@ -2,15 +2,21 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Routes, Route, Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import WorkoutHome from './components/workout/WorkoutHome';
 import BottomNav from './components/layout/BottomNav';
+// The "your session is still running" bar. Eager — it is chrome that can
+// appear on any screen at any moment, and a lazy boundary would mean it
+// pops in a beat after you leave the workout.
+import FloatingWorkoutBar from './components/workout/FloatingWorkoutBar';
 import { TAB_PATHS, TRAINER_TAB_PATH } from './components/layout/tabPaths';
 import AuthScreen from './components/auth/AuthScreen';
 import PendingVerificationScreen from './components/auth/PendingVerificationScreen';
 import FirebaseSetupNeeded from './components/auth/FirebaseSetupNeeded';
 import TopHud from './components/layout/TopHud';
+import ForcedUsernameModal from './components/profile/ForcedUsernameModal';
 import { useCloudWorkoutHistory } from './hooks/useCloudWorkouts';
 import { useCloudProfile } from './hooks/useCloudProfile';
 import { useEconomy } from './hooks/useEconomy';
 import { useActiveWorkout } from './hooks/useWorkouts';
+import { useRestTimer } from './hooks/useRestTimer';
 import { useExercises } from './hooks/useExercises';
 import { useFriendsGraph } from './hooks/useFriendsGraph';
 import { useFeed } from './hooks/useFeed';
@@ -27,7 +33,6 @@ import { useTabSwipe } from './hooks/useTabSwipe';
 import { firebaseConfigured } from './lib/firebase';
 import { lifetimeVolume, lastWorkoutAt } from './utils/workoutStats';
 import { getEvolutionProgress, TRAINER_MIN_STAGE } from './utils/evolutionTiers';
-import { findNewPersonalRecords } from './utils/personalRecords';
 import { lastPerformance, seedSetsFromHistory } from './utils/lastPerformance';
 import { isBodyweightExercise } from './data/exercises';
 // NOT lazy, unlike the other post-workout overlays. Measured: a lazy
@@ -38,11 +43,21 @@ import { isBodyweightExercise } from './data/exercises';
 // imported dynamically inside it), so there is nothing to defer and a
 // visible seam to avoid.
 import BadgeCelebrationModal from './components/workout/BadgeCelebrationModal';
+// Phase 1 of the finish flow — the replay of the session just logged. NOT
+// lazy, for the same reason BadgeCelebrationModal isn't: a Suspense
+// boundary costs a visible blank seam, and this is the very first thing
+// that should appear after "Done".
+import WorkoutCelebration from './components/workout/WorkoutCelebration';
+// Last step of the same cascade, and eager for the same reason — see the
+// note above and LockerReminderModal.jsx.
+import LockerReminderModal from './components/workout/LockerReminderModal';
 import ConfirmDialog from './components/shared/ConfirmDialog';
 import { JimmyLookProvider } from './context/JimmyLook';
 import { DEFAULT_SETS_PER_EXERCISE } from './hooks/useWorkouts';
 import { tierCssVars } from './utils/tierTheme';
 import { unequippedRewardCount } from './utils/storeAlerts';
+import { normalizeRestSeconds } from './utils/restPresets';
+import { isAppAdmin } from './utils/appAdmin';
 
 // Everything past the first screen is split out of the initial bundle. The
 // app shipped as one ~1.3MB chunk that every user parsed before seeing
@@ -68,6 +83,10 @@ const TrainerDashboard = lazy(() => import('./components/trainer/TrainerDashboar
 const TraineeDetail = lazy(() => import('./components/trainer/TraineeDetail'));
 const TraineeWorkoutDetail = lazy(() => import('./components/trainer/TraineeWorkoutDetail'));
 const AssignWorkoutForm = lazy(() => import('./components/trainer/AssignWorkoutForm'));
+// The owner's own dashboard. Lazy and never prefetched: exactly one
+// account in the world can open it, so shipping it to everyone else — or
+// even warming it on idle — would be pure waste.
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard'));
 // Both are modals that render only once something opens them, and both pull
 // in lib/messaging -> firebase/messaging, which otherwise sits in the
 // startup bundle for the sake of a permission toggle most sessions never
@@ -77,9 +96,11 @@ const SettingsPanel = lazy(() => import('./components/profile/SettingsPanel'));
 // A one-time, per-account overlay (the Silver Lootbox) — no reason to ship
 // it in the startup bundle for the sessions that will never see it again.
 const SilverLootboxModal = lazy(() => import('./components/workout/SilverLootboxModal'));
-// The post-finish victory lap. Only ever mounts for the few seconds
-// between a workout being logged and its reward landing.
-const WorkoutSummaryChecklist = lazy(() => import('./components/workout/WorkoutSummaryChecklist'));
+// Phase 2 of the finish flow — two prompts that only open after the
+// celebration, and only when they apply (a freestyle lineup worth saving;
+// records worth shouting about). Lazy: most sessions open neither.
+const SaveRoutinePrompt = lazy(() => import('./components/workout/SaveRoutinePrompt'));
+const SharePRsModal = lazy(() => import('./components/workout/SharePRsModal'));
 // Only mounts when someone actually plans ahead; it drags in the whole
 // exercise picker, which the landing screen otherwise never needs.
 const PlanWorkoutModal = lazy(() => import('./components/workout/PlanWorkoutModal'));
@@ -117,7 +138,27 @@ function ScreenFallback() {
 // for Profile/History specifically, they're reached by a forward link,
 // not a tab tap, so "which direction did I come from" isn't even a
 // sensible question there).
-function Layout({ isTrainer, tierId, coins, unreadNotifications, unequippedRewards, onOpenSettings }) {
+function Layout({
+  isTrainer,
+  tierId,
+  coins,
+  unreadNotifications,
+  unequippedRewards,
+  onOpenSettings,
+  // The in-progress session, or null. Passed as a prop rather than pulled
+  // from a new WorkoutContext: `activeWorkout` already lives in App, which
+  // is above the router and never unmounts on a route change, so a context
+  // would move the same value the same distance through a second
+  // mechanism. See the floating bar's own header comment for what was
+  // actually missing here — it was never the state's lifetime.
+  activeWorkout,
+  // The running rest, or null when none is. Passed down the same way and
+  // for the same reason `activeWorkout` is: it lives in App, which outlives
+  // every route, and the bar that draws it is chrome Layout owns.
+  restSecondsLeft = null,
+  restIsOverdue = false,
+  onRestoreWorkout,
+}) {
   const location = useLocation();
   const containerRef = useRef(null);
   const tabPaths = isTrainer ? [...TAB_PATHS, TRAINER_TAB_PATH] : TAB_PATHS;
@@ -132,6 +173,7 @@ function Layout({ isTrainer, tierId, coins, unreadNotifications, unequippedRewar
   // A conditional setState mid-render like this bails out and re-renders
   // immediately with the new values before anything paints, so there's no
   // flash of a stale enterClass.
+  const isWorkoutRoute = location.pathname === '/workout';
   const [prevPathname, setPrevPathname] = useState(location.pathname);
   const [enterClass, setEnterClass] = useState(null);
   if (location.pathname !== prevPathname) {
@@ -153,7 +195,12 @@ function Layout({ isTrainer, tierId, coins, unreadNotifications, unequippedRewar
 
   return (
     <>
-      <TopHud coins={coins} onOpenSettings={onOpenSettings} />
+      {/* The logger has its own header (timer, Minimize, Cancel), so a
+          second bar of chrome above it would push the whole session down
+          for no gain — TopHud's own header comment already said it does
+          not belong here. BottomNav, by contrast, DOES render on this
+          route now: that is the point of the fix. */}
+      {!isWorkoutRoute && <TopHud coins={coins} onOpenSettings={onOpenSettings} />}
       <div ref={containerRef}>
         {enterClass ? (
           <div key={location.pathname} className={enterClass}>
@@ -163,6 +210,24 @@ function Layout({ isTrainer, tierId, coins, unreadNotifications, unequippedRewar
           <Outlet />
         )}
       </div>
+      {/* Everywhere EXCEPT the workout screen itself — there, the session
+          is already the whole page. `fixed`, so it never takes part in any
+          page's scrolling; the extra bottom padding those pages would need
+          is handled by each screen's own .pb-nav (index.css), which
+          already clears the tab row and has room for this. */}
+      {activeWorkout && !isWorkoutRoute && (
+        <FloatingWorkoutBar
+          startedAt={activeWorkout.startedAt}
+          exerciseCount={activeWorkout.exercises.length}
+          setCount={activeWorkout.exercises.reduce(
+            (n, e) => n + e.sets.filter((set) => set.completed).length,
+            0,
+          )}
+          restSecondsLeft={restSecondsLeft}
+          restIsOverdue={restIsOverdue}
+          onRestore={onRestoreWorkout}
+        />
+      )}
       <BottomNav
         isTrainer={isTrainer}
         tierId={tierId}
@@ -180,6 +245,16 @@ function Layout({ isTrainer, tierId, coins, unreadNotifications, unequippedRewar
 // the user. `navigator.onLine === false` is the strongest signal; the code
 // / message checks catch the "flaky connection, request never landed" case
 // where the browser still thinks it's online.
+// "Bench Press + Back Squat", or "Bench Press + 3 more". Was
+// defaultTemplateName inside WorkoutSummaryModal, which no longer asks
+// this question — the routine prompt does, after the celebration.
+function defaultRoutineName(performed) {
+  const names = (performed ?? []).map((e) => e.name);
+  if (names.length === 0) return 'My Workout';
+  if (names.length <= 2) return names.join(' + ');
+  return `${names[0]} + ${names.length - 1} more`;
+}
+
 function isOfflineError(err) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
   const code = String(err?.code ?? '');
@@ -216,8 +291,18 @@ export default function App() {
     changeEmail,
     deleteAccount,
     setSharePRs,
+    setAskForLocker,
+    setDefaultRestTimer,
+    setMascot,
+    officialFriendUid,
   } = useAuth();
   const uid = user?.uid ?? null;
+  // From the Auth user, NOT from the users/{uid} document: the doc's
+  // `email` field is written once at signup and is not what Auth would
+  // answer today, and it sits on a record this client could in principle
+  // be handed a stale copy of. A client-side check either way — see
+  // utils/appAdmin.js — so this only decides whether the door is drawn.
+  const isAdmin = isAppAdmin(user?.email);
 
   // A one-line dismissible banner for non-fatal heads-ups that need to
   // survive a component unmounting right as they happen — originally just
@@ -235,11 +320,25 @@ export default function App() {
   const [lootboxReward, setLootboxReward] = useState(null);
   // Badge ids earned by the workout just logged — step 2 of the cascade.
   const [badgeCelebration, setBadgeCelebration] = useState(null);
-  // The checklist that plays after a workout is logged: { exercises, reward }.
-  // `reward` is the deferred "what the user actually earned" step (coin/badge
-  // toast, or the Silver Lootbox) — held back until the ticking finishes so
-  // the two moments land in sequence instead of on top of each other.
-  const [finishChecklist, setFinishChecklist] = useState(null);
+  // ── The finish-flow state machine ──────────────────────────────────────
+  //
+  // One object, or null when no workout has just been logged. `step` is
+  // where we are; `queue` is what is left after this one.
+  //
+  //   celebration  → WorkoutCelebration (Phase 1, always)
+  //   saveRoutine  → SaveRoutinePrompt  (Phase 2a, freestyle lineups only)
+  //   sharePRs     → SharePRsModal      (Phase 2b, only if records broken)
+  //
+  // The badge and lootbox overlays sit BETWEEN the two phases, guarded on
+  // this object — see the render block. Expressing the order as a queue
+  // rather than a chain of onClose callbacks means no step needs to know
+  // what follows it, and a step that doesn't apply is simply never queued
+  // instead of being a render condition somebody has to remember.
+  const [finishFlow, setFinishFlow] = useState(null);
+  // The locker number this session started with, held back until the rest
+  // of the cascade has played — step 4, and the only one that is useful
+  // rather than celebratory. See LockerPromptModal.jsx.
+  const [lockerReminder, setLockerReminder] = useState(null);
   const handleSignUp = async (data) => {
     const { warning, verificationSent } = await signUp(data);
     // The trainer-code warning wins the one notice slot when both apply:
@@ -321,7 +420,8 @@ export default function App() {
   // `profile.coins`/`unlockedDances`/`unlockedAccessories` already arrive
   // live via useAuth's own profile listener the instant logWorkout()/
   // purchaseItem() update them server-side.
-  const { logWorkout, purchaseItem, equipItem, setEquippedAccessories, setFeaturedBadges } = useEconomy(uid);
+  const { logWorkout, publishWorkoutRecords, purchaseItem, equipItem, setEquippedAccessories, setFeaturedBadges } =
+    useEconomy(uid);
   // Social graph + feed — see hooks/useFriendsGraph.js and useFeed.js.
   // `account.friends` (bare uids) is the source of truth; both hooks derive
   // from it rather than holding their own copy.
@@ -343,6 +443,7 @@ export default function App() {
     activeWorkout,
     startWorkout,
     discardWorkout,
+    answerLocker,
     screenLockActive,
     addExercise,
     removeExercise,
@@ -352,15 +453,46 @@ export default function App() {
     removeSet,
     linkSuperset,
     unlinkSuperset,
+    bindRestBoost,
   } = useActiveWorkout(uid);
+  // The rest countdown, owned HERE rather than inside ActiveWorkoutLogger.
+  //
+  // It used to live in the logger, which is mounted by the /workout route
+  // — so leaving that route unmounted the hook and took the running rest
+  // with it. Tap Feed mid-rest and the countdown was simply gone, the
+  // alarm with it, with nothing on screen to say so. Sitting beside
+  // `activeWorkout` itself, above the router, it now survives a route
+  // change exactly as the session does: the alarm still fires wherever the
+  // lifter is, the clock is still right when they come back, and the
+  // floating bar can show the countdown instead of the elapsed time (see
+  // Layout's FloatingWorkoutBar below).
+  //
+  // The length comes from the account exactly as the logger used to read
+  // it. `?.` and normalizeRestSeconds because hooks run before the early
+  // returns below — on the very first renders there is no profile yet, and
+  // an absent value has to collapse to the 90s default rather than NaN.
+  const rest = useRestTimer(normalizeRestSeconds(account?.defaultRestTimer));
+  // A rest belongs to ONE session, so end it whenever the session changes.
+  //
+  // Keyed on the workout ID, never on the object: `activeWorkout` is
+  // replaced on every logged set, and watching it directly would cancel
+  // each rest a frame after the set that started it. Finishing, discarding
+  // and starting a different workout all change this id, and all three
+  // should take a running countdown — and its scheduled notification —
+  // with them. As cleanup rather than an effect body so it runs on the way
+  // OUT of a session, not on the way into one.
+  const activeWorkoutId = activeWorkout?.id ?? null;
+  const dismissRest = rest.dismiss;
+  useEffect(() => () => dismissRest(), [activeWorkoutId, dismissRest]);
   // { title, exercises } awaiting the "show this on your profile?" answer.
   const [pendingTemplate, setPendingTemplate] = useState(null);
   // The "plan a workout for later" sheet.
   const [planningWorkout, setPlanningWorkout] = useState(false);
   // Refs read by the "retry a deferred offline finish" effect below —
   // event listeners there would otherwise close over a stale render.
-  // `pendingOfflineFinishRef` holds { sharePersonalRecords } while a
-  // finish is waiting on the network, or null.
+  // `pendingOfflineFinishRef` holds { sharePersonalRecords,
+  // sharedRecordExerciseIds } while a finish is waiting on the network, or
+  // null.
   const activeWorkoutRef = useRef(activeWorkout);
   const pendingOfflineFinishRef = useRef(null);
   const finishWorkoutRef = useRef(null);
@@ -382,7 +514,14 @@ export default function App() {
   // Whether a workout can be STARTED right now. The server has always
   // refused one logged inside the cooldown window; this is what moves that
   // refusal to before the first set instead of after the last.
-  const workoutCooldown = useWorkoutCooldown(uid);
+  // ADMIN BYPASS — the owner's account skips the 4h gate between sessions
+  // so the finish flow can be tested repeatedly. `isAdmin` is the same
+  // client-side visibility check the Admin route uses (src/utils/appAdmin.js)
+  // and is NOT a security boundary: the server has its own, Auth-resolved
+  // bypass in functions/economy.js, and that is the one that decides.
+  // Patching this flag in devtools unlocks a button whose call the server
+  // would still refuse.
+  const workoutCooldown = useWorkoutCooldown(uid, { bypass: isAdmin });
   const [recommendingTemplate, setRecommendingTemplate] = useState(null);
   // Jimmy's evolution tier from lifetime tonnage — computed once here and
   // reused for the app-wide accent theme (below) and the tier-up
@@ -438,25 +577,50 @@ export default function App() {
       }),
     }));
 
-  const handleStartWorkout = () => {
-    startWorkout();
-    navigate('/workout');
+  // The guard that the old `/` -> `/workout` redirect was really providing.
+  //
+  // startWorkout() REPLACES whatever session is in progress — it builds a
+  // fresh emptyWorkout and sets it, with no merge and no undo. While the
+  // home screen was unreachable mid-session that could not be triggered;
+  // now that a lifter can stand on it with a workout running, all three
+  // start entrances are one tap away from silently binning logged sets.
+  //
+  // So the confirmation lives HERE, at the one function that can destroy
+  // work, rather than being approximated by locking a tab. The pending
+  // action is held as a thunk so this knows nothing about which of the
+  // three kinds of start is waiting on the answer.
+  const [pendingStart, setPendingStart] = useState(null);
+
+  const requestStart = (begin) => {
+    if (activeWorkout) {
+      setPendingStart(() => begin);
+      return;
+    }
+    begin();
   };
 
-  const handleStartAssigned = (assignment) => {
-    startWorkout(withSeededSets(assignment.exercises), { assignedWorkoutId: assignment.id });
-    navigate('/workout');
-  };
+  const handleStartWorkout = () =>
+    requestStart(() => {
+      startWorkout();
+      navigate('/workout');
+    });
+
+  const handleStartAssigned = (assignment) =>
+    requestStart(() => {
+      startWorkout(withSeededSets(assignment.exercises), { assignedWorkoutId: assignment.id });
+      navigate('/workout');
+    });
 
   // Same starting point as an assigned workout (same {exerciseId, name,
   // muscleGroup} shape) but with no assignedWorkoutId — loading a template
   // never marks any trainer assignment complete. The id rides along so the
   // server can tell whether a friend recommended this routine and owes
   // them a bounty (functions/economy.js).
-  const handleStartTemplate = (template) => {
-    startWorkout(withSeededSets(template.exercises), { templateId: template.id });
-    navigate('/workout');
-  };
+  const handleStartTemplate = (template) =>
+    requestStart(() => {
+      startWorkout(withSeededSets(template.exercises), { templateId: template.id });
+      navigate('/workout');
+    });
 
   // Deliberately NOT wrapped in try/catch here — a rejection (a set out of
   // bounds, the cooldown, today's logging limit — see functions/economy.js)
@@ -466,20 +630,19 @@ export default function App() {
   // actually saved. Only on success do we touch anything else — completing
   // an assignment, clearing the active workout, navigating away, or
   // announcing the reward.
-  // Only used to decide whether the summary offers the share — the server
-  // recomputes the records it actually publishes (functions/records.js).
-  // `workouts` is history only; the workout being finished isn't in it yet.
-  const activePersonalRecords = activeWorkout
-    ? findNewPersonalRecords(activeWorkout.exercises, workouts)
-    : [];
+  // The client's optimistic PR guess used to feed the summary modal's
+  // share switch. Gone with it: Phase 2b asks AFTER logWorkout has
+  // returned, so it shows the SERVER's list (functions/records.js) rather
+  // than a prediction that could disagree with what actually got
+  // published.
 
-  const handleFinishWorkout = async ({ sharePersonalRecords = false } = {}) => {
+  const handleFinishWorkout = async ({ sharePersonalRecords = false, sharedRecordExerciseIds = null } = {}) => {
     const workout = activeWorkoutRef.current;
     if (!workout) return;
 
     let result;
     try {
-      result = await logWorkout(workout, { sharePersonalRecords });
+      result = await logWorkout(workout, { sharePersonalRecords, sharedRecordExerciseIds });
     } catch (err) {
       if (isOfflineError(err)) {
         // logWorkout is a callable Cloud Function — Firestore's offline
@@ -492,7 +655,10 @@ export default function App() {
         // Leave the workout in activeWorkout (localStorage) — NOT discarded
         // — so it survives an app close in the basement and the retry
         // (below, plus on next launch) always has the real payload to send.
-        pendingOfflineFinishRef.current = { sharePersonalRecords };
+        // The whole choice, not just the boolean: a retry an hour later
+        // must publish exactly the records the lifter ticked at the end of
+        // the session, not all of them.
+        pendingOfflineFinishRef.current = { sharePersonalRecords, sharedRecordExerciseIds };
         setAppNotice({
           message:
             "📴 No signal — your workout is saved on this phone and will log automatically once you're back online.",
@@ -513,10 +679,21 @@ export default function App() {
       newBadges,
       firstWorkoutReward,
       totalVolumeKg,
+      // Wall-clock length of the session, measured server-side from the
+      // stored start and finish (functions/economy.js). Deliberately not
+      // recomputed here from activeWorkout.startedAt: the server clamps a
+      // start time that is in the future or more than 48h old, and a
+      // celebration headlining "72h 14m" over a history entry that says
+      // zero is the kind of disagreement nobody can explain afterwards.
+      durationMs,
       // Set only when this session paid a friend for recommending the
       // routine — the finisher's half of that loop is one line on the
       // summary, nothing more.
       recommendationBounty,
+      // Which exercises a rest-timer boost was actually applied to —
+      // again the server's answer, since a token the client pinned may
+      // have expired or been spent by the time the workout was logged.
+      coinBoosts,
       // The SERVER's list, not the client's optimistic guess — it is the
       // side that decided, and a recovery workout gets an empty one.
       personalRecords: earnedRecords,
@@ -527,9 +704,17 @@ export default function App() {
     // Captured BEFORE discardWorkout below clears the workout. Only
     // exercises with a completed set — the checklist is a record of what
     // was actually done, not what was planned.
-    const performedNames = workout.exercises
-      .filter((e) => e.sets.some((s) => s.completed))
-      .map((e) => e.name);
+    // The whole session, not just its labels — the celebration replays
+    // every completed set now, so the names alone are no longer enough.
+    // Incomplete sets are dropped for the same reason the server drops
+    // them: the replay is a record of what was actually done.
+    const performed = workout.exercises
+      .map((e) => ({ name: e.name, sets: e.sets.filter((set) => set.completed) }))
+      .filter((e) => e.sets.length > 0);
+    // Same reason, same place: `workout` here is the ref's snapshot, and
+    // discardWorkout() below wipes the real thing. Null whenever the
+    // question was skipped, answered "no locker", or never asked.
+    const lockerNumber = workout.lockerNumber ?? null;
 
     // (Re-)arm the 71h local re-engagement nudge off this fresh workout —
     // prompts for notification permission if it hasn't been asked. Fire
@@ -554,6 +739,10 @@ export default function App() {
       // handlers that each have to know what comes next.
       if (newBadges?.length > 0) setBadgeCelebration(newBadges);
       if (firstWorkoutReward) setLootboxReward(firstWorkoutReward);
+      // Queued with the rest and sequenced by the render guards below, so
+      // it lands after the celebrating is over and stays put until it is
+      // acknowledged.
+      if (lockerNumber) setLockerReminder(lockerNumber);
 
       if (recoveryWorkout) {
         // The server withheld coins/volume for this one (>= 5 days since
@@ -582,17 +771,59 @@ export default function App() {
     // lazy at all.)
     if (firstWorkoutReward) import('./components/workout/SilverLootboxModal');
 
-    if (performedNames.length > 0) {
-      setFinishChecklist({
-        exercises: performedNames,
-        totalVolumeKg,
-        personalRecords: earnedRecords ?? [],
-        recommendationBounty: recommendationBounty ?? null,
-        reward: showReward,
-      });
-    } else {
-      showReward();
-    }
+    // What Phase 2 will ask, decided once, here — so the celebration can
+    // hand straight over without re-deriving anything from a workout that
+    // no longer exists.
+    //
+    // "If applicable" for the routine prompt means: this lineup isn't
+    // already a saved routine. A session loaded FROM a template or a
+    // trainer's assignment is one, and being asked to save a copy of the
+    // thing you just opened is the kind of prompt people learn to dismiss
+    // without reading.
+    const queue = [];
+    const canSaveRoutine = !workout.templateId && !workout.assignedWorkoutId && performed.length > 0;
+    if (canSaveRoutine) queue.push('saveRoutine');
+    // The SERVER's list, and only when the workout actually produced a
+    // feed post to amend (a recovery workout doesn't).
+    const shareable = recoveryWorkout ? [] : (earnedRecords ?? []);
+    if (shareable.length > 0) queue.push('sharePRs');
+
+    setFinishFlow({
+      step: 'celebration',
+      queue,
+      workoutId,
+      exercises: performed,
+      durationMs,
+      totalVolumeKg,
+      personalRecords: shareable,
+      recommendationBounty: recommendationBounty ?? null,
+      coinsEarned: recoveryWorkout ? 0 : coinsEarned,
+      coinBoosts: recoveryWorkout ? [] : (coinBoosts ?? []),
+      routineName: defaultRoutineName(performed),
+      // Captured, not read later: `workout` is about to be discarded, and
+      // reading activeWorkout inside the prompt's handler would find null
+      // and silently save nothing.
+      routineExercises: workout.exercises,
+      reward: showReward,
+    });
+  };
+
+  // Advances the machine one step. Called by every Phase 1/2 screen when
+  // it is finished with the user; `reward` fires exactly once, on the way
+  // out of the celebration, so the coin toast and the badge/chest overlays
+  // queue up behind Phase 1 rather than under it.
+  const advanceFinishFlow = () => {
+    const current = finishFlow;
+    if (!current) return;
+    // Read and fired OUTSIDE the setState updater on purpose: React is
+    // free to re-run an updater (StrictMode does, on every commit), and a
+    // side effect in there would queue the badge modal twice.
+    if (current.step === 'celebration') current.reward();
+    setFinishFlow(
+      current.queue.length === 0
+        ? null
+        : { ...current, step: current.queue[0], queue: current.queue.slice(1) },
+    );
   };
 
   // Keep the refs the offline-retry effect reads pointed at this render's
@@ -639,15 +870,11 @@ export default function App() {
     setPendingTemplate({ title, exercises });
   };
 
-  const handleSaveTemplate = (title) => {
-    if (!activeWorkout) return;
-    // The exercises are CAPTURED here, not read when the prompt is
-    // answered. The summary modal calls this while the workout still
-    // exists and then commits the finish, which clears activeWorkout a
-    // moment later — reading it inside the dialog handler would find null
-    // and silently save nothing.
-    promptSaveTemplate(title, activeWorkout.exercises);
-  };
+  // handleSaveTemplate lived here to bridge the summary modal's toggle,
+  // capturing activeWorkout.exercises before the finish cleared them. The
+  // finish flow captures the same list into `routineExercises` when the
+  // workout is logged, so Phase 2a can call promptSaveTemplate directly
+  // and this middleman is gone.
 
   // Both answers save the template; they differ only in whether it also
   // goes on the profile. Dismissing the sheet (tapping outside) takes the
@@ -724,6 +951,30 @@ export default function App() {
   }
   if (!account) return null;
 
+  // ── FORCED RENAME ──────────────────────────────────────────────────────
+  //
+  // Returned INSTEAD of the router, not layered over it: an overlay leaves
+  // the whole app mounted, focusable and one CSS edit from being dismissed,
+  // which is not what "cannot be bypassed" means. Same shape as the
+  // verification gate above.
+  //
+  // Placed AFTER `!account` so it cannot flash during the frame where the
+  // profile has not loaded and the flag is merely unknown.
+  //
+  // The client half is convenience; the server half is the rule.
+  // `mustChangeUsername` is not in firestore.rules' update allowlist, so
+  // nobody can clear their own flag, and claimUsername refuses to accept
+  // the name they already have while it is set.
+  if (account.mustChangeUsername === true) {
+    return (
+      <ForcedUsernameModal
+        currentName={account.displayName}
+        onSubmit={updateUsername}
+        onSignOut={signOut}
+      />
+    );
+  }
+
   const isTrainer = account.role === 'trainer';
   // A trainer's tier reflects THEIR own lifting, same as a trainee's.
   // Applied as CSS custom properties so the whole app's accent (buttons,
@@ -781,15 +1032,32 @@ export default function App() {
                   // utils/storeAlerts.js.
                   unequippedRewards={unequippedRewardCount(account)}
                   onOpenSettings={() => setSettingsOpen(true)}
+                  activeWorkout={activeWorkout}
+                  // The live rest, for the floating bar. Only the two
+                  // values it draws with, not the whole hook — the bar has
+                  // no business starting, skipping or extending a rest.
+                  restSecondsLeft={rest.secondsLeft}
+                  restIsOverdue={rest.isOverdue}
+                  onRestoreWorkout={() => navigate('/workout')}
                 />
               }
             >
+              {/* NO `activeWorkout ? <Navigate to="/workout">` here any
+                  more. That redirect was the second half of the trap: with
+                  a session running, the Workout tab bounced you straight
+                  back to the logger, so "go to the home screen" was
+                  impossible — and it silently broke the logger's own
+                  Minimize button, which navigates here.
+
+                  What the redirect was really protecting is that
+                  startWorkout() REPLACES the active session outright. That
+                  is now guarded where the damage actually happens (see
+                  requestStart below), instead of by making a whole tab
+                  unreachable. */}
               <Route
                 index
                 element={
-                  activeWorkout ? (
-                    <Navigate to="/workout" replace />
-                  ) : (
+                  (
                     <WorkoutHome
                       minStage={minStage}
                       onStartWorkout={handleStartWorkout}
@@ -835,6 +1103,7 @@ export default function App() {
                     myUid={uid}
                     myFriendCode={account?.friendCode}
                     friendUids={friendUids}
+                    officialFriendUid={officialFriendUid}
                     friends={friendsGraph.friends}
                     incomingRequests={friendsGraph.incomingRequests}
                     onSendRequest={friendsGraph.sendFriendRequest}
@@ -883,9 +1152,12 @@ export default function App() {
                     account={account}
                     onPurchase={purchaseItem}
                     onEquip={equipItem}
-                      onSetAccessories={setEquippedAccessories}
+                    onSetAccessories={setEquippedAccessories}
                     evolutionStage={currentTier.stage}
-                    tierImage={currentTier.image}
+                    // Skips the once-a-day ad cooldown on the reward card.
+                    // Same visibility-only flag as the workout cooldown
+                    // above; functions/guards.js holds the real exemption.
+                    isAdmin={isAdmin}
                   />
                 }
               />
@@ -903,6 +1175,14 @@ export default function App() {
                   />
                 }
               />
+
+              {/* Rendering the route at all is conditional, so a
+                  non-admin who types /admin gets the app's ordinary
+                  "unknown path" redirect home rather than a screen that
+                  exists but refuses — one fewer confirmation that the
+                  route is there. The data behind it is gated separately
+                  and for real (functions/appAdmin.js). */}
+              {isAdmin && <Route path="admin" element={<AdminDashboard />} />}
 
               {isTrainer && (
                 <>
@@ -924,37 +1204,68 @@ export default function App() {
                   />
                 </>
               )}
+              {/* INSIDE the Layout route, and that placement is the
+                  whole fix. This used to be a SIBLING of it, which
+                  meant /workout rendered no <Layout> at all — no
+                  BottomNav, so the running-workout screen was the one
+                  place in the app with no way out but its own
+                  controls. Nothing was "blocking" navigation; the
+                  tabs simply were not on the page. Keep this nested.
+
+                  A lifter mid-session can now tap any tab, and the
+                  floating bar (rendered by Layout everywhere except
+                  here) is how they get back. */}
+              <Route
+                path="workout"
+                element={
+                  activeWorkout ? (
+                    <ActiveWorkoutLogger
+                      workout={activeWorkout}
+                      exercises={exercises}
+                      screenLockActive={screenLockActive}
+                      onAddExercise={addExercise}
+                      onRemoveExercise={removeExercise}
+                      onReorderExercises={reorderExercises}
+                      onLinkSuperset={linkSuperset}
+                      onUnlinkSuperset={unlinkSuperset}
+                      // The rest-timer 2× offer — see ActiveWorkoutLogger.
+                      // `isAdmin` is the same testing exemption the
+                      // cooldown and the Store's ad card get.
+                      uid={uid}
+                      isAdmin={isAdmin}
+                      onBindRestBoost={bindRestBoost}
+                      onAddSet={addSet}
+                      onUpdateSet={updateSet}
+                      onRemoveSet={removeSet}
+                      onFinish={handleFinishWorkout}
+                      history={workouts}
+                      bodyWeightKg={bodyWeightKg}
+                      onDiscard={handleDiscardWorkout}
+                      // Just navigation — the session keeps running in
+                      // App's own state, exactly as it does when a bottom
+                      // tab is tapped.
+                      onMinimize={() => navigate('/')}
+                      // Absent on every account older than the feature, and
+                      // absence means on — only turning it off ever writes
+                      // the field (see useAuth's setAskForLocker).
+                      askForLocker={account.askForLocker !== false}
+                      onAnswerLocker={answerLocker}
+                      onDisableLockerPrompt={() => setAskForLocker(false)}
+                      // The rest countdown itself, not a length to build
+                      // one from. This screen still drives it — checking a
+                      // set off calls rest.start(), the full-screen timer
+                      // calls addTime/dismiss — it just no longer OWNS it,
+                      // so navigating away can't destroy a running rest.
+                      // See the useRestTimer call in App above.
+                      rest={rest}
+                    />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+
             </Route>
-
-            <Route
-              path="workout"
-              element={
-                activeWorkout ? (
-                  <ActiveWorkoutLogger
-                    workout={activeWorkout}
-                    exercises={exercises}
-                    screenLockActive={screenLockActive}
-                    onAddExercise={addExercise}
-                    onRemoveExercise={removeExercise}
-                    onReorderExercises={reorderExercises}
-                    onLinkSuperset={linkSuperset}
-                    onUnlinkSuperset={unlinkSuperset}
-                    onAddSet={addSet}
-                    onUpdateSet={updateSet}
-                    onRemoveSet={removeSet}
-                    onFinish={handleFinishWorkout}
-                    personalRecords={activePersonalRecords}
-                    history={workouts}
-                    bodyWeightKg={bodyWeightKg}
-                    onDiscard={handleDiscardWorkout}
-                    onSaveTemplate={handleSaveTemplate}
-                  />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
-
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           </Suspense>
@@ -973,18 +1284,52 @@ export default function App() {
           </Suspense>
         )}
 
-        {finishChecklist && (
+        {/* ── Phase 1: the celebration, and nothing else on screen ────
+            Deliberately the ONLY thing rendered while it plays: every
+            prompt below is guarded on the step, which is what the
+            redesign is for. */}
+        {finishFlow?.step === 'celebration' && (
+          <WorkoutCelebration
+            exercises={finishFlow.exercises}
+            durationMs={finishFlow.durationMs}
+            totalVolumeKg={finishFlow.totalVolumeKg}
+            personalRecords={finishFlow.personalRecords}
+            recommendationBounty={finishFlow.recommendationBounty}
+            coinsEarned={finishFlow.coinsEarned}
+            coinBoosts={finishFlow.coinBoosts ?? []}
+            onDone={advanceFinishFlow}
+          />
+        )}
+
+        {/* ── Phase 2a: save this lineup? ─────────────────────────────── */}
+        {finishFlow?.step === 'saveRoutine' && !badgeCelebration && !lootboxReward && (
           <Suspense fallback={null}>
-            <WorkoutSummaryChecklist
-              exercises={finishChecklist.exercises}
-              totalVolumeKg={finishChecklist.totalVolumeKg}
-              personalRecords={finishChecklist.personalRecords}
-              recommendationBounty={finishChecklist.recommendationBounty}
-              onDone={() => {
-                const { reward } = finishChecklist;
-                setFinishChecklist(null);
-                reward();
+            <SaveRoutinePrompt
+              defaultName={finishFlow.routineName}
+              onSave={(title) => {
+                // Straight into the existing "show this on your profile?"
+                // sheet, which is what actually writes the template.
+                promptSaveTemplate(title, finishFlow.routineExercises);
+                advanceFinishFlow();
               }}
+              onSkip={advanceFinishFlow}
+            />
+          </Suspense>
+        )}
+
+        {/* ── Phase 2b: which records go on the feed post? ─────────────
+            The post is already written, with no records on it — ticking
+            here ADDS them (functions/publishRecords.js). Which is why
+            "Not now" costs nothing and needs no confirmation. */}
+        {finishFlow?.step === 'sharePRs' && !badgeCelebration && !lootboxReward && (
+          <Suspense fallback={null}>
+            <SharePRsModal
+              personalRecords={finishFlow.personalRecords}
+              onConfirm={async (ids) => {
+                await publishWorkoutRecords(finishFlow.workoutId, ids);
+                advanceFinishFlow();
+              }}
+              onSkip={advanceFinishFlow}
             />
           </Suspense>
         )}
@@ -1021,6 +1366,22 @@ export default function App() {
             WorkoutSummaryModal, because that modal has already unmounted
             by the time this needs to appear — it closes as part of
             finishing the workout. */}
+        {pendingStart && (
+          <ConfirmDialog
+            title="Start a new workout?"
+            message="You already have one running. Starting another discards it, along with any sets you have already logged."
+            confirmLabel="Discard and start"
+            cancelLabel="Keep my workout"
+            tone="danger"
+            onConfirm={() => {
+              const begin = pendingStart;
+              setPendingStart(null);
+              begin();
+            }}
+            onCancel={() => setPendingStart(null)}
+          />
+        )}
+
         {pendingTemplate && (
           <ConfirmDialog
             title="Show this routine on your profile?"
@@ -1035,7 +1396,7 @@ export default function App() {
 
         {/* Step 2 of the cascade: trophies, after the tick-list and before
             the chest. */}
-        {badgeCelebration && !finishChecklist && (
+        {badgeCelebration && finishFlow?.step !== 'celebration' && (
           <BadgeCelebrationModal badgeIds={badgeCelebration} onClaim={() => setBadgeCelebration(null)} />
         )}
 
@@ -1045,7 +1406,7 @@ export default function App() {
             callbacks means no step needs to know what follows it — and
             anything that ever queues a reward early cannot stack a chest
             on top of a half-ticked list. */}
-        {lootboxReward && !finishChecklist && !badgeCelebration && (
+        {lootboxReward && finishFlow?.step !== 'celebration' && !badgeCelebration && (
           <Suspense fallback={null}>
             <SilverLootboxModal
               reward={lootboxReward}
@@ -1053,6 +1414,14 @@ export default function App() {
               onClose={() => setLootboxReward(null)}
             />
           </Suspense>
+        )}
+
+        {/* Step 4, the practical one. Waits for all three celebrations, and
+            unlike them it has to survive being ignored for a minute —
+            people read this on the way to the changing room, not at the
+            moment it appears. */}
+        {lockerReminder && !finishFlow && !badgeCelebration && !lootboxReward && (
+          <LockerReminderModal lockerNumber={lockerReminder} onClose={() => setLockerReminder(null)} />
         )}
 
         {settingsOpen && (
@@ -1068,6 +1437,17 @@ export default function App() {
               onSignOut={signOut}
               onDeleteAccount={deleteAccount}
               onUpdateSharePRs={setSharePRs}
+              onUpdateAskForLocker={setAskForLocker}
+              onUpdateDefaultRestTimer={setDefaultRestTimer}
+              onUpdateMascot={setMascot}
+              isAdmin={isAdmin}
+              // Settings is an overlay, not a route, so it has to close
+              // itself on the way out or it would sit on top of the
+              // dashboard it just opened.
+              onOpenAdmin={() => {
+                setSettingsOpen(false);
+                navigate('/admin');
+              }}
               onClose={() => setSettingsOpen(false)}
             />
           </Suspense>

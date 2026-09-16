@@ -40,7 +40,7 @@ export default function TraineeDetail({ profile, onRemoveTrainee }) {
 
   if (!trainee) {
     return (
-      <div className="pt-6 pb-24 flex flex-col items-center gap-4 text-center">
+      <div className="pt-6 pb-nav flex flex-col items-center gap-4 text-center">
         <p className="text-sm text-neutral-500">
           {loading ? 'Loading…' : "This trainee isn't connected to you (anymore)."}
         </p>
@@ -52,7 +52,7 @@ export default function TraineeDetail({ profile, onRemoveTrainee }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 pt-6 pb-24">
+    <div className="flex flex-col gap-4 pt-6 pb-nav">
       <button type="button" onClick={() => navigate('/trainees')} className="text-sm text-neutral-500 -mb-1">
         ← Back
       </button>

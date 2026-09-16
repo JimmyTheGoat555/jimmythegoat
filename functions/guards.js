@@ -30,6 +30,8 @@
 // limits), not a gate on an email nobody receives.
 const { HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore } = require('firebase-admin/firestore');
+const { isAppAdminUid } = require('./appAdmin');
+const { REST_BOOSTS_PER_DAY } = require('./storeCatalog');
 
 // `request.auth.token` is the decoded ID token. For email/password
 // accounts `email_verified` is false until the user clicks the link;
@@ -91,6 +93,19 @@ const LIMITS = {
   // scripted client at 50 coins a day. Rolling 24h from the last view,
   // not a midnight reset — same reasoning as the workout window.
   adReward: { windowMs: DAY_MS, max: 1 },
+  // Rest-timer boosts (functions/restBoost.js). The same posture as
+  // adReward and for the same reason — until real ads are live the
+  // callable takes the client's word that a video played, so this cap is
+  // the whole bound on how many 2× tokens a devtools session can arm. The
+  // number lives in storeCatalog.js beside the multiplier it limits, so
+  // the two are tuned together and the client twin reads the same value.
+  restBoost: { windowMs: DAY_MS, max: REST_BOOSTS_PER_DAY },
+  // Renaming (functions/usernames.js). The one-change-per-account rule is
+  // the real bound on renames; this exists because claimUsername is also
+  // reachable with the name you ALREADY have, which the one-change rule
+  // deliberately permits as a no-op — so without a cap it is a free
+  // read+write loop. 10/hour is far past any human retyping a name.
+  usernameClaim: { windowMs: HOUR_MS, max: 10 },
 };
 
 // Rolling-window caps with no per-target dimension. `field` names a live
@@ -116,6 +131,16 @@ const WINDOWED_ACTIONS = {
     limit: LIMITS.adReward,
     field: 'adRewards',
     message: "You've claimed today's ad reward — come back tomorrow for the next one.",
+  },
+  restBoost: {
+    limit: LIMITS.restBoost,
+    field: 'restBoosts',
+    message: "You've used today's 2× boosts — more tomorrow.",
+  },
+  usernameClaim: {
+    limit: LIMITS.usernameClaim,
+    field: 'usernameClaims',
+    message: 'Too many name changes in a row — give it an hour.',
   },
 };
 
@@ -145,6 +170,23 @@ const PER_TARGET_ACTIONS = {
 // is only used by per-target actions (see PER_TARGET_ACTIONS) — omit it
 // for global ones.
 async function enforceRateLimit(uid, action, targetUid) {
+  // ── ADMIN BYPASS ───────────────────────────────────────────────────────
+  //
+  // Every cap in this file exists to stop a scripted client reaching real
+  // strangers. The owner's own account is the one account that has to walk
+  // these paths repeatedly and on purpose, and capping it protects nobody
+  // — there is exactly one of it, and it is the person who wrote the caps.
+  //
+  // Placed BEFORE the transaction rather than inside it, so an admin call
+  // costs no read and no write at all: the counters never accrue for this
+  // account, which also means turning the bypass off later does not leave
+  // the owner sitting on a full bucket from testing.
+  //
+  // Auth-resolved (functions/appAdmin.js) rather than read off the token's
+  // email claim, and it fails closed — if the admin account cannot be
+  // resolved, this is false and everyone is limited exactly as before.
+  if (await isAppAdminUid(uid)) return;
+
   const db = getFirestore();
   const ref = db.collection('rateLimits').doc(uid);
   const now = Date.now();

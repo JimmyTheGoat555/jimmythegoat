@@ -8,6 +8,12 @@
 // public/animations/dances/dance{N}/ folder — see utils/danceAnimations.js.
 // Kept right on the item definition rather than a separate lookup table,
 // so there's one place to look when adding a 5th dance.
+// `mascot` (accessories only) is which character the piece was drawn for
+// — 'jimmy' for his garments, 'gena' for her outfit sets — and absent
+// means a shared piece both can wear. data/mascots.js's mascotCanWear is
+// the only reader; the Store shelf, the renderer and the friend-profile
+// sanitiser all go through it, so the field is what keeps his hoodie off
+// her and her sets off him everywhere at once.
 export const STORE_ITEMS = [
   { id: 'dance-shuffle', type: 'dance', name: 'The Shuffle', emoji: '🕺', cost: 600, videoDanceNumber: 1 },
   { id: 'dance-headbang', type: 'dance', name: 'Headbanger', emoji: '🤘', cost: 800, videoDanceNumber: 2 },
@@ -15,11 +21,23 @@ export const STORE_ITEMS = [
   { id: 'dance-moonwalk', type: 'dance', name: 'Moonwalk', emoji: '🌙', cost: 1500, videoDanceNumber: 4 },
   { id: 'accessory-cap', type: 'accessory', name: 'Ball Cap', emoji: '🧢', cost: 150, slot: 'head', rarity: 'common' },
   { id: 'accessory-shades', type: 'accessory', name: 'Shades', emoji: '🕶️', cost: 250, slot: 'eyes', rarity: 'common' },
-  { id: 'accessory-tank', type: 'accessory', name: 'White Tank', emoji: '🎽', cost: 300, slot: 'body', rarity: 'common' },
-  { id: 'accessory-jeans', type: 'accessory', name: 'Ripped Jeans', emoji: '👖', cost: 400, slot: 'legs', rarity: 'rare' },
-  { id: 'accessory-hoodie', type: 'accessory', name: 'Cutoff Hoodie', emoji: '🧥', cost: 450, slot: 'body', rarity: 'rare' },
+  { id: 'accessory-tank', type: 'accessory', name: 'White Tank', emoji: '🎽', cost: 300, slot: 'body', rarity: 'common', mascot: 'jimmy' },
+  { id: 'accessory-jeans', type: 'accessory', name: 'Ripped Jeans', emoji: '👖', cost: 400, slot: 'legs', rarity: 'rare', mascot: 'jimmy' },
+  { id: 'accessory-hoodie', type: 'accessory', name: 'Cutoff Hoodie', emoji: '🧥', cost: 450, slot: 'body', rarity: 'rare', mascot: 'jimmy' },
   { id: 'accessory-headphones', type: 'accessory', name: 'Studio Headphones', emoji: '🎧', cost: 700, slot: 'head', rarity: 'rare' },
+  // Gena's outfit sets. `slot: 'outfit'` is a whole-body set — one at a
+  // time, like any slot — but unlike every other slot it is not an overlay:
+  // equipping one swaps her SPRITE for the set's own render of her at the
+  // tier she is on (data/mascots.js `outfits`, JimmyAvatar/JimmyAnimation).
+  { id: 'accessory-gena-yellow', type: 'accessory', name: 'Yellow Set', emoji: '💛', cost: 350, slot: 'outfit', rarity: 'common', mascot: 'gena' },
+  { id: 'accessory-gena-blue', type: 'accessory', name: 'Blue Set', emoji: '💙', cost: 500, slot: 'outfit', rarity: 'rare', mascot: 'gena' },
+  { id: 'accessory-gena-pink', type: 'accessory', name: 'Pink Set', emoji: '🎀', cost: 750, slot: 'outfit', rarity: 'legendary', mascot: 'gena' },
 ];
+
+// The whole-body slot. Kept out of ACCESSORY_SLOT_ORDER below on purpose:
+// that order is the overlay z-stack, and an outfit is the sprite itself,
+// drawn by the avatar before any overlay is considered.
+export const OUTFIT_SLOT = 'outfit';
 
 // ---- Accessory slots & rarity (the "paper doll" layer) ----
 //
@@ -33,12 +51,27 @@ export const STORE_ITEMS = [
 // shades paint last so nothing crosses the lenses. Iterating slots in this order is
 // what produces the z-stack, so reordering this array restyles the whole
 // paper doll — don't sort it alphabetically.
+//
+// firestore.rules caps `equippedAccessories` at 5 ids. Six slots exist
+// (these five plus OUTFIT_SLOT), but nothing is sold for the neck, so five
+// is still the most anyone can wear at once — a Jimmy loadout of legs,
+// body, head and eyes carried over to Gena, plus one of her sets. The
+// first neck item needs that cap raised to 6.
 // Coins paid for one rewarded ad view. DISPLAY ONLY, like every price in
 // this file — the amount actually credited comes from the server's own
 // copy (functions/storeCatalog.js's AD_REWARD_COINS, which the callable
 // reads), so this going stale can misprint a button, never mispay a
 // balance. Keep them the same anyway.
 export const AD_REWARD_COINS = 50;
+
+// The rest-timer boost — twins of functions/storeCatalog.js, and display/
+// UI-gating only like everything else in this file. The server decides
+// what a token is worth and how many a day there are (functions/guards.js);
+// these exist so the timer can print "2×" and hide the offer once today's
+// are spent, before anyone sits through an ad that cannot pay.
+export const REST_BOOST_MULTIPLIER = 2;
+export const REST_BOOSTS_PER_DAY = 3;
+export const REST_BOOST_TTL_MS = 3 * 60 * 60 * 1000;
 
 export const ACCESSORY_SLOT_ORDER = ['legs', 'body', 'neck', 'head', 'eyes'];
 

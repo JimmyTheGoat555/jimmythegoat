@@ -20,7 +20,7 @@ export default function HistoryList({ workouts, deleteWorkout }) {
   };
 
   return (
-    <div className="flex flex-col gap-4 pt-6 pb-24">
+    <div className="flex flex-col gap-4 pt-6 pb-nav">
       <div>
         <button type="button" onClick={() => navigate(-1)} className="text-sm text-neutral-500 mb-1">
           ← Back

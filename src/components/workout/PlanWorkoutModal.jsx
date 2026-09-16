@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import ExercisePicker from './ExercisePicker';
 import ReorderableList from './ReorderableList';
 import DragHandle from './DragHandle';
@@ -19,6 +20,7 @@ import { getMuscleGroup } from '../../data/exercises';
 // Same bottom-sheet language as NudgeModal: dark scrim, rounded sheet
 // from the bottom on phones, centred card from `sm` up.
 export default function PlanWorkoutModal({ exercises, onSave, onClose }) {
+  const keyboardInset = useKeyboardInset();
   const [title, setTitle] = useState('');
   const [picked, setPicked] = useState([]);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -54,9 +56,21 @@ export default function PlanWorkoutModal({ exercises, onSave, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center" onClick={onClose}>
+    // Two jobs, one padding value. With no keyboard up, --safe-b lifts
+    // the sheet off the home indicator (index.css). With one up, the
+    // measured occluded height lifts it clear of the KEYS — otherwise the
+    // field being typed into, and the button that submits it, sit
+    // underneath them on iOS. The max-height comes down by the same amount
+    // so a taller sheet grows upward instead of off the top of the screen.
+    // Both are 0 on desktop, where this is a no-op.
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center"
+      style={{ paddingBottom: keyboardInset ? `${keyboardInset}px` : 'var(--safe-b)' }}
+      onClick={onClose}
+    >
       <div
         className="max-h-[85vh] w-full overflow-y-auto rounded-t-3xl border border-white/10 bg-neutral-950 sm:max-w-sm sm:rounded-3xl"
+        style={keyboardInset ? { maxHeight: `calc(85vh - ${keyboardInset}px)` } : undefined}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

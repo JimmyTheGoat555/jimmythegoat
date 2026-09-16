@@ -63,6 +63,15 @@ export default defineConfig({
         // already in LocalStorage/Firestore's own offline cache) if the
         // phone loses signal.
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+        // NOT the outfit sets (public/assets/outfits — 12 files, ~2.6MB):
+        // a bought cosmetic for one character, fetched the first time it
+        // is drawn and held by the browser's own cache after that, the
+        // same footing as the dance clips. Offline before that first
+        // draw, the avatar falls back to the plain tier sprite, which IS
+        // precached (JimmyAvatar / JimmyAnimation). The node_modules
+        // entry is workbox's own default, restated because setting the
+        // option replaces it.
+        globIgnores: ['**/node_modules/**/*', '**/assets/outfits/**'],
       },
     }),
   ],

@@ -8,6 +8,7 @@ import { lifetimeVolume } from '../../utils/workoutStats';
 import { getEvolutionProgress, formatTierGoalKg } from '../../utils/evolutionTiers';
 import { tierGradientCss } from '../../utils/tierTheme';
 import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAnimations';
+import { mascotSpriteFor } from '../../data/mascots';
 
 // Matches .btn-arcade's own clip-path in index.css — duplicated here (not
 // `clipPath: 'inherit'`) so the press-burst overlay is reliably clipped
@@ -77,9 +78,20 @@ export default function WorkoutHome({
     lastWorkoutAt,
   });
   const remaining = next ? Math.max(0, next.threshold - totalVolume) : 0;
+
+  // The current user's own look, straight from context — no prop to thread
+  // down from App, and no chance of the lobby mascot drifting out of sync
+  // with the shop that dressed him. Read up here, above the dance path,
+  // because the path is per mascot: the same equipped dance is a
+  // different file on Gena.
+  const jimmyLook = useJimmyLook();
   // null (no dance owned/equipped) is the common case and JimmyAnimation
   // already falls back to the plain static sprite for it — see there.
-  const danceAnimationPath = getDanceAnimationPath(danceNumberForItemId(equippedDance), current.stage);
+  const danceAnimationPath = getDanceAnimationPath(
+    danceNumberForItemId(equippedDance),
+    current.stage,
+    jimmyLook.mascot,
+  );
 
   // The two (sometimes three) ways into a session, as full-width action
   // cards rather than the folder tabs this used to be. Tabs said
@@ -162,11 +174,6 @@ export default function WorkoutHome({
     }, 220);
   };
 
-  // The current user's own look, straight from context — no prop to thread
-  // down from App, and no chance of the lobby mascot drifting out of sync
-  // with the shop that dressed him.
-  const jimmyLook = useJimmyLook();
-
   const startLabel =
     activeMission.type === 'assigned'
       ? 'Start Mission'
@@ -175,14 +182,14 @@ export default function WorkoutHome({
         : 'Enter the Arena';
 
   return (
-    // pb-24 + a min-height 4.5rem taller than the old pair, which is one
+    // pb-nav + a min-height 4.5rem taller than the old pair, which is one
     // change rather than two: the extra bottom padding clears the fixed
     // nav now that this screen genuinely scrolls (the action cards made it
     // taller than a phone), and the matching growth in min-height keeps
     // mt-auto landing the start button in exactly the same place it did
     // when the page still fit. Change them together or the button either
     // floats or hides under the tab bar.
-    <div className="flex flex-col items-center gap-5 pt-8 pb-24 min-h-[calc(100vh-1.5rem)]">
+    <div className="flex flex-col items-center gap-5 pt-8 pb-nav min-h-[calc(100vh-1.5rem)]">
       <div className="relative flex flex-col items-center justify-end mt-1 h-52 w-full">
         {/* The lobby launchpad — sits behind the mascot by DOM order alone
             (a local stacking group, not the app-wide fixed ambient layers
@@ -197,7 +204,11 @@ export default function WorkoutHome({
         ) : (
           <JimmyAnimation
             animationSrc={danceAnimationPath}
-            staticImageSrc={current.image}
+            // The tier picks the stage, the mascot picks whose sprite.
+            // `jimmyLook.mascot` is spread in below as well (that is what
+            // places the gear and gates the dance); this one line is only
+            // because the static layer is passed as an explicit src.
+            staticImageSrc={mascotSpriteFor(jimmyLook.mascot, current.stage)}
             alt={current.label}
             onImageError={() => setMascotBroken(true)}
             // Fills the launchpad's full height, which sets how big Jimmy

@@ -84,6 +84,18 @@ function emptyWorkout(presetExercises, { assignedWorkoutId = null, templateId = 
     // the sender up from this id rather than being told who to pay. See
     // functions/acceptRecommendation.js.
     templateId: templateId ?? null,
+    // Gym locker, asked once at the top of the session and handed back at
+    // the end ("don't forget your stuff"). Lives on the workout rather than
+    // on the account because it is true for exactly this session — the
+    // whole point is that it changes every visit. Never sent to the
+    // server: logWorkout's payload is rebuilt from an allowlist
+    // (functions/economy.js), so this stays on the device.
+    //
+    // `lockerAsked` is what stops the prompt reappearing on every render
+    // and after a mid-workout refresh; it is set whichever way the
+    // question is answered, including "I don't have a locker".
+    lockerNumber: null,
+    lockerAsked: false,
   };
 }
 
@@ -321,10 +333,49 @@ export function useActiveWorkout(uid) {
     [setActiveWorkout],
   );
 
+  // Answers the locker question, one way or the other. A number parks it
+  // on the session; null means "no locker today" — both count as asked, so
+  // the prompt is done either way. Guarded on `prev` like every other
+  // setter here: the modal can be dismissed in the same tick a workout is
+  // discarded from another tab.
+  const answerLocker = useCallback(
+    (lockerNumber) => {
+      setActiveWorkout((prev) => {
+        if (!prev) return prev;
+        const trimmed = String(lockerNumber ?? '').trim();
+        return { ...prev, lockerNumber: trimmed || null, lockerAsked: true };
+      });
+    },
+    [setActiveWorkout],
+  );
+
+  // Pins a rest-timer boost token to the exercise that will carry it to
+  // the server — see hooks/useRestBoost.js and ActiveWorkoutLogger's set
+  // handler for when. Stored ON the exercise rather than beside it so the
+  // payload logWorkout receives (`exercises` as-is — useEconomy.js) names
+  // the token on the exercise it doubles with no assembly step, and so
+  // removing the exercise frees the token again for nothing. A second
+  // bind to the same exercise replaces the first: the only way that
+  // happens is the earlier token having expired under it.
+  const bindRestBoost = useCallback(
+    (exerciseId, tokenId) => {
+      setActiveWorkout((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          exercises: prev.exercises.map((e) => (e.exerciseId === exerciseId ? { ...e, boostTokenId: tokenId } : e)),
+        };
+      });
+    },
+    [setActiveWorkout],
+  );
+
   return {
     activeWorkout,
     startWorkout,
     discardWorkout,
+    answerLocker,
+    bindRestBoost,
     screenLockActive: screenLock.isActive,
     addExercise,
     removeExercise,

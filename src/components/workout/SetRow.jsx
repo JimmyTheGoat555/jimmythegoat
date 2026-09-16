@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import SetEntrySheet from './SetEntrySheet';
+import { isPerHandSet, perHandFromSet } from '../../utils/setLoad';
 import { formatWorkingWeight } from '../../utils/units';
 
 const isSet = (v) => v !== '' && v !== null && v !== undefined && Number.isFinite(Number(v));
@@ -34,8 +35,21 @@ export default function SetRow({
     'w-full bg-neutral-800 rounded-xl px-2 py-3 flex flex-col items-center leading-none active:scale-[0.97] transition';
 
   const added = Number(set.addedWeight) || 0;
-  const loadTop = isBodyweight ? (added > 0 ? `BW +${formatWorkingWeight(added)}` : 'BW') : isSet(set.weight) ? formatWorkingWeight(set.weight) : '—';
-  const loadLabel = isBodyweight ? 'body' : 'kg';
+  // A dumbbell set reads as the number written on the dumbbell, and a
+  // barbell set as the whole loaded bar — which is how each is spoken
+  // about in a gym ("the 30s" vs "a hundred on the bench"). The stored
+  // `weight` is absolute in both cases; only the chip differs.
+  const perHand = isPerHandSet(set) ? perHandFromSet(set) : null;
+  const loadTop = isBodyweight
+    ? added > 0
+      ? `BW +${formatWorkingWeight(added)}`
+      : 'BW'
+    : perHand !== null
+      ? formatWorkingWeight(perHand)
+      : isSet(set.weight)
+        ? formatWorkingWeight(set.weight)
+        : '—';
+  const loadLabel = isBodyweight ? 'body' : perHand !== null ? 'kg ×2' : 'kg';
 
   const isDrop = set.isDropSet === true;
 
@@ -111,6 +125,10 @@ export default function SetRow({
             weight={set.weight}
             addedWeight={set.addedWeight}
             reps={set.reps}
+            // The whole set, so the sheet can re-open a barbell or
+            // dumbbell entry showing the numbers that were typed rather
+            // than back-solving them from the total.
+            set={set}
             lastSet={lastSet}
             onChange={onChange}
             onClose={() => setSheetOpen(false)}

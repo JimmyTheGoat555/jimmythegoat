@@ -46,7 +46,7 @@ export default function AssignWorkoutForm({ profile, exercises }) {
   };
 
   return (
-    <div className="flex flex-col gap-4 pt-6 pb-24">
+    <div className="flex flex-col gap-4 pt-6 pb-nav">
       <button
         type="button"
         onClick={() => navigate(`/trainees/${traineeId}`)}

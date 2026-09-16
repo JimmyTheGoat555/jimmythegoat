@@ -26,11 +26,39 @@ service cloud.firestore {
     // to 'trainer' or overwrite its stored email. The four server-managed
     // fields (coins/friends/etc.) stay blocked by serverManagedFieldsUnchanged()
     // too, belt and suspenders.
+    // NOT IN THIS LIST, AND THAT IS THE POINT: `displayName` and
+    // `usernameChangedOnce` used to be here, and a client that can write
+    // its own displayName can give itself a name somebody else already
+    // holds — which is the entire thing `usernames/{key}` exists to
+    // prevent. Renaming now goes through functions/usernames.js's
+    // claimUsername, which takes the name and the reservation in one
+    // transaction on the Admin SDK. `mustChangeUsername` is absent for the
+    // same reason, one step stronger: a user who could clear that flag
+    // could dismiss the modal that is forcing them to rename.
     function userUpdateFieldsAllowed() {
       return request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['displayName', 'usernameChangedOnce', 'trainerId',
+        .hasOnly(['trainerId',
                   'equippedDance', 'equippedAccessory', 'equippedAccessories',
-                  'hasUnreadNudgePush', 'friendCode', 'featuredBadges']) &&
+                  'hasUnreadNudgePush', 'friendCode', 'featuredBadges',
+                  'askForLocker', 'defaultRestTimer', 'mascot']) &&
+        // Which character the account is drawn as. Owner-writable for the
+        // same reason as the two below it: it changes a sprite and nothing
+        // else — no coins move, no visibility flips, and it is derived
+        // from a field (`gender`) the owner chose in the first place.
+        //
+        // Pinned to the two known ids rather than accepted as any string,
+        // which is the one thing that actually needs a rule here: this
+        // value is SNAPSHOTTED onto every feed post the account writes
+        // from now on (functions/economy.js), so an arbitrary string would
+        // outlive the write, spread across documents other people read,
+        // and have to be filtered on every read forever. Absent is allowed
+        // — that is every account created before this feature, and it
+        // resolves through `gender` on the way out (data/mascots.js).
+        //
+        // Note what is NOT in the allowlist: `gender` itself. It stays
+        // signup-only, so the cosmetic switch cannot rewrite demographic
+        // data a trainer's view renders as a fact about the person.
+        request.resource.data.get('mascot', 'jimmy') in ['jimmy', 'gena'] &&
         // Which of your own badges your profile shows. Purely a display
         // choice over ids the SERVER already awarded — `badges` itself
         // stays server-only (serverManagedFieldsUnchanged), so the worst a
@@ -38,7 +66,32 @@ service cloud.firestore {
         // which every reader drops on the way out (resolveFeaturedBadges
         // filters against the earned set). Capped so it cannot be used as
         // free storage on a doc a trainer can read.
-        request.resource.data.get('featuredBadges', []).size() <= 3;
+        request.resource.data.get('featuredBadges', []).size() <= 3 &&
+        // "Ask me for my locker number when I start a workout" — a pure
+        // client-side convenience with no economy or visibility side
+        // effects, so it is owner-writable rather than server-managed. The
+        // field is ABSENT on every account created before this feature and
+        // absence reads as ON, which is why nothing backfills it: only
+        // someone who turns it off ever writes it.
+        request.resource.data.get('askForLocker', true) is bool &&
+        // Rest-period length in seconds. Owner-writable for the same
+        // reason: it changes nothing but this account's own countdown.
+        // Bounded as a RANGE rather than checked against the dropdown's
+        // preset list (utils/restPresets.js) so adding a preset never
+        // needs a rules deploy — the bounds exist to stop a hand-crafted
+        // write parking a nonsense value (a negative, or six hours) on a
+        // doc a trainer reads, not to police which of eight buttons was
+        // tapped. Absent means 90; the client normalizes anything odd on
+        // the way out too (normalizeRestSeconds).
+        // `is number`, not `is int`: the JS SDK does serialize a whole
+        // number as an integer, but the ONLY thing that actually matters
+        // here is the range, and the stricter check buys nothing while
+        // adding a way for a settings change to fail as a bare
+        // "permission denied". The client rounds on the way in and on the
+        // way out (normalizeRestSeconds) regardless.
+        request.resource.data.get('defaultRestTimer', 90) is number &&
+        request.resource.data.get('defaultRestTimer', 90) >= 15 &&
+        request.resource.data.get('defaultRestTimer', 90) <= 600;
     }
 
     // `trainerId` may only be cleared or pointed at an account that is
@@ -155,6 +208,15 @@ service cloud.firestore {
     // the SAME write must flip it to true — so using the one allowed
     // change and forgetting to set the flag isn't a way to get a second
     // one, and the flag can never go true→false→true again.
+    // NOW A BACKSTOP RATHER THAN THE GATE. displayName is no longer in
+    // userUpdateFieldsAllowed(), so a client update that touches it is
+    // already rejected before this runs and the first clause below is
+    // always true. Kept deliberately: it costs nothing, it documents the
+    // one-change rule at the layer people read first, and it becomes load
+    // bearing again the moment anyone puts displayName back in that list.
+    // The rule that actually enforces one-change-per-account now lives in
+    // functions/usernames.js, where it can also be waived for an account
+    // that has been TOLD to rename.
     function usernameChangeValid() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName']) ||
         (resource.data.get('usernameChangedOnce', false) == false &&
@@ -174,6 +236,30 @@ service cloud.firestore {
     // restriction, which is the whole reason this table exists. Contains
     // nothing sensitive: a random 6-character code and the trainerId it
     // already exists to hand out.
+    // ── Username reservations ────────────────────────────────────────
+    //
+    // usernames/{key} -> { uid, displayName, claimedAt }, where the key IS
+    // the normalized name. A document id is the only thing Firestore has
+    // that is unique by construction, which is why the name is the id and
+    // not a field (see functions/usernames.js for the full reasoning).
+    //
+    // READABLE so the app can tell you a name is taken before you submit
+    // it, and because the mapping is public information anyway — these are
+    // the names shown on the feed and the leaderboard. It leaks no more
+    // than friendCodes already does.
+    //
+    // WRITE IS FLATLY false, including for the owner. Every path that
+    // creates, moves or releases a reservation has to do it in the same
+    // transaction as the users/{uid} write it corresponds to, or the two
+    // drift; only the Admin SDK can do that, and the Admin SDK ignores
+    // these rules. There is deliberately no `allow create: if !exists()`
+    // owner path — it would let a client hoard names it never puts on a
+    // profile, and give it no way to release the old one.
+    match /usernames/{key} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     match /trainerCodes/{code} {
       allow read: if signedIn();
       // Only the trainer who owns this code may create the one mapping to

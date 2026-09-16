@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { fullEvolutionGradient } from '../../utils/tierTheme';
 import { roundToTenth } from '../../utils/units';
 import { EXPERIENCE_LEVELS, GENDERS, TRAINING_DAYS_MIN, TRAINING_DAYS_MAX } from '../../utils/onboarding';
+import { getMascot, mascotSpriteFor, resolveMascotId } from '../../data/mascots';
 import { PRIVACY_POLICY_SECTIONS, TERMS_OF_SERVICE_SECTIONS, LAST_UPDATED } from '../../content/legalContent';
 import LegalDocument from '../legal/LegalDocument';
 import ScrollWheelPicker from '../shared/ScrollWheelPicker';
@@ -42,7 +43,7 @@ const JIMMY_LINES = {
   role: "First — which side of the whistle are you on?",
   experience: 'How much iron have you moved?',
   commitment: "Don't lie to me.",
-  gender: 'Quick one — it helps me calibrate.',
+  gender: 'Quick one — it decides who trains with you.',
   birthday: 'When did the legend begin?',
   height: 'Stand up straight for this one.',
   weight: "Real number. The scale doesn't negotiate.",
@@ -331,6 +332,28 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
               {GENDERS.map((g) => (
                 <GlowCard key={g.id} active={gender === g.id} onClick={() => setGender(g.id)} title={g.label} />
               ))}
+              {/* The answer picks the mascot (data/mascots.js), so the
+                  screen shows the consequence instead of hiding it until
+                  after the account exists. Named, too — "Gena" reads as a
+                  character you are being introduced to rather than a
+                  silent branch on a demographic field. Only drawn once
+                  something is chosen: a preview sitting under an
+                  unanswered question would look like a default. */}
+              {gender && (
+                <div className="mt-1 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <img
+                    src={mascotSpriteFor(resolveMascotId({ gender }), 1)}
+                    alt=""
+                    aria-hidden="true"
+                    className="h-16 w-auto object-contain"
+                  />
+                  <p className="text-sm text-white/70">
+                    You&rsquo;ll train with{' '}
+                    <span className="font-bold text-white">{getMascot(resolveMascotId({ gender })).name}</span>.
+                    You can switch any time in Settings.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

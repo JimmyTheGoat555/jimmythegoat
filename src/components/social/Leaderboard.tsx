@@ -4,7 +4,7 @@ import { getEvolutionProgress } from '../../utils/evolutionTiers';
 import GradientBorder from '../shared/GradientBorder';
 import JimmyAvatar from '../evolution/JimmyAvatar';
 import { readEquippedAccessories } from '../../data/storeItems';
-import { isOnFire } from '../../utils/streak';
+import { DEFAULT_MASCOT_ID, resolveMascotId } from '../../data/mascots';
 
 interface FeedPost {
   userId: string;
@@ -33,6 +33,8 @@ interface LeaderboardProps {
   // Same reason: no post of yours is in this list to carry it.
   currentStreak?: number;
   minStage?: number;
+  // And again the same reason — 'jimmy' | 'gena', see data/mascots.js.
+  mascot?: string;
   // How many rows to show. Your own row is always kept, even when you
   // rank below the cut — a board that hides you is a board you stop
   // looking at.
@@ -56,6 +58,11 @@ interface Rankable {
   // Multi-slot loadout, so the row shows the gear they're actually
   // wearing (see components/evolution/JimmyAvatar.jsx).
   equippedAccessories?: string[];
+  // Which character to draw. Snapshotted onto the post at write time
+  // (functions/economy.js) for the same reason the gear and the streak
+  // are: the board is built from feedPosts, never from anyone's user doc,
+  // so a field that is not on the post cannot reach this row.
+  mascot?: string;
 }
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -110,6 +117,11 @@ function weeklyFriendTotals(feedPosts: FeedPost[]): Rankable[] {
         minStage: Number(post.minStage) || 1,
         currentStreak: Number(post.currentStreak) || 0,
         equippedAccessories: readEquippedAccessories(post),
+        // Posts written before this field existed resolve to Jimmy, which
+        // is what they were drawn as at the time — so the board does not
+        // retroactively rewrite anyone. It corrects itself on their next
+        // workout, and the 7-day window clears the rest.
+        mascot: resolveMascotId(post),
       });
     }
   }
@@ -119,11 +131,11 @@ function weeklyFriendTotals(feedPosts: FeedPost[]): Rankable[] {
 // Head-cropped so the equipped gear is actually legible at 36px — a
 // full-body goat this small is mostly legs. JimmyAvatar owns the sprite
 // fallback, so there's no broken-image state to track here any more.
-function Avatar({ tierId, stage, accessories, showFire }: { tierId: string; stage: number; accessories: string[]; showFire: boolean }) {
+function Avatar({ tierId, stage, accessories, streak, mascot }: { tierId: string; stage: number; accessories: string[]; streak: number; mascot?: string }) {
   return (
     <GradientBorder tierId={tierId} shape="circle" fillClassName="rounded-full overflow-hidden" glow={false} className="shrink-0">
       <div className="h-11 w-11 bg-neutral-800">
-        <JimmyAvatar evolutionStage={stage} equippedAccessories={accessories} showFire={showFire} crop="head" className="h-full w-full" />
+        <JimmyAvatar evolutionStage={stage} equippedAccessories={accessories} streak={streak} mascot={mascot} crop="head" className="h-full w-full" />
       </div>
     </GradientBorder>
   );
@@ -141,7 +153,8 @@ function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
         tierId={current.id}
         stage={current.stage}
         accessories={entry.equippedAccessories ?? []}
-        showFire={isOnFire(entry.currentStreak)}
+        streak={entry.currentStreak}
+        mascot={entry.mascot}
       />
       <div className="flex-1 min-w-0">
         <p className="text-lg font-bold text-neutral-100 truncate">
@@ -204,6 +217,11 @@ export default function Leaderboard({
   equippedAccessories = [],
   currentStreak = 0,
   minStage = 1,
+  // Your own mascot, passed down from SocialPage rather than read from
+  // JimmyLook here: every other row on this board belongs to somebody
+  // else, and a component that could reach for "the current user" would
+  // turn a forgotten prop into everyone wearing your goat.
+  mascot = DEFAULT_MASCOT_ID,
   limit,
 }: LeaderboardProps) {
   const you: Rankable = {
@@ -212,6 +230,7 @@ export default function Leaderboard({
     equippedAccessories,
     currentStreak,
     minStage,
+    mascot,
     lifetimeVolume: lifetimeVolume(workouts),
     weeklyScore: weeklyScore(workouts),
     isYou: true,

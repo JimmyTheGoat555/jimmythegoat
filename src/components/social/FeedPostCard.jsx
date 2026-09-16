@@ -3,9 +3,9 @@ import { usePostLikes } from '../../hooks/useFeed';
 import { STORE_ITEMS, readEquippedAccessories } from '../../data/storeItems';
 import { getEvolutionProgress } from '../../utils/evolutionTiers';
 import JimmyAvatar from '../evolution/JimmyAvatar';
+import { mascotHasDances, resolveMascotId } from '../../data/mascots';
 import GradientBorder from '../shared/GradientBorder';
 import { formatRecordLoad } from '../../utils/personalRecords';
-import { isOnFire } from '../../utils/streak';
 
 const ITEMS_BY_ID = new Map(STORE_ITEMS.map((item) => [item.id, item]));
 
@@ -78,7 +78,12 @@ function relativeTime(iso) {
 // access to their otherwise-private full profile doc to render).
 export default function FeedPostCard({ post, myUid }) {
   const { count, likedByMe, toggleLike } = usePostLikes(post.id, myUid);
-  const dance = post.equippedDance ? ITEMS_BY_ID.get(post.equippedDance) : null;
+  // Resolved once and used for both the avatar below and the dance emoji:
+  // a mascot with no clips of its own does not advertise one on its posts
+  // either, the same way its gear is not drawn.
+  const mascot = resolveMascotId(post);
+  const dance =
+    post.equippedDance && mascotHasDances(mascot) ? ITEMS_BY_ID.get(post.equippedDance) : null;
   // Older posts predate lifetimeVolume on the feed doc; 0 just means the
   // first tier, which is a sane thing to show rather than nothing.
   const postTier = getEvolutionProgress(post.lifetimeVolume ?? 0, {
@@ -123,7 +128,11 @@ export default function FeedPostCard({ post, myUid }) {
                 equippedAccessories={readEquippedAccessories(post)}
                 // Snapshotted on the post, like the stage above it, so an
                 // old card keeps showing the run they were on at the time.
-                showFire={isOnFire(post.currentStreak)}
+                streak={post.currentStreak}
+                // Likewise: which character they were posting as. Posts
+                // from before the field existed resolve to Jimmy, which is
+                // what they showed at the time.
+                mascot={mascot}
                 crop="head"
                 className="h-full w-full"
               />

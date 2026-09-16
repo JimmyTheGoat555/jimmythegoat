@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { loadJSON, saveJSON } from '../lib/storage';
+import { loadJSON, saveJSON, storageKeyFor } from '../lib/storage';
 
 // Generic persisted-state hook: behaves like useState but every value is
 // mirrored into localStorage under `storageKey`.
@@ -32,6 +32,37 @@ export function useLocalStorage(storageKey, initialValue) {
     // fallback the moment the key changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey, value]);
+
+  // ── CROSS-TAB SYNC ───────────────────────────────────────────────────
+  //
+  // Two tabs open on this app each held their OWN in-memory copy of the
+  // same key and neither ever heard about the other's writes, so the last
+  // one to re-render won — and for `active-workout` that is data loss, not
+  // a stale read. Finish a session in tab A and it clears the key; tab B
+  // is still sitting on the pre-finish snapshot, its save effect fires on
+  // the next render, and the workout you just logged is written back as
+  // active. The same race in the other direction overwrites sets logged
+  // in the other tab. An installed PWA plus the site open in a browser tab
+  // is enough to hit it; so is a tab left open from yesterday.
+  //
+  // The `storage` event only ever fires in OTHER tabs of the same origin,
+  // never in the one that did the write, so this can't echo our own saves
+  // back at us or loop.
+  useEffect(() => {
+    const prefixed = storageKeyFor(storageKey);
+    const onStorage = (event) => {
+      // `event.key` is null for a whole-store clear() — not something this
+      // app ever does, and re-hydrating every key on one would be a guess.
+      if (event.key !== prefixed) return;
+      setValue(loadJSON(storageKey, initialValue));
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+    // initialValue omitted for the same reason as above — a fresh literal
+    // each render, only read as a fallback when the other tab removed the
+    // key entirely.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
 
   return [value, setValue];
 }

@@ -44,3 +44,6 @@ dev-dist
 # are both versioned — these intermediate H.264 masters are not worth the
 # git history and are kept on the maintainer's machine / original delivery.
 source-media/**/*.mp4
+# Gena's outfit-set renders as delivered (768x1376); the built 285x1024
+# sprites in public/assets/outfits are what ships (tools/build_gena_outfits.py).
+source-media/outfits-gena/

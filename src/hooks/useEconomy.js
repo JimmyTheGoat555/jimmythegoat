@@ -14,7 +14,7 @@ export function useEconomy(uid) {
   // A logged-out call is meaningless (there's no uid to credit), but the
   // callable's own `request.auth` check on the server is the real
   // guard — this is just avoiding a doomed network round trip.
-  const logWorkout = useCallback(async (workout, { sharePersonalRecords = false } = {}) => {
+  const logWorkout = useCallback(async (workout, { sharePersonalRecords = false, sharedRecordExerciseIds = null } = {}) => {
     const call = httpsCallable(functions, 'logWorkout');
     const { data } = await call({
       exercises: workout.exercises,
@@ -28,8 +28,26 @@ export function useEconomy(uid) {
       // workout produces regardless. The server decides WHAT the records
       // are — see functions/records.js — this only answers "announce them?".
       sharePersonalRecords,
+      // WHICH of them, by exercise id — the per-record checkboxes on the
+      // summary screen. An empty array is a real answer ("share none"),
+      // which is why it is only omitted when genuinely absent: sending
+      // null instead would read on the server as "no choice made" and fall
+      // back to the boolean above. Ids can only narrow the server's own
+      // list, never extend it (functions/economy.js's selectedRecords).
+      ...(Array.isArray(sharedRecordExerciseIds) ? { sharedRecordExerciseIds } : {}),
     });
     return data; // { workoutId, coinsEarned, personalRecords, recoveryWorkout, neglectPenaltyLifted, newBadges, firstWorkoutReward }
+  }, []);
+
+  // Phase 2b of the finish flow. The feed post already exists, written by
+  // logWorkout with NO records attached; this adds the ones the lifter
+  // ticked. See functions/publishRecords.js for why it has to work in that
+  // direction — the answer arrives after the post, and publishing first to
+  // retract later would mean a friend's live feed had already shown it.
+  const publishWorkoutRecords = useCallback(async (workoutId, exerciseIds) => {
+    const call = httpsCallable(functions, 'publishWorkoutRecords');
+    const { data } = await call({ workoutId, exerciseIds });
+    return data; // { published }
   }, []);
 
   const purchaseItem = useCallback(async (itemId) => {
@@ -94,5 +112,12 @@ export function useEconomy(uid) {
     [uid],
   );
 
-  return { logWorkout, purchaseItem, equipItem, setEquippedAccessories, setFeaturedBadges };
+  return {
+    logWorkout,
+    publishWorkoutRecords,
+    purchaseItem,
+    equipItem,
+    setEquippedAccessories,
+    setFeaturedBadges,
+  };
 }

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import Leaderboard from './Leaderboard';
 import { readEquippedAccessories } from '../../data/storeItems';
+import { resolveMascotId } from '../../data/mascots';
 import { useFriendSuggestions } from '../../hooks/useFriendSuggestions';
 import SocialFeed from './SocialFeed';
+import JimmyWelcomeBanner from './JimmyWelcomeBanner';
 import NotificationsModal from './NotificationsModal';
 import FriendManagementModal from './FriendManagementModal';
 
@@ -71,8 +73,14 @@ const TABS = [
   { id: 'leaderboard', label: '🏆 Leaderboard' },
 ];
 
-// Five plus your own row if you missed the cut — see Leaderboard.
-const BOARD_SIZE = 5;
+// Twenty plus your own row if you missed the cut — see Leaderboard.
+//
+// Was five, which quietly capped the board at "you and four friends" long
+// before anyone had twenty active friends to rank. Note the OTHER filter,
+// which this number cannot lift: the board is built from feed posts in a
+// rolling 7-day window (Leaderboard.tsx), so it shows up to twenty people
+// who trained THIS WEEK, not the twenty biggest lifters of all time.
+const BOARD_SIZE = 20;
 
 export default function SocialPage({
   account,
@@ -83,6 +91,10 @@ export default function SocialPage({
   myUid,
   myFriendCode,
   friendUids,
+  // Who Jimmy is, straight from the welcome callable — see
+  // JimmyWelcomeBanner. null until it answers, and on any launch where it
+  // failed, which just means the banner does not draw.
+  officialFriendUid = null,
   friends,
   incomingRequests,
   onSendRequest,
@@ -113,7 +125,7 @@ export default function SocialPage({
   });
 
   return (
-    <div className="flex flex-col gap-5 pt-6 pb-24">
+    <div className="flex flex-col gap-5 pt-6 pb-nav">
       <header className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-neutral-50">Social</h1>
         <div className="flex items-center gap-2">
@@ -129,6 +141,16 @@ export default function SocialPage({
           </HeaderAction>
         </div>
       </header>
+
+      {/* Above the segmented control, not inside the feed branch: the
+          message is about the account, and one tap on Leaderboard would
+          otherwise make it disappear mid-read. Renders nothing at all
+          once dismissed, or for anyone not actually friends with Jimmy. */}
+      <JimmyWelcomeBanner
+        myUid={myUid}
+        friendUids={friendUids}
+        officialFriendUid={officialFriendUid}
+      />
 
       {/* Segmented control rather than two more stacked sections: these
           are two answers to "what are my friends up to", and only one of
@@ -159,6 +181,9 @@ export default function SocialPage({
           equippedAccessories={readEquippedAccessories(account)}
           currentStreak={Number(account?.currentStreak) || 0}
           minStage={account?.role === 'trainer' ? 2 : 1}
+          // Your row alone — every other row reads its mascot off the feed
+          // post that produced it.
+          mascot={resolveMascotId(account)}
           limit={BOARD_SIZE}
         />
       ) : (

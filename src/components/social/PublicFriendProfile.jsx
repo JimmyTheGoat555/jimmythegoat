@@ -7,6 +7,7 @@ import { formatRecordLoad, recordSortKey } from '../../utils/personalRecords';
 import { cheerTargetId, useCheers } from '../../hooks/useCheers';
 import JimmyAnimation from '../evolution/JimmyAnimation';
 import { getTierByStage } from '../../utils/evolutionTiers';
+import { mascotSpriteFor } from '../../data/mascots';
 import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAnimations';
 import BadgeRibbon from '../profile/BadgeRibbon';
 import NudgeModal from './NudgeModal';
@@ -286,7 +287,7 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
 
   if (raw.loading) {
     return (
-      <div className="flex flex-col gap-5 pt-6 pb-24">
+      <div className="flex flex-col gap-5 pt-6 pb-nav">
         <p className="text-sm text-neutral-500">Loading {name}'s profile…</p>
       </div>
     );
@@ -294,7 +295,7 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
 
   if (!raw.hasSummary) {
     return (
-      <div className="flex flex-col gap-5 pt-6 pb-24">
+      <div className="flex flex-col gap-5 pt-6 pb-nav">
         <button type="button" onClick={() => navigate(-1)} className="text-sm font-medium text-neutral-500 self-start">
           ← Back
         </button>
@@ -315,7 +316,10 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
   const friendTier = getTierByStage(friend.evolutionStage);
   const danceNumber = danceNumberForItemId(friend.equippedDance);
   const danceName = getStoreItem(friend.equippedDance)?.name ?? 'move';
-  const dancePath = getDanceAnimationPath(danceNumber, friend.evolutionStage);
+  // `friend.mascot` is what sanitizeFriendData published — the id, never
+  // the gender it was derived from — so this resolves to their character's
+  // own clip, or to null for a mascot that has none.
+  const dancePath = getDanceAnimationPath(danceNumber, friend.evolutionStage, friend.mascot);
   // Null until the first tap, so the WebP is never even requested for a
   // visitor who only came to read their PRs. Each further tap bumps the
   // fragment: a distinct URL to the image decoder (which is what restarts
@@ -361,7 +365,7 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
     : null;
 
   return (
-    <div className="flex flex-col gap-5 pt-6 pb-24">
+    <div className="flex flex-col gap-5 pt-6 pb-nav">
       <button type="button" onClick={() => navigate(-1)} className="text-sm font-medium text-neutral-500 self-start">
         ← Back
       </button>
@@ -398,12 +402,16 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
             />
             <JimmyAnimation
               animationSrc={avatarAnimationSrc}
-              staticImageSrc={friendTier?.image}
+              staticImageSrc={mascotSpriteFor(friend.mascot, friendTier?.stage)}
               alt={`${name} the ${friend.tierLabel}`}
               className="relative h-44 w-40"
               evolutionStage={friend.evolutionStage}
               equippedAccessories={friend.equippedAccessories}
-              showFire={friend.showFire}
+              // Theirs, from the summary — see friendPrivacy's sanitize.
+              // It also gates the dance: a Gena profile holds her sprite
+              // instead of playing a clip of Jimmy doing her emote.
+              mascot={friend.mascot}
+              streak={friend.currentStreak ?? (friend.showFire ? 2 : 0)}
               // This component owns the tap; two handlers on one press
               // would each restart the clip.
               interactive={false}

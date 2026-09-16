@@ -276,6 +276,15 @@ function applyWorkoutToRecords(records, { cleanExercises, finishedAtIso, totalSc
     lastWorkoutDay: records?.lastWorkoutDay ?? null,
     maxSetScore: records?.maxSetScore ?? 0,
     maxWorkoutVolumeKg: records?.maxWorkoutVolumeKg ?? 0,
+    // Carried through, and it MUST be. This function rebuilds the snapshot
+    // field by field, so anything not named here is dropped on every log —
+    // and dropping this marker would make economy.js's
+    // normalizeDumbbellRecords re-run against bests it had already
+    // doubled, doubling them again every single workout. Caught before it
+    // shipped; the test suite now pins it.
+    ...(records?.dumbbellRecordsVersion !== undefined
+      ? { dumbbellRecordsVersion: records.dumbbellRecordsVersion }
+      : {}),
   };
   if (isRecovery) return next;
 

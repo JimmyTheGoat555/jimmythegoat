@@ -31,7 +31,7 @@ export default function TraineeWorkoutDetail({ profile }) {
 
   if (!workout) {
     return (
-      <div className="pt-6 pb-24 flex flex-col items-center gap-4 text-center">
+      <div className="pt-6 pb-nav flex flex-col items-center gap-4 text-center">
         <p className="text-sm text-neutral-500">This workout wasn't found.</p>
         <button
           type="button"
@@ -45,7 +45,7 @@ export default function TraineeWorkoutDetail({ profile }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 pt-6 pb-24">
+    <div className="flex flex-col gap-4 pt-6 pb-nav">
       <div>
         <button
           type="button"

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import SilverChest from './SilverChest';
 import { getDancePreviewPath, danceNumberForItemId } from '../../utils/danceAnimations';
+import { useJimmyLook } from '../../context/JimmyLook';
 
 // A first-workout-only, full-screen reward moment — see functions/economy.js's
 // logWorkout, which grants a free dance exactly once, ever, per account,
@@ -12,6 +13,10 @@ import { getDancePreviewPath, danceNumberForItemId } from '../../utils/danceAnim
 const STAGE = { CLOSED: 'closed', SHAKING: 'shaking', BURST: 'burst', REVEALED: 'revealed' };
 
 export default function SilverLootboxModal({ reward, evolutionStage, onClose }) {
+  // Whose clip to preview. From context rather than a prop, the same way
+  // WorkoutHome and GymShop get it — the modal is rendered inside
+  // JimmyLookProvider (App.jsx), and this is the one thing it needs.
+  const { mascot } = useJimmyLook();
   const [stage, setStage] = useState(STAGE.CLOSED);
   const [previewBroken, setPreviewBroken] = useState(false);
   const revealed = stage === STAGE.REVEALED;
@@ -79,7 +84,7 @@ export default function SilverLootboxModal({ reward, evolutionStage, onClose }) 
   };
 
   const danceNumber = danceNumberForItemId(reward.itemId);
-  const previewSrc = !previewBroken ? getDancePreviewPath(danceNumber, evolutionStage) : null;
+  const previewSrc = !previewBroken ? getDancePreviewPath(danceNumber, evolutionStage, mascot) : null;
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center overflow-hidden bg-black">

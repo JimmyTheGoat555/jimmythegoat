@@ -24,6 +24,9 @@
 const { randomUUID } = require('crypto');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore } = require('firebase-admin/firestore');
+const logger = require('firebase-functions/logger');
+const { claimAtSignup } = require('./usernames');
+const { MASCOT_IDS, resolveMascotId } = require('./mascots');
 
 // Body weight is REQUIRED, not optional — logWorkout scores every set by
 // strength-to-bodyweight, so an account with none on file can log a full
@@ -34,7 +37,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 exports.completeOnboardingProfile = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   const uid = request.auth.uid;
-  const { weightKg, heightCm, primaryGoal, targetDaysPerWeek, displayName } = request.data ?? {};
+  const { weightKg, heightCm, primaryGoal, targetDaysPerWeek, displayName, gender } = request.data ?? {};
 
   const kg = Number(weightKg);
   if (!Number.isFinite(kg) || kg <= 0) {
@@ -78,5 +81,47 @@ exports.completeOnboardingProfile = onCall(async (request) => {
   // is verified yet, and the app is hard-gated on that, so friending here
   // would fill the official account's friends list with people who never
   // came back — and its feed can only read 30 of them.
-  return { ok: true };
+
+  // Mascot, written with the Admin SDK as a backstop for the client's own
+  // users/{uid} write in signUp(). Both write the same value, and this one
+  // is a merge, so running after the client's is a no-op in the normal
+  // case — the point is the abnormal one this whole callable exists for
+  // (see the header note: a client write to users/{uid} lost to a rules
+  // race, silently). Which character you are is the most visible field on
+  // the account, so it should not be the last one still depending on that
+  // path.
+  //
+  // Derived here rather than trusted from the request: the client sends
+  // the raw `gender` answer and the server decides what it means, so the
+  // two sides cannot drift and a hand-crafted call cannot post an
+  // arbitrary mascot id. The result is validated anyway before it is
+  // written, since it lands in a field firestore.rules pins to a fixed
+  // list and is snapshotted onto every feed post from here on.
+  //
+  // Never fatal. The body weight above is the one write in this flow
+  // allowed to fail the call — a missing mascot costs a sprite, and
+  // resolveMascotId falls back to the gender on the user doc anyway.
+  const mascot = resolveMascotId({ gender });
+  if (MASCOT_IDS.includes(mascot)) {
+    try {
+      await db.collection('users').doc(uid).set({ mascot }, { merge: true });
+    } catch (err) {
+      logger.warn('completeOnboardingProfile: could not write mascot', { uid, mascot, err });
+    }
+  }
+
+  // Reserve the display name, so uniqueness starts at signup rather than
+  // at the first rename. This is the right place for it and the ordering
+  // is not incidental: signUp() awaits its users/{uid} write before
+  // calling this, so the profile document claimAtSignup needs is already
+  // there — and this runs AFTER the body weight above, which is the one
+  // write in this flow that is allowed to fail the call.
+  //
+  // Never throws (see claimAtSignup): a name already in use gets a number
+  // rather than killing a signup whose Auth account already exists. The
+  // final name comes back so the caller can tell the user if it changed
+  // out from under them.
+  const claim = await claimAtSignup(uid, displayName);
+
+  return { ok: true, displayName: claim.displayName, nameAdjusted: claim.suffixed };
 });

@@ -32,7 +32,7 @@
 // Idempotent (arrayUnion), so calling it on every launch costs one read.
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getAuth } = require('firebase-admin/auth');
-const { friendWithOfficialAccount } = require('./officialAccount');
+const { friendWithOfficialAccount, officialAccountUid } = require('./officialAccount');
 
 exports.claimWelcomeFriend = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -50,5 +50,12 @@ exports.claimWelcomeFriend = onCall(async (request) => {
   // sit in the official account's friends list forever as a dead entry —
   // counting against the 30 that its own feed can actually read.
   const friended = await friendWithOfficialAccount(uid);
-  return { friended };
+
+  // The official account's uid goes back to the caller so the app can tell
+  // "this friend is Jimmy" without guessing from a display name — which is
+  // a string any user is free to set to 'Jimmy'. Not a disclosure: Jimmy is
+  // in every user's own friends array already, and feed posts are readable
+  // by every signed-in user (firestore.rules). The client uses it for one
+  // thing, showing the welcome banner to somebody who really is connected.
+  return { friended, officialUid: await officialAccountUid() };
 });

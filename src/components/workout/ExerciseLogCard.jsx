@@ -45,6 +45,10 @@ export default function ExerciseLogCard({
   // Reorder mode: the card collapses to a single draggable row. See
   // ActiveWorkoutLogger, which owns the mode.
   compact = false,
+  // A rest-timer 2× boost is pinned to this exercise and still live — see
+  // ActiveWorkoutLogger's isBoosted. Drawn as a chip beside the name so
+  // the lifter can see where the ad they watched landed.
+  boosted = false,
 }) {
   const group = getMuscleGroup(exercise.muscleGroup);
   const completedCount = exercise.sets.filter((s) => s.completed).length;
@@ -106,6 +110,14 @@ export default function ExerciseLogCard({
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group?.color }} />
             <h3 className="font-semibold text-neutral-100 text-base">{exercise.name}</h3>
+            {boosted && (
+              <span
+                className="shrink-0 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300"
+                title="Coins for this exercise pay double — you watched an ad during a rest."
+              >
+                ⚡ 2× coins
+              </span>
+            )}
           </div>
           <p className="text-sm text-neutral-500 mt-0.5">
             {completedCount}/{exercise.sets.length} sets completed

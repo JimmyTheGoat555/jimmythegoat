@@ -2,6 +2,7 @@
 // to unit test and reuse between the Dashboard and Progress views.
 
 import { MUSCLE_GROUPS } from '../data/exercises';
+import { absoluteSetWeight } from './setLoad';
 
 // Evidence-based hypertrophy range: most lifters make the best progress
 // landing 12-18 effective (completed) sets per muscle group per week.
@@ -13,8 +14,16 @@ export const OPTIMAL_WEEKLY_SETS_MAX = 18;
 // (logWorkout folds in the lifter's body weight server-side). A finished
 // workout's bodyweight sets already store their computed weight, so they
 // need no override.
+//
+// Note what this does NOT do: multiply anything for dumbbells. That would
+// be the obvious place to put "both hands count", and it is the wrong
+// one — `set.weight` is already the absolute load for every set the new
+// input sheet writes (a 25 kg dumbbell in each hand stores 50), so
+// doubling here would count it twice. The per-hand figure lives beside it
+// in `perHandWeight`, for display and for re-opening the input. The whole
+// contract is written out in utils/setLoad.js.
 export function setVolume(set, effectiveWeightKg) {
-  const weight = effectiveWeightKg != null ? Number(effectiveWeightKg) : Number(set.weight) || 0;
+  const weight = effectiveWeightKg != null ? Number(effectiveWeightKg) : absoluteSetWeight(set);
   const reps = Number(set.reps) || 0;
   return weight * reps;
 }
