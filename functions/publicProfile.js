@@ -17,6 +17,7 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { bestWeightPerExercise, lifetimeVolumeOf, publishableRecord } = require('./records');
 const { resolveMascotId } = require('./mascots');
+const { progressionScaleFor } = require('./evolution');
 
 exports.setSharePRs = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -27,11 +28,9 @@ exports.setSharePRs = onCall(async (request) => {
   const userRef = db.collection('users').doc(uid);
   const summaryRef = userRef.collection('public').doc('summary');
 
-  const [userSnap, workoutsSnap] = await Promise.all([
-    userRef.get(),
-    userRef.collection('workouts').get(),
-  ]);
-  if (!userSnap.exists) throw new HttpsError('failed-precondition', "Your profile doc doesn't exist yet — try again in a moment.");
+  const [userSnap, workoutsSnap] = await Promise.all([userRef.get(), userRef.collection('workouts').get()]);
+  if (!userSnap.exists)
+    throw new HttpsError('failed-precondition', "Your profile doc doesn't exist yet — try again in a moment.");
   const workouts = workoutsSnap.docs.map((d) => d.data());
 
   const summary = {
@@ -43,6 +42,8 @@ exports.setSharePRs = onCall(async (request) => {
     // a stale character behind on any account that switched mascot before
     // its next workout.
     mascot: resolveMascotId(userSnap.data()),
+    // And the ladder that goes with it — see economy.js's summary write.
+    progressionScale: progressionScaleFor(userSnap.data()),
   };
   // Field PRESENCE is the visibility control, not a value a reader has to
   // check — a friend's client only ever looks at whether personalRecords
@@ -63,11 +64,7 @@ exports.setSharePRs = onCall(async (request) => {
   // be fine too, but merge:true plus an explicit FieldValue.delete() is
   // what actually removes `personalRecords` when turning sharing off —
   // otherwise the field would just sit there unmerged-over, stale forever.
-  batch.set(
-    summaryRef,
-    share ? summary : { ...summary, personalRecords: FieldValue.delete() },
-    { merge: true },
-  );
+  batch.set(summaryRef, share ? summary : { ...summary, personalRecords: FieldValue.delete() }, { merge: true });
   await batch.commit();
 
   return { sharePRs: share };

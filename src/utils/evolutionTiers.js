@@ -7,6 +7,34 @@
 // kg tonnage — a 60 kg lifter and a 100 kg lifter benching their own
 // bodyweight now progress at the same rate.
 //
+// ── THE FEMALE SCALE ────────────────────────────────────────────────────
+//
+// Relative points already make a 60 kg lifter and a 100 kg lifter
+// progress alike — but they do not make a woman and a man progress
+// alike. Per session, a female lifter moves roughly 60–65% of the
+// tonnage a male lifter of the same body weight does, so on the same
+// ladder her ~65-point sessions would take six or seven to fill a band a
+// man fills in four. So the thresholds are SCALED, not the score: a
+// female account climbs the same four tiers with every threshold at
+// FEMALE_PROGRESSION_SCALE (0.65) of the table below — buff at 260, titan
+// at 1,300, legend at 3,250 — and an average session fills ~25% of the
+// bar for both. What a session was WORTH is untouched: the points on the
+// summary, the kg on the sticker, the leaderboard score and the coins
+// are the same numbers whoever lifted them; only the unseen goal moves.
+//
+// Who is on which ladder is decided in one place, progressionScale():
+// THE LADDER FOLLOWS THE CHARACTER. An explicit `mascot` wins, else a
+// 'female' onboarding answer means Gena — the same precedence
+// data/mascots.js's resolveMascotId gives the sprite — and whoever
+// resolves to Gena climbs the female ladder. So a woman who picks Jimmy
+// in Settings climbs Jimmy's ladder, earns Jimmy's coins and Jimmy's
+// badge tree, and the Founder Console's mascot swap moves all four at
+// once (functions/adminUserActions.js). An 'other' answer with no choice
+// stays on the base ladder. The server decides evolutions with the same
+// rule (functions/evolution.js's progressionScaleFor) and publishes the
+// number it used beside minStage, so a friend's device draws the tier
+// the server announced.
+//
 // The original starting tier ("Kid Goat") was removed at the user's
 // request — 4 tiers, not 5. `goat` is the floor at 0 so
 // getEvolutionProgress (which treats index 0 as "where everyone starts")
@@ -68,6 +96,52 @@ export function getTierByStage(stage) {
   return EVOLUTION_TIERS.find((tier) => tier.stage === stage) ?? EVOLUTION_TIERS.at(-1);
 }
 
+// How far a female account's thresholds sit below the table — see THE
+// FEMALE SCALE in the header. Twin of functions/evolution.js's constant.
+export const FEMALE_PROGRESSION_SCALE = 0.65;
+// data/mascots.js's MASCOT_GENA, re-typed rather than imported so this
+// module keeps no imports: the server twin mirrors it line for line and
+// tools/progression.test.mjs loads both in plain Node.
+const FEMALE_MASCOT_ID = 'gena';
+const BASE_MASCOT_ID = 'jimmy';
+
+// A scale is a fraction of the table in (0, 1]; anything else — a
+// missing field, a tampered post, NaN — is the base ladder.
+function normaliseScale(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 && n <= 1 ? n : 1;
+}
+
+// The threshold scale for whoever `source` describes: the signed-in
+// user's account doc, a friend's public summary, a feed post, a trainee's
+// doc — anything carrying `mascot` and/or `gender`, or a number the
+// server already published as `progressionScale`. A published number
+// wins, because it is the one the server decided that account's tier
+// with; otherwise the resolved character decides (THE LADDER FOLLOWS THE
+// CHARACTER in the header): an explicit mascot, else the gender default.
+// Never throws: every caller feeds the result straight into the maths.
+export function progressionScale(source) {
+  if (typeof source === 'number') return normaliseScale(source);
+  if (!source || typeof source !== 'object') return 1;
+  const published = Number(source.progressionScale);
+  if (Number.isFinite(published) && published > 0 && published <= 1) return published;
+  const mascot =
+    source.mascot === FEMALE_MASCOT_ID || source.mascot === BASE_MASCOT_ID
+      ? source.mascot
+      : source.gender === 'female'
+        ? FEMALE_MASCOT_ID
+        : BASE_MASCOT_ID;
+  return mascot === FEMALE_MASCOT_ID ? FEMALE_PROGRESSION_SCALE : 1;
+}
+
+// A tier with its threshold scaled. The table's own object comes back
+// untouched on the base ladder, so nothing that compared tiers by
+// identity before changes behaviour for anyone it already served.
+function scaledTier(index, scale) {
+  const tier = EVOLUTION_TIERS[index];
+  return scale === 1 ? tier : { ...tier, threshold: tier.threshold * scale };
+}
+
 export const NEGLECT_PENALTY_DAYS = 5;
 const NEGLECT_PENALTY_MS = NEGLECT_PENALTY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -89,6 +163,11 @@ export function isTierNeglected(lastWorkoutAt, now = Date.now()) {
 // bar always fills 0->100 meaningfully instead of stalling near 0 right
 // after evolving.
 //
+// Pass `{ scale }` — progressionScale() of the account being drawn — to
+// put the thresholds on that account's ladder: `current`/`next` come back
+// with their thresholds scaled (so a goal printed from `next.threshold`
+// is the goal that actually applies) and `scale` says what was used.
+//
 // Pass `{ lastWorkoutAt }` (ISO string from the user's own workout
 // history — see src/utils/workoutStats.js's lastWorkoutAt) to apply the
 // neglect penalty: `current`/`next`/`percent`/`isMaxTier` then describe
@@ -106,7 +185,9 @@ export function isTierNeglected(lastWorkoutAt, now = Date.now()) {
 // score) is affected. Only which sprite and label they wear.
 export const TRAINER_MIN_STAGE = 2;
 
-export function getEvolutionProgress(volume, { lastWorkoutAt, minStage = 1 } = {}) {
+export function getEvolutionProgress(volume, { lastWorkoutAt, minStage = 1, scale = 1 } = {}) {
+  const factor = normaliseScale(scale);
+  const thresholdAt = (index) => EVOLUTION_TIERS[index].threshold * factor;
   // Raising the floor raises the volume the rest of this function reasons
   // about, rather than just swapping the label at the end. That keeps
   // `next`, `percent` and `isMaxTier` in agreement with `current`: a
@@ -115,11 +196,11 @@ export function getEvolutionProgress(volume, { lastWorkoutAt, minStage = 1 } = {
   // Their bar therefore sits at 0% until real volume passes buff's
   // threshold — correct, if worth knowing.
   const minIndex = Math.max(0, Math.min(EVOLUTION_TIERS.length - 1, minStage - 1));
-  const effectiveVolume = Math.max(volume, EVOLUTION_TIERS[minIndex].threshold);
+  const effectiveVolume = Math.max(volume, thresholdAt(minIndex));
 
   let baseIndex = 0;
   for (let i = 0; i < EVOLUTION_TIERS.length; i += 1) {
-    if (effectiveVolume >= EVOLUTION_TIERS[i].threshold) baseIndex = i;
+    if (effectiveVolume >= thresholdAt(i)) baseIndex = i;
   }
 
   // Drop one tier (floored at 0) when neglected. Capped at one regardless
@@ -132,19 +213,19 @@ export function getEvolutionProgress(volume, { lastWorkoutAt, minStage = 1 } = {
   const neglected = isTierNeglected(lastWorkoutAt) && baseIndex > minIndex;
   const currentIndex = Math.max(minIndex, neglected ? baseIndex - 1 : baseIndex);
 
-  const current = EVOLUTION_TIERS[currentIndex];
-  const baseTier = EVOLUTION_TIERS[baseIndex];
-  const next = EVOLUTION_TIERS[currentIndex + 1] ?? null;
+  const current = scaledTier(currentIndex, factor);
+  const baseTier = scaledTier(baseIndex, factor);
+  const next = currentIndex + 1 < EVOLUTION_TIERS.length ? scaledTier(currentIndex + 1, factor) : null;
 
   if (!next) {
-    return { current, next: null, percent: 100, isMaxTier: true, neglected, baseTier };
+    return { current, next: null, percent: 100, isMaxTier: true, neglected, baseTier, scale: factor };
   }
 
   const span = next.threshold - current.threshold;
   const progressInSpan = effectiveVolume - current.threshold;
   const percent = Math.min(100, Math.max(0, (progressInSpan / span) * 100));
 
-  return { current, next, percent, isMaxTier: false, neglected, baseTier };
+  return { current, next, percent, isMaxTier: false, neglected, baseTier, scale: factor };
 }
 
 // ---- UI-only: relative points shown as personalised absolute kg --------

@@ -42,6 +42,10 @@ const { disconnectTrainer, notifyTrainer } = require('./coaching');
 exports.disconnectTrainer = disconnectTrainer;
 exports.notifyTrainer = notifyTrainer;
 
+// Trainer ↔ trainee from Settings — see functions/accountRole.js.
+const { setAccountRole } = require('./accountRole');
+exports.setAccountRole = setAccountRole;
+
 const { claimReferral } = require('./referral');
 exports.claimReferral = claimReferral;
 
@@ -72,6 +76,29 @@ exports.searchUsers = searchUsers;
 // — the /admin route is a convenience, this is the actual boundary.
 const { adminAnalytics } = require('./adminAnalytics');
 exports.adminAnalytics = adminAnalytics;
+// The Founder Console's operations — announcements and grants. Admin-only,
+// same door as adminAnalytics (functions/appAdmin.js).
+const { adminSetAnnouncement, adminGrantCoins, adminGrantXp } = require('./adminOps');
+exports.adminSetAnnouncement = adminSetAnnouncement;
+exports.adminGrantCoins = adminGrantCoins;
+exports.adminGrantXp = adminGrantXp;
+// Targeted User Actions — one account at a time: find, dossier, direct
+// message, coin adjustment, tier shift, mascot swap. Admin-only, same
+// door. See functions/adminUserActions.js.
+const {
+  adminFindUsers,
+  adminUserProfile,
+  adminMessageUser,
+  adminAdjustCoins,
+  adminShiftEvolution,
+  adminSetMascot,
+} = require('./adminUserActions');
+exports.adminFindUsers = adminFindUsers;
+exports.adminUserProfile = adminUserProfile;
+exports.adminMessageUser = adminMessageUser;
+exports.adminAdjustCoins = adminAdjustCoins;
+exports.adminShiftEvolution = adminShiftEvolution;
+exports.adminSetMascot = adminSetMascot;
 
 // Coins for a rewarded ad view. Server-side because the client may never
 // write its own balance — though see that file on why "server-side" is
@@ -93,12 +120,7 @@ const { friendEveryoneWithJimmy } = require('./officialFriendships');
 exports.friendEveryoneWithJimmy = friendEveryoneWithJimmy;
 
 // Globally unique display names — see functions/usernames.js.
-const {
-  claimUsername,
-  checkUsernameAvailable,
-  requireUsernameChange,
-  backfillUsernames,
-} = require('./usernames');
+const { claimUsername, checkUsernameAvailable, requireUsernameChange, backfillUsernames } = require('./usernames');
 exports.claimUsername = claimUsername;
 exports.checkUsernameAvailable = checkUsernameAvailable;
 exports.requireUsernameChange = requireUsernameChange;

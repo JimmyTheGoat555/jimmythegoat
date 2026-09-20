@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-// Asked once, at the top of a session, before the first set is logged.
+// Opened from the lock in the workout header, and from nowhere else.
 //
 // The problem it solves is mundane and universal: you put your phone, keys
 // and bag in a locker, spin the dial, and ninety minutes of squats later
@@ -8,11 +8,18 @@ import { useState } from 'react';
 // that gap — workout start and workout finish — so it is the only thing in
 // the gym that can hand the number back at exactly the right time.
 //
+// It used to ASK, full-screen, the instant the workout screen mounted,
+// which put a modal between every lifter and every first set they ever
+// logged. The number is worth having and is not worth that, so it is a
+// button now (ActiveWorkoutLogger's header) and this only opens when
+// somebody reaches for it. Everything below is unchanged.
+//
 // Three exits, and the difference between the last two matters:
-//   • Save & Start        — a number for THIS session.
+//   • Save                — a number for THIS session.
 //   • I don't have a locker — no number for THIS session. Home workout,
 //     outdoor run, a gym with open shelves. Asked again next time.
-//   • Don't show this again — turn the feature off for the ACCOUNT.
+//   • Don't show this again — turn the feature off for the ACCOUNT, which
+//     also takes the lock out of the header.
 // Collapsing those two into one flag (the original sketch) meant a single
 // session in the garage silently killed the feature forever, with no
 // visible cause and nothing to undo. They are kept apart, and the
@@ -63,7 +70,7 @@ export default function LockerPromptModal({ onSave, onSkip, onDisable }) {
             type="submit"
             className="w-full bg-[var(--ember)] text-white font-semibold text-base py-3.5 rounded-2xl active:scale-[0.97] transition"
           >
-            Save &amp; Start
+            Save
           </button>
           <button type="button" onClick={onSkip} className="w-full text-neutral-400 font-medium text-base py-2">
             I don't have a locker

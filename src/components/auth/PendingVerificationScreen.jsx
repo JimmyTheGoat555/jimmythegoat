@@ -98,7 +98,7 @@ export default function PendingVerificationScreen({
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-6 py-10">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center px-6 py-10">
       <div className="w-full max-w-sm">
         {/* The same gradient hairline the sign-in fields wear, so this
             reads as part of the front door rather than an error page. */}

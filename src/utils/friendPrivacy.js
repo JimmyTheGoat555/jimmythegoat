@@ -1,4 +1,4 @@
-import { getEvolutionProgress } from './evolutionTiers';
+import { getEvolutionProgress, progressionScale } from './evolutionTiers';
 import { mascotCanWear, mascotHasDances, resolveMascotId } from '../data/mascots';
 import { readEquippedAccessories, STORE_ITEMS } from '../data/storeItems';
 import { BADGES } from '../data/badges';
@@ -115,9 +115,7 @@ function sanitizeRoutine(routine) {
       const sets = Array.isArray(exercise?.sets) ? exercise.sets : [];
       // Rep counts collapse to a range: "3 x 8-10" reads as a routine,
       // where a per-set list starts to read as a log.
-      const reps = sets
-        .map((set) => Number(set?.reps))
-        .filter((n) => Number.isFinite(n) && n > 0);
+      const reps = sets.map((set) => Number(set?.reps)).filter((n) => Number.isFinite(n) && n > 0);
       const low = reps.length ? Math.min(...reps) : null;
       const high = reps.length ? Math.max(...reps) : null;
       return {
@@ -185,6 +183,27 @@ function sanitizeDances(unlocked, equipped) {
   return DANCE_IDS.filter((id) => claimed.has(id));
 }
 
+// Their most recent feed post, reduced to what the Activity section on
+// their profile prints: what the session was, how big, and when. The same
+// things the feed card already shows every signed-in user, so nothing new
+// is disclosed — but allowlisted rather than passed through all the same,
+// because the post document also carries their coins, their score and
+// their equipped gear, none of which that section has any use for.
+function sanitizeActivity(post) {
+  if (!post || typeof post !== 'object') return null;
+  const sets = Number(post.totalSets);
+  const kg = Number(post.totalVolume);
+  return {
+    headline: typeof post.headline === 'string' && post.headline ? post.headline : 'A workout',
+    totalSets: Number.isFinite(sets) && sets > 0 ? sets : null,
+    totalVolumeKg: Number.isFinite(kg) && kg >= 0 ? kg : null,
+    at: typeof post.timestamp === 'string' ? post.timestamp : null,
+    // For the name at the top of the page when someone is reached from
+    // the feed or the leaderboard without being on the friends list.
+    posterName: typeof post.userName === 'string' && post.userName ? post.userName : null,
+  };
+}
+
 export function sanitizeFriendData(rawData) {
   const raw = rawData ?? {};
 
@@ -198,6 +217,10 @@ export function sanitizeFriendData(rawData) {
   // the volume — a server change, not one this file can make.
   const { current, next, percent, isMaxTier } = getEvolutionProgress(Number(raw.lifetimeVolume) || 0, {
     minStage: Number(raw.minStage) || 1,
+    // The ladder the server decided their tier on, published beside
+    // minStage; a summary from before it was published resolves from the
+    // mascot it does carry.
+    scale: progressionScale(raw),
   });
 
   // Resolved before the fields below, several of which are gated on it:
@@ -210,13 +233,17 @@ export function sanitizeFriendData(rawData) {
   // list with no per-record flag, so requiring `true` would hide every
   // record that exists. This shape accepts a future per-record opt-in
   // without pretending one is already there.
-  const sharedRecords = raw.sharePRs === true && Array.isArray(raw.personalRecords)
-    ? raw.personalRecords.filter((r) => r?.isPublic !== false).map(sanitizeRecord).filter(Boolean)
-    : [];
+  const sharedRecords =
+    raw.sharePRs === true && Array.isArray(raw.personalRecords)
+      ? raw.personalRecords
+          .filter((r) => r?.isPublic !== false)
+          .map(sanitizeRecord)
+          .filter(Boolean)
+      : [];
 
-  const routines = Array.isArray(raw.savedWorkouts)
-    ? raw.savedWorkouts.map(sanitizeRoutine).filter(Boolean)
-    : [];
+  const routines = Array.isArray(raw.savedWorkouts) ? raw.savedWorkouts.map(sanitizeRoutine).filter(Boolean) : [];
+
+  const latestActivity = sanitizeActivity(raw.latestPost);
 
   return {
     displayName: typeof raw.displayName === 'string' ? raw.displayName : null,
@@ -266,8 +293,7 @@ export function sanitizeFriendData(rawData) {
     // public/summary); there is no opt-out the way there is for PRs,
     // because a showcase nobody can see is not a showcase.
     unlockedDances: mascotHasDances(mascot) ? sanitizeDances(raw.unlockedDances, raw.equippedDance) : [],
-    equippedDance:
-      mascotHasDances(mascot) && DANCE_IDS.includes(raw.equippedDance) ? raw.equippedDance : null,
+    equippedDance: mascotHasDances(mascot) && DANCE_IDS.includes(raw.equippedDance) ? raw.equippedDance : null,
     // Distinguishes "owns no dances" from "their summary predates the
     // field" — the second is fixed by them logging a workout, the first
     // is not, and the two want different copy.
@@ -287,5 +313,13 @@ export function sanitizeFriendData(rawData) {
     personalRecords: sharedRecords,
     sharesRecords: raw.sharePRs === true,
     savedRoutines: routines,
+
+    // The body's activity section, and the one fact the rest of the page
+    // keys its empty states off. "Has trained" is a post OR some volume:
+    // a summary can exist with nothing behind it (setSharePRs writes one
+    // for an account that toggled sharing before its first session), so
+    // the document's mere presence is deliberately not the signal.
+    latestActivity,
+    hasActivity: latestActivity !== null || (Number(raw.lifetimeVolume) || 0) > 0,
   };
 }

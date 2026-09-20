@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { lifetimeVolume } from '../utils/workoutStats';
-import { getEvolutionProgress, TRAINER_MIN_STAGE } from '../utils/evolutionTiers';
+import { getEvolutionProgress, progressionScale, TRAINER_MIN_STAGE } from '../utils/evolutionTiers';
 
 // One live subscription per connected trainee's workout collection, kept
 // alongside the roster subscription. Not the cheapest possible design (a
@@ -65,6 +65,9 @@ export function useTrainerTrainees(trainerUid) {
       totalVolume,
       evolution: getEvolutionProgress(totalVolume, {
         minStage: trainee.role === 'trainer' ? TRAINER_MIN_STAGE : 1,
+        // Their own doc again: the mascot and the gender answer are right
+        // here, so the coach sees the trainee on the ladder they climb.
+        scale: progressionScale(trainee),
       }),
     };
   });

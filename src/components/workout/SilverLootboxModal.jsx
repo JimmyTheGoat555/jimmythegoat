@@ -1,12 +1,18 @@
 import { useState } from 'react';
 import SilverChest from './SilverChest';
-import { getDancePreviewPath, danceNumberForItemId } from '../../utils/danceAnimations';
+import JimmyAvatar from '../evolution/JimmyAvatar';
 import { useJimmyLook } from '../../context/JimmyLook';
 
 // A first-workout-only, full-screen reward moment — see functions/economy.js's
-// logWorkout, which grants a free dance exactly once, ever, per account,
+// logWorkout, which grants a free item exactly once, ever, per account,
 // and App.jsx, which shows this INSTEAD of folding that grant into the
-// normal "+N coins" toast. No framer-motion (not a project dependency —
+// normal "+N coins" toast.
+//
+// The prize used to be a dance, previewed as its clip. It is the Ball Cap
+// now (storeCatalog.js's STARTER_ACCESSORY_ID) and the server EQUIPS it in
+// the same write, so the reveal is the lifter's own goat already wearing
+// it — which is both a better picture than a product shot and literally
+// true of the character they are about to go back to. No framer-motion (not a project dependency —
 // every animation elsewhere this session is plain CSS, see index.css's
 // chest-* keyframes); confetti reuses the same dynamic
 // import('canvas-confetti') pattern as useTierUpCelebration.js.
@@ -18,7 +24,6 @@ export default function SilverLootboxModal({ reward, evolutionStage, onClose }) 
   // JimmyLookProvider (App.jsx), and this is the one thing it needs.
   const { mascot } = useJimmyLook();
   const [stage, setStage] = useState(STAGE.CLOSED);
-  const [previewBroken, setPreviewBroken] = useState(false);
   const revealed = stage === STAGE.REVEALED;
 
   const handleOpen = () => {
@@ -82,9 +87,6 @@ export default function SilverLootboxModal({ reward, evolutionStage, onClose }) 
       window.setTimeout(() => setStage(STAGE.REVEALED), 550);
     }, 550);
   };
-
-  const danceNumber = danceNumberForItemId(reward.itemId);
-  const previewSrc = !previewBroken ? getDancePreviewPath(danceNumber, evolutionStage, mascot) : null;
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center overflow-hidden bg-black">
@@ -155,23 +157,29 @@ export default function SilverLootboxModal({ reward, evolutionStage, onClose }) 
 
           <div className="w-full rounded-3xl p-[2px]" style={{ background: 'linear-gradient(135deg, #fff6d0, #d4af37, #fff6d0)' }}>
             <div className="flex flex-col items-center gap-3 rounded-[22px] bg-neutral-950 px-6 py-7">
-              {previewSrc ? (
-                <img
-                  src={previewSrc}
+              {/* Their goat, at their tier, already in the hat — the
+                  server equipped it in the grant. JimmyAvatar owns its own
+                  sprite fallback, so there is no broken-image state to
+                  track; the emoji is only for an item id the catalog has
+                  no art for at all. */}
+              {reward.itemId ? (
+                <JimmyAvatar
+                  evolutionStage={evolutionStage}
+                  equippedAccessories={[reward.itemId]}
+                  mascot={mascot}
+                  size={128}
                   alt={reward.name}
-                  onError={() => setPreviewBroken(true)}
-                  className="h-32 w-32 object-contain"
                 />
               ) : (
                 <span className="text-6xl leading-none">{reward.emoji}</span>
               )}
               <p className="text-xl font-extrabold text-white">{reward.name}</p>
-              <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Dance unlocked · Free</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Unlocked &amp; equipped · Free</p>
             </div>
           </div>
 
           <p className="text-sm text-white/70">
-            Dances are rare flex items in the Shop — you just unlocked your first one, completely free.
+            It&rsquo;s on already. Swap it any time in the Store — that&rsquo;s where the rest of the gear lives.
           </p>
 
           <button type="button" onClick={onClose} className="btn-arcade w-full py-4 text-lg">

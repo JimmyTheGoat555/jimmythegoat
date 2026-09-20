@@ -251,11 +251,21 @@ const STORE_ITEMS_BY_ID = new Map(STORE_ITEMS.map((item) => [item.id, item]));
 // code can wire up unilaterally).
 const REFERRAL_BONUS_COINS = 150;
 
-// The dance handed out for free by the first-workout Silver Lootbox (see
-// economy.js's logWorkout) — deliberately the cheapest dance in the
-// catalog above, so "free" still reads as a real discount rather than
-// devaluing the item itself.
-const STARTER_DANCE_ID = 'dance-shuffle';
+// What the first-workout Silver Lootbox hands out for free (see
+// economy.js's logWorkout).
+//
+// This was a dance — the cheapest one, so "free" still read as a real
+// discount. Dances are switched off for launch (src/config/features.js's
+// ENABLE_EMOTES), which made the whole chest-opening moment either a
+// reveal of something the account cannot see, or nothing at all. So the
+// grant is a HAT instead: the Ball Cap, which is an item a brand-new
+// account can put on its goat the moment the chest opens, and which is
+// visible on every screen that draws them from then on.
+//
+// Still deliberately the cheapest item on its shelf, for the original
+// reason — a free reward should be a head start, not a shortcut past the
+// thing the coins are for.
+const STARTER_ACCESSORY_ID = 'accessory-cap';
 
 module.exports = {
   MIN_WEIGHT_KG,
@@ -288,5 +298,5 @@ module.exports = {
   STORE_ITEMS,
   STORE_ITEMS_BY_ID,
   REFERRAL_BONUS_COINS,
-  STARTER_DANCE_ID,
+  STARTER_ACCESSORY_ID,
 };

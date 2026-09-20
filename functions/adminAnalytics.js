@@ -40,7 +40,9 @@ const { onCall } = require('firebase-functions/v2/https');
 const { getFirestore, AggregateField } = require('firebase-admin/firestore');
 const { liveUidsOf } = require('./liveUsers');
 const { requireAppAdmin } = require('./appAdmin');
-const { tierForVolume } = require('./evolution');
+const { tierForVolume, progressionScaleFor } = require('./evolution');
+const { resolveMascotId } = require('./mascots');
+const { STORE_ITEMS_BY_ID, STARTER_ACCESSORY_ID } = require('./storeCatalog');
 
 const DEFAULT_ROWS = 20;
 const MAX_ROWS = 50;
@@ -54,6 +56,21 @@ const MAX_SCAN = 2000;
 // build a single call with thousands of arguments.
 const GETALL_CHUNK = 200;
 const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+// Dormant = this many days without a logged session. The drop-off chart
+// counts the dormant per evolution stage — where on the ladder people
+// stop.
+const DORMANT_DAYS = 14;
+// How many workout docs the engagement sample reads. A collection-group
+// scan with no order (an ordered one needs a group index this project
+// has not built), so it is a SAMPLE of the history, not the latest N —
+// fine for an average duration and a top-five, and the payload says
+// how big it was.
+const WORKOUT_SAMPLE = 300;
+const TOP_EXERCISES = 5;
+const TOP_SHOP_ITEMS = 5;
+const round2 = (n) => Math.round(n * 100) / 100;
 
 // Every account the table considers is checked against Auth, and the ones
 // that no longer exist are dropped from the rows AND from the totals
@@ -100,7 +117,26 @@ exports.adminAnalytics = onCall(async (request) => {
   const sortBy = request.data?.sortBy === 'volume' ? 'volume' : 'workouts';
   const activeSince = new Date(Date.now() - ACTIVE_WINDOW_MS).toISOString();
 
-  const [userStats, workoutCount, feedPostCount, activeCount, scan] = await Promise.all([
+  const hourAgo = new Date(Date.now() - HOUR_MS).toISOString();
+  const dayAgo = new Date(Date.now() - DAY_MS).toISOString();
+  const monthAgo = new Date(Date.now() - 30 * DAY_MS).toISOString();
+  const activeWithin = (since) =>
+    settle(
+      async () => (await db.collection('users').where('lastWorkoutAt', '>=', since).count().get()).data().count ?? 0,
+    );
+
+  const [
+    userStats,
+    workoutCount,
+    feedPostCount,
+    activeCount,
+    activeHour,
+    activeDay,
+    activeMonth,
+    coinsEarned,
+    sample,
+    scan,
+  ] = await Promise.all([
     // Document count and coin float. Both exact regardless of MAX_SCAN
     // below, and issued as TWO aggregations on purpose.
     //
@@ -124,7 +160,10 @@ exports.adminAnalytics = onCall(async (request) => {
     settle(async () => {
       const [countSnap, coinSnap] = await Promise.all([
         db.collection('users').count().get(),
-        db.collection('users').aggregate({ coins: AggregateField.sum('coins') }).get(),
+        db
+          .collection('users')
+          .aggregate({ coins: AggregateField.sum('coins') })
+          .get(),
       ]);
       return {
         users: countSnap.data().count ?? 0,
@@ -150,9 +189,65 @@ exports.adminAnalytics = onCall(async (request) => {
     // field, in the opposite direction.
     settle(
       async () =>
-        (await db.collection('users').where('lastWorkoutAt', '>=', activeSince).count().get()).data()
-          .count ?? 0,
+        (await db.collection('users').where('lastWorkoutAt', '>=', activeSince).count().get()).data().count ?? 0,
     ),
+    // The pulse and the DAU/MAU inputs — three more counts over the same
+    // indexed field. In-progress sessions live on the phone until they
+    // are finished (useWorkouts), so "active right now" is measured as
+    // "finished a session in the last hour": the only live signal the
+    // database has.
+    activeWithin(hourAgo),
+    activeWithin(dayAgo),
+    activeWithin(monthAgo),
+    // Every coin ever paid out by logWorkout — the other side of the
+    // circulation number. A sum over the docs that carry the field.
+    settle(async () =>
+      Math.round(
+        (
+          await db
+            .collectionGroup('workouts')
+            .aggregate({ coins: AggregateField.sum('coinsEarned') })
+            .get()
+        ).data().coins ?? 0,
+      ),
+    ),
+    // Average duration and the most-logged exercises, from a sample of
+    // workout docs (WORKOUT_SAMPLE).
+    settle(async () => {
+      const snap = await db
+        .collectionGroup('workouts')
+        .select('startedAt', 'finishedAt', 'exercises', 'recoveryWorkout', 'adminAdjustment')
+        .limit(WORKOUT_SAMPLE)
+        .get();
+      let durations = 0;
+      let timed = 0;
+      const counts = new Map();
+      let sampled = 0;
+      for (const doc of snap.docs) {
+        const w = doc.data();
+        if (w.adminAdjustment) continue;
+        sampled += 1;
+        const ms = Date.parse(w.finishedAt) - Date.parse(w.startedAt);
+        // Six hours is the ceiling a real session can plausibly have;
+        // anything longer is a phone left open, not a workout.
+        if (Number.isFinite(ms) && ms > 0 && ms <= 6 * HOUR_MS) {
+          durations += ms;
+          timed += 1;
+        }
+        for (const exercise of Array.isArray(w.exercises) ? w.exercises : []) {
+          const key = exercise?.exerciseId ?? exercise?.name;
+          if (!key) continue;
+          const entry = counts.get(key) ?? { id: key, name: exercise.name ?? key, sessions: 0 };
+          entry.sessions += 1;
+          counts.set(key, entry);
+        }
+      }
+      return {
+        sampled,
+        avgDurationMin: timed ? Math.round(durations / timed / 60000) : null,
+        topExercises: [...counts.values()].sort((a, b) => b.sessions - a.sessions).slice(0, TOP_EXERCISES),
+      };
+    }),
     settle(async () => {
       // select() still bills one read per document — Firestore bills
       // reads, not bytes — but it keeps the payload crossing the wire
@@ -172,6 +267,10 @@ exports.adminAnalytics = onCall(async (request) => {
           'friends',
           'sharePRs',
           'badges',
+          'mascot',
+          'gender',
+          'unlockedDances',
+          'unlockedAccessories',
         )
         .limit(MAX_SCAN)
         .get();
@@ -192,9 +291,7 @@ exports.adminAnalytics = onCall(async (request) => {
       for (let i = 0; i < refs.length; i += GETALL_CHUNK) {
         const chunk = refs.slice(i, i + GETALL_CHUNK);
         if (chunk.length === 0) break;
-        records.push(
-          ...(await db.getAll(...chunk, { fieldMask: ['workoutCount', 'lifetimeVolume'] })),
-        );
+        records.push(...(await db.getAll(...chunk, { fieldMask: ['workoutCount', 'lifetimeVolume'] })));
       }
 
       const rows = liveDocs.map((doc, i) => {
@@ -207,7 +304,10 @@ exports.adminAnalytics = onCall(async (request) => {
         // user doc is written by the client at signup; Auth's is not.
         const authUser = live.get(doc.id);
         const volume = Math.round(Number(rec.lifetimeVolume) || 0);
-        const tier = tierForVolume(volume, { minStage: user.role === 'trainer' ? 2 : 1 });
+        const tier = tierForVolume(volume, {
+          minStage: user.role === 'trainer' ? 2 : 1,
+          scale: progressionScaleFor(user),
+        });
         return {
           uid: doc.id,
           displayName: user.displayName ?? 'Unnamed',
@@ -244,6 +344,14 @@ exports.adminAnalytics = onCall(async (request) => {
           badges: Array.isArray(user.badges) ? user.badges.length : 0,
           sharePRs: user.sharePRs === true,
           hasTrainer: Boolean(user.trainerId),
+          // Which character, by the same rule the app draws them with.
+          mascot: resolveMascotId(user),
+          // What they have bought, priced at the catalog. The Silver
+          // Lootbox item was a gift (economy.js) and is not a sink.
+          owned: [
+            ...(Array.isArray(user.unlockedDances) ? user.unlockedDances : []),
+            ...(Array.isArray(user.unlockedAccessories) ? user.unlockedAccessories : []),
+          ].filter((id) => id !== STARTER_ACCESSORY_ID && STORE_ITEMS_BY_ID.has(id)),
         };
       });
 
@@ -296,10 +404,70 @@ exports.adminAnalytics = onCall(async (request) => {
           stage,
           count: rows.filter((r) => r.stage === stage).length,
         })),
+        // ── The Founder Console's gamification and economy numbers ──
+        mascotSplit: {
+          jimmy: rows.filter((r) => r.mascot === 'jimmy').length,
+          gena: rows.filter((r) => r.mascot === 'gena').length,
+        },
+        // Mean evolution stage per character, over everyone and over the
+        // accounts that have trained at all — the second is the one that
+        // says whether the female ladder scale keeps Gena level with
+        // Jimmy, since a never-trained account sits at stage 1 whoever
+        // it wears.
+        avgStageByMascot: ['jimmy', 'gena'].map((mascot) => {
+          const group = rows.filter((r) => r.mascot === mascot);
+          const trained = group.filter((r) => r.workouts > 0);
+          const mean = (list) => (list.length ? round2(list.reduce((n, r) => n + r.stage, 0) / list.length) : null);
+          return {
+            mascot,
+            count: group.length,
+            trained: trained.length,
+            avgStage: mean(group),
+            avgStageTrained: mean(trained),
+          };
+        }),
+        // Where on the ladder people stop: per stage, how many of the
+        // lifters at it have gone DORMANT_DAYS without a session.
+        dropOff: [1, 2, 3, 4].map((stage) => {
+          const lifters = rows.filter((r) => r.stage === stage && r.workouts > 0);
+          const dormant = lifters.filter((r) => r.dormantDays != null && r.dormantDays >= DORMANT_DAYS).length;
+          return {
+            stage,
+            lifters: lifters.length,
+            dormant,
+            rate: lifters.length ? round2(dormant / lifters.length) : null,
+          };
+        }),
+        // Sessions per week since signup, averaged over the accounts that
+        // have trained. Retention as a rate, not a count.
+        avgWorkoutsPerWeek: (() => {
+          const trained = rows.filter((r) => r.workouts > 0);
+          if (trained.length === 0) return null;
+          const perWeek = trained.map((r) => {
+            const since = Date.parse(r.createdAt);
+            const weeks = Number.isFinite(since) ? Math.max(1, (Date.now() - since) / (7 * DAY_MS)) : 1;
+            return r.workouts / weeks;
+          });
+          return round2(perWeek.reduce((a, b) => a + b, 0) / perWeek.length);
+        })(),
+        // The sinks: what has been bought, priced at today's catalog.
+        coinsSpent: sum((r) => r.owned.reduce((n, id) => n + (STORE_ITEMS_BY_ID.get(id)?.cost ?? 0), 0)),
+        topShopItems: (() => {
+          const owners = new Map();
+          for (const r of rows) for (const id of r.owned) owners.set(id, (owners.get(id) ?? 0) + 1);
+          return [...owners.entries()]
+            .map(([id, count]) => {
+              const item = STORE_ITEMS_BY_ID.get(id);
+              return { id, name: item?.name ?? id, emoji: item?.emoji ?? '🛍️', cost: item?.cost ?? 0, owners: count };
+            })
+            .sort((a, b) => b.owners - a.owners || b.cost - a.cost)
+            .slice(0, TOP_SHOP_ITEMS);
+        })(),
       };
 
       return {
-        rows: rows.slice(0, limit),
+        // `owned` was for the breakdown; the table does not need it.
+        rows: rows.slice(0, limit).map(({ owned, ...row }) => row),
         breakdown,
         scanned: usersSnap.size,
         truncated: usersSnap.size >= MAX_SCAN,
@@ -341,6 +509,37 @@ exports.adminAnalytics = onCall(async (request) => {
       totalVolume: scan.value ? scan.value.breakdown.volume : null,
       byStage: scan.value ? scan.value.breakdown.byStage : null,
     },
+    // ── The Founder Console ──────────────────────────────────────────
+    // Real where the database can answer; null where it cannot yet, and
+    // the client draws a clearly-marked mock in its place (sticker
+    // shares and the overload-coaching count are not recorded anywhere
+    // today — see FounderConsole.jsx's MOCK).
+    pulse: {
+      activeLastHour: activeHour.value,
+      activeLastDay: activeDay.value,
+      activeLast30Days: activeMonth.value,
+      dauMau: activeDay.value != null && activeMonth.value ? round2(activeDay.value / activeMonth.value) : null,
+    },
+    engagement: {
+      avgWorkoutsPerWeek: scan.value ? scan.value.breakdown.avgWorkoutsPerWeek : null,
+      avgWorkoutDurationMin: sample.value?.avgDurationMin ?? null,
+      sampleSize: sample.value?.sampled ?? 0,
+      topExercises: sample.value?.topExercises ?? [],
+    },
+    economy: {
+      coinsEarned: coinsEarned.value,
+      coinsSpent: scan.value ? scan.value.breakdown.coinsSpent : null,
+      coinsInCirculation: scan.value ? scan.value.breakdown.coins : null,
+      topShopItems: scan.value ? scan.value.breakdown.topShopItems : [],
+    },
+    gamification: {
+      mascotSplit: scan.value ? scan.value.breakdown.mascotSplit : null,
+      avgStageByMascot: scan.value ? scan.value.breakdown.avgStageByMascot : [],
+      dropOff: scan.value ? scan.value.breakdown.dropOff : [],
+      dormantDays: DORMANT_DAYS,
+    },
+    virality: null,
+    coaching: null,
     // One entry per metric that could not be computed, keyed the same way
     // as `totals`, so the card can say what went wrong instead of showing
     // a confident zero. A zero and a failure look identical otherwise,
@@ -350,6 +549,10 @@ exports.adminAnalytics = onCall(async (request) => {
       ...(workoutCount.error ? { workouts: workoutCount.error } : {}),
       ...(feedPostCount.error ? { feedPosts: feedPostCount.error } : {}),
       ...(activeCount.error ? { activeLast7Days: activeCount.error } : {}),
+      ...(activeHour.error ? { pulse: activeHour.error } : {}),
+      ...(activeDay.error || activeMonth.error ? { dauMau: activeDay.error ?? activeMonth.error } : {}),
+      ...(coinsEarned.error ? { coinsEarned: coinsEarned.error } : {}),
+      ...(sample.error ? { engagement: sample.error } : {}),
       ...(scan.error ? { powerUsers: scan.error } : {}),
     },
     powerUsers: scan.value?.rows ?? [],

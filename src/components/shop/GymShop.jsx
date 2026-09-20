@@ -13,6 +13,7 @@ import JimmyAvatar from '../evolution/JimmyAvatar';
 import { useJimmyLook } from '../../context/JimmyLook';
 import AdRewardCard from './AdRewardCard';
 import { danceNumberForItemId, getDancePreviewPath } from '../../utils/danceAnimations';
+import { ENABLE_EMOTES } from '../../config/features';
 import {
   SELECTABLE_MASCOTS,
   getMascot,
@@ -31,7 +32,15 @@ import {
 // whole Store tab down behind the error boundary — a white screen because one
 // of the two call sites was missing an attribute.
 function ItemCard({
-  item, owned, equipped, canAfford, busy, onBuy, onEquip, previewSrc, tierImage,
+  item,
+  owned,
+  equipped,
+  canAfford,
+  busy,
+  onBuy,
+  onEquip,
+  previewSrc,
+  tierImage,
   jimmyLook = { evolutionStage: 1, equippedAccessories: [] },
 }) {
   // Rarity colours the frame and the label. Only shown once you own the
@@ -49,10 +58,7 @@ function ItemCard({
       style={frame}
     >
       {rarity && (
-        <span
-          className="text-[9px] font-bold uppercase tracking-[0.18em]"
-          style={{ color: rarity.color }}
-        >
+        <span className="text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: rarity.color }}>
           {rarity.label}
         </span>
       )}
@@ -161,8 +167,7 @@ export default function GymShop({
   const unlockedDances = account?.unlockedDances ?? [];
   const unlockedAccessories = account?.unlockedAccessories ?? [];
 
-  const isOwned = (item) =>
-    (item.type === 'dance' ? unlockedDances : unlockedAccessories).includes(item.id);
+  const isOwned = (item) => (item.type === 'dance' ? unlockedDances : unlockedAccessories).includes(item.id);
   // Tolerates the pre-multi-slot shape, so an existing account's equipped
   // accessory doesn't appear to fall off on the deploy that ships this.
   const equippedAccessories = readEquippedAccessories(account);
@@ -264,80 +269,80 @@ export default function GymShop({
             {character.name}&rsquo;s wardrobe is still being made.
           </p>
           <p className="mt-1.5 text-xs leading-snug text-neutral-400">
-            Every dance and accessory in the store was drawn for Jimmy, so they&rsquo;re hidden while
-            you&rsquo;re training as {character.name}. Anything you already own is kept — switch back to
-            Jimmy in Settings and it&rsquo;s all exactly where you left it.
+            Every dance and accessory in the store was drawn for Jimmy, so they&rsquo;re hidden while you&rsquo;re
+            training as {character.name}. Anything you already own is kept — switch back to Jimmy in Settings and
+            it&rsquo;s all exactly where you left it.
           </p>
         </div>
       )}
 
-      {dances.length > 0 && (
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Dances</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {dances.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              owned={isOwned(item)}
-              equipped={isEquipped(item)}
-              canAfford={coins >= item.cost}
-              busy={busyItemId === item.id}
-              previewSrc={getDancePreviewPath(
-                danceNumberForItemId(item.id),
-                evolutionStage,
-                jimmyLook.mascot,
-              )}
-              tierImage={cardSprite}
-              jimmyLook={jimmyLook}
-              onBuy={() => handleBuy(item)}
-              onEquip={() => handleEquip(item)}
-            />
-          ))}
-        </div>
-      </section>
+      {/* The Dances shelf. Behind the ENABLE_EMOTES flag (config/features.js)
+          while the emotes are being fixed: the list, the ownership checks
+          and handleEquip above are all still here, only the shelf itself is
+          not rendered — so nothing to see, buy or equip until the flag flips. */}
+      {ENABLE_EMOTES && dances.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Dances</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {dances.map((item) => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                owned={isOwned(item)}
+                equipped={isEquipped(item)}
+                canAfford={coins >= item.cost}
+                busy={busyItemId === item.id}
+                previewSrc={getDancePreviewPath(danceNumberForItemId(item.id), evolutionStage, jimmyLook.mascot)}
+                tierImage={cardSprite}
+                jimmyLook={jimmyLook}
+                onBuy={() => handleBuy(item)}
+                onEquip={() => handleEquip(item)}
+              />
+            ))}
+          </div>
+        </section>
       )}
 
       {outfits.length > 0 && (
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Outfits</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {outfits.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              owned={isOwned(item)}
-              equipped={isEquipped(item)}
-              canAfford={coins >= item.cost}
-              busy={busyItemId === item.id}
-              onBuy={() => handleBuy(item)}
-              onEquip={() => handleEquip(item)}
-              jimmyLook={jimmyLook}
-            />
-          ))}
-        </div>
-      </section>
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Outfits</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {outfits.map((item) => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                owned={isOwned(item)}
+                equipped={isEquipped(item)}
+                canAfford={coins >= item.cost}
+                busy={busyItemId === item.id}
+                onBuy={() => handleBuy(item)}
+                onEquip={() => handleEquip(item)}
+                jimmyLook={jimmyLook}
+              />
+            ))}
+          </div>
+        </section>
       )}
 
       {accessories.length > 0 && (
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Accessories</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {accessories.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              owned={isOwned(item)}
-              equipped={isEquipped(item)}
-              canAfford={coins >= item.cost}
-              busy={busyItemId === item.id}
-              onBuy={() => handleBuy(item)}
-              onEquip={() => handleEquip(item)}
-              jimmyLook={jimmyLook}
-            />
-          ))}
-        </div>
-      </section>
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Accessories</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {accessories.map((item) => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                owned={isOwned(item)}
+                equipped={isEquipped(item)}
+                canAfford={coins >= item.cost}
+                busy={busyItemId === item.id}
+                onBuy={() => handleBuy(item)}
+                onEquip={() => handleEquip(item)}
+                jimmyLook={jimmyLook}
+              />
+            ))}
+          </div>
+        </section>
       )}
 
       {/* Something they own is the other character's: say where it went,

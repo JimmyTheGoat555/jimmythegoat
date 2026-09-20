@@ -1,30 +1,27 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useJimmyLook } from '../../context/JimmyLook';
-import MissionCard from './MissionCard';
 import RestAndRecover from './RestAndRecover';
+import StartWorkoutSheet from './StartWorkoutSheet';
 import BadgeRibbon from '../profile/BadgeRibbon';
 import JimmyAnimation from '../evolution/JimmyAnimation';
 import { lifetimeVolume } from '../../utils/workoutStats';
 import { getEvolutionProgress, formatTierGoalKg } from '../../utils/evolutionTiers';
 import { tierGradientCss } from '../../utils/tierTheme';
 import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAnimations';
-import { mascotSpriteFor } from '../../data/mascots';
+import { equippedOutfitFor, mascotSpriteFor } from '../../data/mascots';
+import { ENABLE_EMOTES } from '../../config/features';
+import { useBottomChrome } from '../../hooks/useBottomChrome';
 
-// Matches .btn-arcade's own clip-path in index.css — duplicated here (not
-// `clipPath: 'inherit'`) so the press-burst overlay is reliably clipped
-// to the exact same slanted shape regardless of inheritance quirks.
-const ARCADE_BUTTON_CLIP = 'polygon(16px 0, 100% 0, calc(100% - 16px) 100%, 0 100%)';
-
-// The app's "lobby" — Jimmy front and center on a glowing launchpad,
-// framed by the mission-select strip and stat bar like a game HUD, with
-// one unmissable chunky button to drop in. "Choose your mission" is a
-// small tabbed picker across three sources: a trainer's Assigned routines,
-// your own saved Templates, and the always-available Freestyle fallback —
-// tabs only show up for categories that actually have content (a trainee
-// with no assignments and no templates yet just sees Freestyle, no empty
-// tabs). Every color here reads from the app-wide --tier-* variables
-// App.jsx sets, so it's always tuned to how far THIS user has actually
-// evolved, not a generic skin.
+// The app's "lobby" — Jimmy front and center, the tier and the XP bar
+// under him, and ONE unmissable chunky button.
+// Nothing else: the three ways into a session (an empty workout, a saved
+// template, a trainer's assignment) and the "plan one for later" link
+// used to sit here as a stack of cards between the bar and the button,
+// and the screen read as a menu with a mascot on top. They live behind
+// the button now, in StartWorkoutSheet — one tap opens the choosing, and
+// the lobby itself is the character and how far they have come. Every
+// colour here reads from the app-wide --tier-* variables App.jsx sets, so
+// it is always tuned to how far THIS user has actually evolved.
 //
 // Scope note: templates are personal — "load any routine you saved," not
 // yet a trainer-shared library a trainee can browse from their coach (that
@@ -36,6 +33,8 @@ export default function WorkoutHome({
   onStartWorkout,
   onStartAssigned,
   onStartTemplate,
+  // One of Jimmy's Workouts — see StartWorkoutSheet and data/jimmyWorkouts.js.
+  onStartProgram = null,
   onDeleteTemplate,
   // Opens the friend picker for one saved routine — App owns the modal,
   // so this screen never needs to know the friends list or the callable.
@@ -65,16 +64,17 @@ export default function WorkoutHome({
   bodyWeightKg = 0,
   // 2 for a coaching account — see TRAINER_MIN_STAGE in evolutionTiers.
   minStage = 1,
+  // 0.65 for a female account — see progressionScale in evolutionTiers.
+  progressionScale = 1,
 }) {
-  const [activeTab, setActiveTab] = useState(null);
-  const [assignedIdx, setAssignedIdx] = useState(0);
-  const [templateIdx, setTemplateIdx] = useState(0);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [pressed, setPressed] = useState(false);
   const [mascotBroken, setMascotBroken] = useState(false);
 
   const totalVolume = lifetimeVolume(workouts);
   const { current, next, percent, isMaxTier, neglected, baseTier } = getEvolutionProgress(totalVolume, {
     minStage,
+    scale: progressionScale,
     lastWorkoutAt,
   });
   const remaining = next ? Math.max(0, next.threshold - totalVolume) : 0;
@@ -93,117 +93,66 @@ export default function WorkoutHome({
     jimmyLook.mascot,
   );
 
-  // The two (sometimes three) ways into a session, as full-width action
-  // cards rather than the folder tabs this used to be. Tabs said
-  // "Freestyle" and "Templates" — accurate words that assume you already
-  // know what the app means by them. A card has room to say what actually
-  // happens when you press it, which is the whole reason for the change.
-  //
-  // COLOUR CLASSES ARE WRITTEN OUT IN FULL, never assembled from pieces:
-  // Tailwind scans source text for complete class names and an
-  // interpolated one is silently never generated (see BadgeMedallion for
-  // the same note, and the same scar).
-  const categories = useMemo(() => {
-    const cats = [];
-    // Trainer work first when it exists. It is the only one of the three
-    // somebody else is waiting on.
-    if (assignments.length > 0) {
-      cats.push({
-        id: 'assigned',
-        icon: '🎯',
-        title: 'Assigned Missions',
-        subtitle: `${assignments.length} routine${assignments.length === 1 ? '' : 's'} from your trainer`,
-        border: 'border-violet-500/70',
-        glow: 'ring-1 ring-violet-400/40 shadow-[0_0_26px_-8px_rgba(167,139,250,0.85)]',
-      });
-    }
-    cats.push({
-      id: 'freestyle',
-      icon: '⚡',
-      title: 'Create a New Workout',
-      subtitle: 'Start an empty session and add exercises on the go',
-      border: 'border-cyan-500/70',
-      glow: 'ring-1 ring-cyan-400/40 shadow-[0_0_26px_-8px_rgba(34,211,238,0.85)]',
-    });
-    if (templates.length > 0) {
-      cats.push({
-        id: 'templates',
-        icon: '📋',
-        title: 'My Workouts',
-        subtitle: "Load a saved routine or a friend's workout",
-        border: 'border-amber-500/70',
-        glow: 'ring-1 ring-amber-400/40 shadow-[0_0_26px_-8px_rgba(251,191,36,0.85)]',
-      });
-    }
-    return cats;
-  }, [assignments.length, templates.length]);
-
-  // Falls back to the first available category whenever the manually-
-  // picked one no longer has content (e.g. the last template got deleted
-  // while that tab was open) instead of rendering a dead tab.
-  // Ordering the CARDS put Create above My Workouts, but the default
-  // selection is a separate question and the old answer was the right
-  // one: land on the thing with content in it. Someone with a library
-  // opened this screen to use it.
-  const defaultTab = categories.find((c) => c.id !== 'freestyle')?.id ?? 'freestyle';
-  const effectiveTab = categories.some((c) => c.id === activeTab) ? activeTab : defaultTab;
-  const clampedAssignedIdx = Math.min(assignedIdx, Math.max(assignments.length - 1, 0));
-  const clampedTemplateIdx = Math.min(templateIdx, Math.max(templates.length - 1, 0));
-
-  let activeMission = { type: 'freestyle', data: null };
-  if (effectiveTab === 'assigned' && assignments[clampedAssignedIdx]) {
-    activeMission = { type: 'assigned', data: assignments[clampedAssignedIdx] };
-  } else if (effectiveTab === 'templates' && templates[clampedTemplateIdx]) {
-    activeMission = { type: 'template', data: templates[clampedTemplateIdx] };
-  }
-
+  // The button opens the sheet; the sheet starts the session. The burst
+  // plays over the button while the sheet slides up, and clears itself
+  // when its animation ends — this screen no longer unmounts on the press
+  // the way it did when the button started the workout directly.
   const handleStart = () => {
     setPressed(true);
     navigator.vibrate?.(35);
-    // Let the press animation actually play before the route change
-    // unmounts this screen — the whole point of the "dynamic feedback"
-    // ask, just kept short so it never slows down starting a workout.
-    setTimeout(() => {
-      if (activeMission.type === 'assigned') {
-        onStartAssigned(activeMission.data);
-      } else if (activeMission.type === 'template') {
-        onStartTemplate(activeMission.data);
-      } else {
-        onStartWorkout();
-      }
-    }, 220);
+    setSheetOpen(true);
   };
 
-  const startLabel =
-    activeMission.type === 'assigned'
-      ? 'Start Mission'
-      : activeMission.type === 'template'
-        ? 'Load Template'
-        : 'Enter the Arena';
+  // The Start Workout pill is the other thing living in the strip just
+  // above the tab row, and it is the screen the "+N coins" toast lands on
+  // after a session is logged — so without this the reward message would
+  // appear on top of the button it is congratulating you for pressing.
+  // Publishing its footprint lets the toast stack above it the same way it
+  // stacks above the minimised-workout bar.
+  //
+  // 6.5rem, and the number is worth explaining because the obvious one is
+  // wrong. The pill itself is 4.5rem, but it does not sit at its sticky
+  // offset while the page fits on screen — mt-auto parks it at the bottom
+  // of the flex column and .pb-nav's own 1.75rem of padding sits below it
+  // (index.css). Its real top edge is therefore 6.25rem above the tab row,
+  // not 5.5rem, which measured as a 13px overlap with the toast. 6.5rem
+  // clears it with a little air. Cleared on unmount, so every other tab
+  // gets the toast back down next to the row.
+  useBottomChrome('--cta-h', '6.5rem');
 
   return (
-    // pb-nav + a min-height 4.5rem taller than the old pair, which is one
-    // change rather than two: the extra bottom padding clears the fixed
-    // nav now that this screen genuinely scrolls (the action cards made it
-    // taller than a phone), and the matching growth in min-height keeps
-    // mt-auto landing the start button in exactly the same place it did
-    // when the page still fit. Change them together or the button either
-    // floats or hides under the tab bar.
-    <div className="flex flex-col items-center gap-5 pt-8 pb-nav min-h-[calc(100vh-1.5rem)]">
-      <div className="relative flex flex-col items-center justify-end mt-1 h-52 w-full">
-        {/* The lobby launchpad — sits behind the mascot by DOM order alone
-            (a local stacking group, not the app-wide fixed ambient layers
-            that needed explicit z-index; plain order is reliable here). */}
-        <div className="pedestal absolute bottom-1 w-40 h-9" />
-        <div
-          className="absolute w-48 h-48 rounded-full blur-3xl opacity-70 pointer-events-none"
-          style={{ background: 'radial-gradient(circle, var(--tier-glow), transparent 70%)' }}
-        />
+    // Fits one phone screen again now that the picker is gone: pb-nav
+    // clears the fixed tab bar, min-height fills the viewport so mt-auto
+    // parks the button at the bottom, and the space between the bar and
+    // the button is deliberately empty — it is what makes the mascot and
+    // the button read as the only two things here.
+    //
+    // "The viewport" is the DYNAMIC viewport below the HUD: 100dvh minus
+    // --hud-h (index.css). The old 100vh − 1.5rem ignored the 3.5rem HUD
+    // this sits under and, on iOS, 100vh is the tallest the viewport ever
+    // gets rather than what is on screen — together the box ran 2rem plus
+    // the notch inset past the bottom edge, and the button parked inside
+    // the tab row. On a phone too short for everything (SE-class, or with
+    // the announcement banner up) the page scrolls and the sticky button
+    // below floats clear of the row on its own.
+    <div className="flex flex-col items-center gap-5 pt-8 pb-nav min-h-[calc(100dvh-var(--hud-h))]">
+      <div className="relative flex flex-col items-center justify-end mt-2 h-60 w-full">
+        {/* Just the character on the page background. The glowing pedestal
+            ring and the blurred tier-glow disc that used to sit behind him
+            are gone on purpose — clean and minimal — and the streak fire is
+            switched off below for the same reason, so nothing rings, halos
+            or burns around him here. h-60: with the room the picker used to
+            take, the character is the screen. */}
         {mascotBroken ? (
           <span className="relative text-8xl leading-none">{current.emoji}</span>
         ) : (
           <JimmyAnimation
-            animationSrc={danceAnimationPath}
+            // No clip at all while ENABLE_EMOTES (config/features.js) is
+            // off: with nothing to play, JimmyAnimation holds the still
+            // sprite and never becomes the tap-to-replay button, so there
+            // is no emote trigger on this screen. danceAnimationPath is
+            // still resolved above; only what reaches the mascot changes.
+            animationSrc={ENABLE_EMOTES ? danceAnimationPath : null}
             // The tier picks the stage, the mascot picks whose sprite.
             // `jimmyLook.mascot` is spread in below as well (that is what
             // places the gear and gates the dance); this one line is only
@@ -211,13 +160,17 @@ export default function WorkoutHome({
             staticImageSrc={mascotSpriteFor(jimmyLook.mascot, current.stage)}
             alt={current.label}
             onImageError={() => setMascotBroken(true)}
-            // Fills the launchpad's full height, which sets how big Jimmy
-            // reads against the pedestal ellipse below him. Both the sprite
-            // and the dance animation are built to the same proportions, so
-            // this one number scales them together and he stays on his feet
-            // on the ellipse — see JimmyAnimation.
-            className="w-52 h-52"
+            // Fills the stage's full height, which sets how big Jimmy reads.
+            // Both the sprite and the dance animation are built to the same
+            // proportions, so this one number scales them together and his
+            // feet stay on the same line — see JimmyAnimation.
+            className="w-60 h-60"
             {...jimmyLook}
+            // In an outfit set the lobby opens on her AT REST — in the
+            // set, gear on — and the dance waits for a tap, because the
+            // clips show her in default gear (see JimmyAnimation). Jimmy
+            // and plain Gena still dance on arrival.
+            autoplay={!equippedOutfitFor(jimmyLook.mascot, jimmyLook.equippedAccessories)}
           />
         )}
       </div>
@@ -226,12 +179,8 @@ export default function WorkoutHome({
 
       {neglected && (
         <div className="w-full -mt-2 rounded-xl bg-[var(--danger)]/15 border border-[var(--danger)]/30 px-3 py-2 text-center">
-          <p className="text-xs font-semibold text-[var(--danger)]">
-            😴 5 days off — Jimmy slipped to {current.label}
-          </p>
-          <p className="text-[11px] text-neutral-400 mt-0.5">
-            Log any workout to restore {baseTier.label}.
-          </p>
+          <p className="text-xs font-semibold text-[var(--danger)]">😴 5 days off — Jimmy slipped to {current.label}</p>
+          <p className="text-[11px] text-neutral-400 mt-0.5">Log any workout to restore {baseTier.label}.</p>
         </div>
       )}
 
@@ -272,107 +221,9 @@ export default function WorkoutHome({
         )}
       </div>
 
-      {/* No "Choose your mission" heading: the tab row and the cards under
-          it already say what this is, and a label over a picker that is
-          the only thing on the screen is a caption on a photograph of
-          itself. */}
-      {/* The picker stays up during a cooldown. Only STARTING is blocked,
-          and the library is not just a list of things to start: it is
-          where routines get read, deleted, and sent to a friend (📤 on
-          each card). Hiding it took all of that away for four hours,
-          which punished the wrong thing — resting is not a reason to lose
-          access to your own templates. */}
-      <div className="w-full flex flex-col gap-4">
-        {categories.map((cat) => {
-          const active = cat.id === effectiveTab;
-          return (
-            <div key={cat.id} className="flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={() => setActiveTab(cat.id)}
-                aria-pressed={active}
-                className={`flex items-center gap-4 rounded-2xl border-2 bg-slate-900/80 p-4 text-left transition-all duration-200 hover:shadow-lg hover:brightness-110 active:scale-95 ${
-                  cat.border
-                } ${active ? cat.glow : 'opacity-60'}`}
-              >
-                <span aria-hidden="true" className="text-3xl leading-none">
-                  {cat.icon}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-lg font-bold leading-tight text-neutral-50">{cat.title}</span>
-                  <span className="mt-0.5 block text-xs leading-snug text-neutral-400">{cat.subtitle}</span>
-                </span>
-              </button>
-
-              {/* The routines live UNDER their own card rather than below
-                  all three, so opening one reads as that card expanding
-                  instead of a list appearing somewhere else on the page.
-                  Freestyle has nothing to pick — the card is the whole
-                  choice — which is why it never grows one. */}
-              {active && cat.id === 'assigned' && (
-                <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-4 px-4">
-                  {assignments.map((assignment, i) => (
-                    <MissionCard
-                      key={assignment.id}
-                      icon="🎯"
-                      title={assignment.title}
-                      subtitle={assignment.assignedByName ? `From ${assignment.assignedByName}` : 'Assigned workout'}
-                      meta={`${assignment.exercises.length} exercise${assignment.exercises.length === 1 ? '' : 's'}`}
-                      selected={i === clampedAssignedIdx}
-                      tierId={current.id}
-                      onClick={() => setAssignedIdx(i)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {active && cat.id === 'templates' && (
-                <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-4 px-4">
-                  {templates.map((template, i) => (
-                    <MissionCard
-                      key={template.id}
-                      icon="📋"
-                      title={template.title}
-                      subtitle="Saved template"
-                      meta={`${template.exercises.length} exercise${template.exercises.length === 1 ? '' : 's'}`}
-                      selected={i === clampedTemplateIdx}
-                      tierId={current.id}
-                      onClick={() => setTemplateIdx(i)}
-                      onDelete={onDeleteTemplate ? () => onDeleteTemplate(template.id) : undefined}
-                      onRecommend={onRecommendTemplate ? () => onRecommendTemplate(template) : undefined}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Under the carousel, not inside it: this does not start
-            anything, so it must not read as a fourth mission you could
-            pick. Quiet by design — planning ahead is the deliberate act
-            of a returning user, not the primary call to action.
-            Hidden during a cooldown only because RestAndRecover carries
-            the same action as its main button — two of them a thumb apart
-            would be a choice between identical things. */}
-        {onPlanWorkout && !cooldown.isCoolingDown && (
-          <button
-            type="button"
-            onClick={onPlanWorkout}
-            className="mt-1 w-full py-2.5 text-xs font-semibold uppercase tracking-wide text-neutral-400 transition active:scale-[0.98]"
-          >
-            📝 Make a workout for later
-          </button>
-        )}
-      </div>
-
       {/* The one thing the cooldown actually takes away: the button. */}
       {cooldown.isCoolingDown ? (
-        <RestAndRecover
-          remaining={cooldown.remaining}
-          unlocksAt={cooldown.unlocksAt}
-          onPlanWorkout={onPlanWorkout}
-        />
+        <RestAndRecover remaining={cooldown.remaining} unlocksAt={cooldown.unlocksAt} onPlanWorkout={onPlanWorkout} />
       ) : (
         <button
           type="button"
@@ -383,20 +234,45 @@ export default function WorkoutHome({
           // broken, and enabling it would let a fast tap start the exact
           // session this whole feature exists to prevent.
           disabled={cooldown.loading}
-          className="btn-arcade relative w-full max-w-xs mt-auto text-2xl py-7 overflow-hidden disabled:opacity-60"
+          aria-haspopup="dialog"
+          aria-expanded={sheetOpen}
+          data-testid="start-workout"
+          // A floating pill, not a block on the bottom edge. mt-auto parks
+          // it at the foot of the lobby, where pb-nav already leaves 1.75rem
+          // of clear space above the tab row; sticky is for the screens
+          // where the lobby is taller than the viewport — there it rides
+          // 1rem above the row while the rest scrolls underneath, instead
+          // of sitting below the fold under the tabs. z-10 lifts it over
+          // that scrolling content and keeps it under the nav (z-30), the
+          // minimised-workout bar (z-20) and every sheet — and --float-bar-h
+          // (index.css) lifts it over that bar while a session is parked.
+          // overflow-hidden clips the press burst to the pill.
+          className="btn-launch sticky bottom-[calc(var(--nav-total)+var(--float-bar-h)+1rem)] z-10 mt-auto w-full max-w-sm rounded-full py-5 text-[28px] leading-none overflow-hidden disabled:opacity-60"
         >
-          {startLabel}
+          Start Workout
           {pressed && (
             <span
               className="absolute inset-0 animate-[button-burst_0.4s_ease-out_forwards]"
-              style={{
-                background: 'radial-gradient(circle, rgba(255,255,255,0.6), transparent 60%)',
-                clipPath: ARCADE_BUTTON_CLIP,
-              }}
+              onAnimationEnd={() => setPressed(false)}
+              style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.6), transparent 60%)' }}
             />
           )}
         </button>
       )}
+
+      <StartWorkoutSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        assignments={assignments}
+        templates={templates}
+        onStartWorkout={onStartWorkout}
+        onStartAssigned={onStartAssigned}
+        onStartTemplate={onStartTemplate}
+        onStartProgram={onStartProgram}
+        onDeleteTemplate={onDeleteTemplate}
+        onRecommendTemplate={onRecommendTemplate}
+        onPlanWorkout={onPlanWorkout}
+      />
     </div>
   );
 }

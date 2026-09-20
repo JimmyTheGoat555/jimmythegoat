@@ -15,11 +15,14 @@ const BODYWEIGHT_EXERCISE_IDS = new Set([
   'triceps-dip',
   'hanging-leg-raise',
   'ab-wheel',
+  'glute-bridge',
 ]);
 
-// The server's copy of which seed exercises are loaded a dumbbell in each
-// hand — same ESM/CJS duplication as the set above, mirroring
-// `equipment: 'dumbbell'` in src/data/exercises.js.
+// The server's copy of which seed exercises are loaded ONE SIDE AT A TIME
+// — same ESM/CJS duplication as the set above, mirroring
+// `equipment: 'dumbbell'` (and the explicit `perHand: true` flag) in
+// src/data/exercises.js. Its client twin is isPerHandExercise() in
+// src/utils/setLoad.js; the two must list exactly the same movements.
 //
 // Used for two things, both of which must be the server's answer rather
 // than the client's: deciding that a set's `weight` is the absolute pair
@@ -47,6 +50,14 @@ const DUMBBELL_EXERCISE_IDS = new Set([
   'db-curl',
   'hammer-curl',
   'incline-db-curl',
+  // NOT a dumbbell, and deliberately in this list anyway: a cable
+  // crossover is two stacks, one in each hand, so the number the lifter
+  // reads off a single stack is exactly the per-hand number this set is
+  // named for. It carries `perHand: true` rather than a lie about its
+  // equipment on the client (src/data/exercises.js). Added late — see
+  // PER_HAND_RECORD_MIGRATIONS in economy.js for how existing crossover
+  // bests are rebased onto the new scale exactly once.
+  'cable-crossover',
   // PRE-EXISTING AND LEFT ALONE, though a Russian twist is one weight held
   // in both hands and so belongs with the singles above by the rule in
   // this comment. It has been doubling since the per-hand format shipped;
@@ -68,6 +79,7 @@ const BARBELL_EXERCISE_IDS = new Set([
   't-bar-row',
   'squat',
   'romanian-deadlift',
+  'hip-thrust',
   'overhead-press',
   'barbell-curl',
   'preacher-curl',
@@ -81,9 +93,35 @@ const BARBELL_EXERCISE_IDS = new Set([
 // but there is no reason to accept a bar that does not exist.
 const ALLOWED_BAR_WEIGHTS = new Set([0, 10, 15, 20, 25]);
 
+// Twins of `muscleGroup: 'legs'` and `muscleGroup: 'core'` in
+// src/data/exercises.js, for the Gena badge tree (functions/badges.js):
+// Leg Day Survivor asks what share of a session's tonnage was lower body,
+// Core of Steel asks whether a session had any core work. A custom
+// exercise is not in either set and is classified by the group string it
+// carries instead (records.js) — cosmetic, so trusting that string is
+// fine; a barbell lift filed under 'core' earns a badge, not coins.
+const LOWER_BODY_EXERCISE_IDS = new Set([
+  'squat',
+  'bulgarian-split-squat',
+  'leg-press',
+  'romanian-deadlift',
+  'goblet-squat',
+  'leg-extension',
+  'leg-curl',
+  'calf-raise',
+  'hip-thrust',
+  'glute-bridge',
+]);
+const CORE_EXERCISE_IDS = new Set(['plank', 'hanging-leg-raise', 'ab-wheel', 'cable-crunch', 'russian-twist']);
+// What Peach Builder counts sets of.
+const GLUTE_EXERCISE_IDS = new Set(['hip-thrust', 'glute-bridge']);
+
 module.exports = {
   BODYWEIGHT_EXERCISE_IDS,
   DUMBBELL_EXERCISE_IDS,
   BARBELL_EXERCISE_IDS,
   ALLOWED_BAR_WEIGHTS,
+  LOWER_BODY_EXERCISE_IDS,
+  CORE_EXERCISE_IDS,
+  GLUTE_EXERCISE_IDS,
 };

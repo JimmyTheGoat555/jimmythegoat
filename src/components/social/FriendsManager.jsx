@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import FriendSearch from './FriendSearch';
 
 // `friends` is useFriendsGraph(...).friends — [{uid, displayName}],
@@ -23,6 +23,7 @@ export default function FriendsManager({
   // nothing. The card chrome goes too — the sheet is already the card.
   embedded = false,
 }) {
+  const { pathname } = useLocation();
   const [open, setOpen] = useState(embedded);
   const [codeInput, setCodeInput] = useState('');
   const [message, setMessage] = useState(null);
@@ -73,8 +74,8 @@ export default function FriendsManager({
       {open && (
         <section className={embedded ? 'flex flex-col gap-4' : 'card p-5 flex flex-col gap-4'}>
           <p className="text-sm text-neutral-500">
-            Your code: <span className="text-neutral-100 font-semibold tracking-widest">{myFriendCode}</span>{' '}
-            — share it so friends can add you.{' '}
+            Your code: <span className="text-neutral-100 font-semibold tracking-widest">{myFriendCode}</span> — share it
+            so friends can add you.{' '}
             <span className="text-[var(--ember)] font-semibold">
               New to Jimmy? They enter it at sign-up and you get +150 coins.
             </span>
@@ -104,9 +105,7 @@ export default function FriendsManager({
               person into this list" — and a code is now the fallback for
               when you already have one, not the primary route. */}
           <div className="flex flex-col gap-2 border-t border-white/10 pt-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-              Find people
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Find people</p>
             <FriendSearch onAddByUid={onSendRequestByUid} />
           </div>
 
@@ -156,7 +155,11 @@ export default function FriendsManager({
                         request; the removeFriend callable still exists
                         server-side (account deletion uses that path), so
                         this is a UI decision, not a lost capability. */}
-                    <Link to={`/friends/${friend.uid}`} className="text-neutral-300 flex-1 min-w-0 truncate">
+                    <Link
+                      to={`/friends/${friend.uid}`}
+                      state={{ from: pathname }}
+                      className="text-neutral-300 flex-1 min-w-0 truncate"
+                    >
                       {friend.displayName}
                     </Link>
                   </li>

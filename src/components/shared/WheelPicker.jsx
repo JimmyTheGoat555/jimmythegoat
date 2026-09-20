@@ -123,7 +123,8 @@ export default function WheelPicker({
   // picker. Centralized here for every wheel in the app — ScrollWheelPicker,
   // BodyWeightWheel and HeightFeetWheel each used to keep their own
   // value-changed copy of this (which could only ever fire once per
-  // settle), and SetEntrySheet's weight/reps dials had none at all.
+  // settle), and the old set-entry sheet's weight/reps dials had none at
+  // all (that sheet is gone — see components/workout/SetRow.jsx).
   const lastTickIdx = useRef(null);
   const tickIfRowChanged = () => {
     const el = scrollRef.current;

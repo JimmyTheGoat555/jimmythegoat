@@ -3,7 +3,13 @@ import { fullEvolutionGradient } from '../../utils/tierTheme';
 import { roundToTenth } from '../../utils/units';
 import { EXPERIENCE_LEVELS, GENDERS, TRAINING_DAYS_MIN, TRAINING_DAYS_MAX } from '../../utils/onboarding';
 import { getMascot, mascotSpriteFor, resolveMascotId } from '../../data/mascots';
-import { PRIVACY_POLICY_SECTIONS, TERMS_OF_SERVICE_SECTIONS, LAST_UPDATED } from '../../content/legalContent';
+import {
+  PRIVACY_POLICY_SECTIONS,
+  TERMS_OF_SERVICE_SECTIONS,
+  LAST_UPDATED,
+  TERMS_LAST_UPDATED,
+  LEGAL_VERSION,
+} from '../../content/legalContent';
 import LegalDocument from '../legal/LegalDocument';
 import ScrollWheelPicker from '../shared/ScrollWheelPicker';
 import BodyWeightWheel from '../shared/BodyWeightWheel';
@@ -40,7 +46,7 @@ const STEPS = ['role', 'experience', 'commitment', 'gender', 'birthday', 'height
 const buzz = () => navigator.vibrate?.([40]);
 
 const JIMMY_LINES = {
-  role: "First — which side of the whistle are you on?",
+  role: 'First — which side of the whistle are you on?',
   experience: 'How much iron have you moved?',
   commitment: "Don't lie to me.",
   gender: 'Quick one — it decides who trains with you.',
@@ -81,9 +87,7 @@ function GlowCard({ active, onClick, icon, title, hint }) {
       {icon && <span className="text-3xl">{icon}</span>}
       <span className="flex flex-col">
         <span className="text-base leading-tight">{title}</span>
-        {hint && (
-          <span className={`text-xs font-medium ${active ? 'text-white/80' : 'text-white/45'}`}>{hint}</span>
-        )}
+        {hint && <span className={`text-xs font-medium ${active ? 'text-white/80' : 'text-white/45'}`}>{hint}</span>}
       </span>
     </button>
   );
@@ -131,6 +135,10 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [legalDoc, setLegalDoc] = useState(null);
+  // The consent box on the account step. Required: the primary button
+  // stays disabled until it is ticked, and signUp stamps the version
+  // accepted onto the new account (hooks/useAuth.js).
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
 
   // Every answer lives here until submit() — nothing is written before.
   const [role, setRole] = useState('');
@@ -235,6 +243,7 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
         role,
         trainerCode: trainerCode.trim(),
         referralCode: referralCode.trim(),
+        legalAccepted: acceptedLegal ? LEGAL_VERSION : null,
         onboarding: {
           experienceLevel,
           targetDaysPerWeek,
@@ -265,7 +274,7 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
   const primaryLabel = busy ? 'Summoning Jimmy…' : isAccount ? 'Create My Goat' : 'Next →';
 
   return (
-    <div className="relative min-h-screen overflow-hidden text-white" style={{ background: GRADIENT }}>
+    <div className="relative min-h-[100dvh] overflow-hidden text-white" style={{ background: GRADIENT }}>
       <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/50 to-black/80" />
 
       <div className="relative flex h-screen flex-col items-center px-5 py-6">
@@ -290,8 +299,20 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
           {stepKey === 'role' && (
             <div className="my-auto flex w-full flex-col gap-3">
               <h2 className="mb-1 text-2xl font-extrabold">Trainee or Trainer?</h2>
-              <GlowCard active={role === 'trainee'} onClick={() => setRole('trainee')} icon="🏋️" title="I'm a Trainee" hint="Here to get stronger" />
-              <GlowCard active={role === 'trainer'} onClick={() => setRole('trainer')} icon="📋" title="I'm a Trainer" hint="Here to coach lifters" />
+              <GlowCard
+                active={role === 'trainee'}
+                onClick={() => setRole('trainee')}
+                icon="🏋️"
+                title="I'm a Trainee"
+                hint="Here to get stronger"
+              />
+              <GlowCard
+                active={role === 'trainer'}
+                onClick={() => setRole('trainer')}
+                icon="📋"
+                title="I'm a Trainer"
+                hint="Here to coach lifters"
+              />
             </div>
           )}
 
@@ -349,8 +370,8 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
                   />
                   <p className="text-sm text-white/70">
                     You&rsquo;ll train with{' '}
-                    <span className="font-bold text-white">{getMascot(resolveMascotId({ gender })).name}</span>.
-                    You can switch any time in Settings.
+                    <span className="font-bold text-white">{getMascot(resolveMascotId({ gender })).name}</span>. You can
+                    switch any time in Settings.
                   </p>
                 </div>
               )}
@@ -423,8 +444,8 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
                 placeholder="you@email.com"
               />
               <p className="text-xs leading-snug text-white/50">
-                Asked once, so you can get back in if you forget your password. Jimmy sends a
-                confirmation link — worth clicking, but nothing in the app waits for it.
+                Asked once, so you can get back in if you forget your password. Jimmy sends a confirmation link — worth
+                clicking, but nothing in the app waits for it.
               </p>
             </div>
           )}
@@ -481,17 +502,31 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
                 placeholder="A friend's code — they get 150 coins"
               />
               <p className="mt-1 text-[11px] leading-snug text-white/50">
-                Signing up as <span className="font-semibold text-white/70">{email.trim() || 'your email'}</span>. By
-                continuing you agree to our{' '}
-                <button type="button" className="underline" onClick={() => setLegalDoc('privacy')}>
-                  Privacy Policy
-                </button>{' '}
-                and{' '}
-                <button type="button" className="underline" onClick={() => setLegalDoc('terms')}>
-                  Terms
-                </button>
-                .
+                Signing up as <span className="font-semibold text-white/70">{email.trim() || 'your email'}</span>.
               </p>
+              <label
+                htmlFor="accept-legal"
+                className="mt-1 flex items-start gap-3 rounded-2xl border border-white/15 bg-white/5 px-3 py-3 text-left"
+              >
+                <input
+                  id="accept-legal"
+                  type="checkbox"
+                  checked={acceptedLegal}
+                  onChange={(e) => setAcceptedLegal(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-white"
+                />
+                <span className="text-[12px] leading-snug text-white/80">
+                  I have read and agree to the{' '}
+                  <button type="button" className="font-semibold underline" onClick={() => setLegalDoc('terms')}>
+                    Terms of Service
+                  </button>{' '}
+                  and the{' '}
+                  <button type="button" className="font-semibold underline" onClick={() => setLegalDoc('privacy')}>
+                    Privacy Policy
+                  </button>
+                  .
+                </span>
+              </label>
             </div>
           )}
         </div>
@@ -501,7 +536,7 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
         <div className="mt-4 flex w-full max-w-sm shrink-0 flex-col gap-2">
           <button
             type="button"
-            disabled={busy || (!isAccount && !canAdvance())}
+            disabled={busy || (!isAccount && !canAdvance()) || (isAccount && !acceptedLegal)}
             onClick={handlePrimary}
             style={{ background: GRADIENT }}
             className="w-full rounded-2xl py-4 text-lg font-extrabold text-white shadow-lg transition active:scale-[0.98] animate-[rainbow-glow-pulse_2.6s_ease-in-out_infinite] disabled:animate-none disabled:opacity-40"
@@ -544,7 +579,7 @@ export default function OnboardingFlow({ onComplete, onSwitchToSignIn }) {
         <LegalDocument
           title="Terms of Service"
           sections={TERMS_OF_SERVICE_SECTIONS}
-          lastUpdated={LAST_UPDATED}
+          lastUpdated={TERMS_LAST_UPDATED}
           onClose={() => setLegalDoc(null)}
         />
       )}

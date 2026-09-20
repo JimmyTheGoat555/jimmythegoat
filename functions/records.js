@@ -19,7 +19,7 @@
 // hundreds. Now that full scan happens once, ever, per account.
 
 const { LEGACY_BODYWEIGHT_KG } = require('./storeCatalog');
-const { BODYWEIGHT_EXERCISE_IDS } = require('./exercises');
+const { BODYWEIGHT_EXERCISE_IDS, LOWER_BODY_EXERCISE_IDS, CORE_EXERCISE_IDS } = require('./exercises');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -45,9 +45,7 @@ function bestSetOf(exercise) {
       best = {
         weight,
         reps,
-        ...(set.isBodyweight === true
-          ? { isBodyweight: true, addedWeight: Number(set.addedWeight) || 0 }
-          : {}),
+        ...(set.isBodyweight === true ? { isBodyweight: true, addedWeight: Number(set.addedWeight) || 0 } : {}),
       };
     }
   }
@@ -149,9 +147,7 @@ function findNewPersonalRecordsFromBest(currentExercises, bestPerExercise) {
       // absolute load there — body weight plus belt — so it is exactly as
       // disclosing as the new record was, and publishableRecord swaps in
       // this one instead.
-      ...(top.isBodyweight === true
-        ? { previousAddedWeight: Number(previous.addedWeight) || 0 }
-        : {}),
+      ...(top.isBodyweight === true ? { previousAddedWeight: Number(previous.addedWeight) || 0 } : {}),
       // Carried so publishableRecord (economy.js) can strip the absolute
       // load before this reaches a feed post. The unstripped copy is what
       // the OWNER gets back from logWorkout for their own summary screen.
@@ -191,9 +187,7 @@ function publishableRecord(exerciseId, r) {
       // (an all-time best has nothing to have beaten) and on a plain
       // bodyweight PR with no belt either side — the card omits the
       // "(was …)" clause entirely rather than printing a bare unit.
-      ...(r.previousAddedWeight !== undefined
-        ? { previousAddedWeight: Number(r.previousAddedWeight) || 0 }
-        : {}),
+      ...(r.previousAddedWeight !== undefined ? { previousAddedWeight: Number(r.previousAddedWeight) || 0 } : {}),
     };
   }
   return {
@@ -201,6 +195,131 @@ function publishableRecord(exerciseId, r) {
     weight: r.weight,
     ...(r.previousWeight !== undefined ? { previousWeight: r.previousWeight } : {}),
   };
+}
+
+// ── Badge aggregates ────────────────────────────────────────────────────
+//
+// What the Gena badge tree (badges.js) reads that nothing else on the
+// doc answered: how many sets of each exercise were ever logged, the most
+// reps in one set of each, lifetime tonnage in kg (lifetimeVolume above is
+// relative points), the most lower-body-heavy session ever, and the
+// longest run of consecutive sessions with core work in them. Folded on
+// every log like the rest; seeded from full history once, either when the
+// doc is first built (buildRecordsSnapshot) or, for a doc that predates
+// them, by seedBadgeAggregates on the first log after this shipped —
+// economy.js checks `badgeAggregatesVersion` and pays the one history read
+// the way the dumbbell rebasing paid its own. Only these fields are
+// seeded from history: the stored bests are on a scale the raw history is
+// not (see normalizeDumbbellRecords), so a full rebuild would corrupt them.
+const BADGE_AGGREGATES_VERSION = 1;
+// The per-exercise maps grow one key per distinct exercise ever logged,
+// custom ones included. Capped so a doc a client can read cannot be grown
+// without bound by inventing exercises; nothing a badge reads is anywhere
+// near the cap.
+const MAX_TRACKED_EXERCISES = 200;
+const CORE_GROUPS = new Set(['core', 'abs', 'abdominals']);
+
+function groupOf(exercise) {
+  return String(exercise?.muscleGroup ?? '').toLowerCase();
+}
+function isLowerBody(exercise) {
+  return LOWER_BODY_EXERCISE_IDS.has(exercise?.exerciseId) || groupOf(exercise) === 'legs';
+}
+function isCore(exercise) {
+  return CORE_EXERCISE_IDS.has(exercise?.exerciseId) || CORE_GROUPS.has(groupOf(exercise));
+}
+
+function emptyBadgeAggregates() {
+  return {
+    lifetimeVolumeKg: 0,
+    setCountByExercise: {},
+    bestRepsByExercise: {},
+    maxLowerBodyShare: 0,
+    coreWorkoutRun: 0,
+    maxCoreWorkoutRun: 0,
+  };
+}
+
+// The stored aggregates, copied so folding never mutates the snapshot the
+// caller still holds (economy.js compares before and after).
+function carryBadgeAggregates(records) {
+  return {
+    lifetimeVolumeKg: Number(records?.lifetimeVolumeKg) || 0,
+    setCountByExercise: { ...(records?.setCountByExercise ?? {}) },
+    bestRepsByExercise: { ...(records?.bestRepsByExercise ?? {}) },
+    maxLowerBodyShare: Number(records?.maxLowerBodyShare) || 0,
+    coreWorkoutRun: Number(records?.coreWorkoutRun) || 0,
+    maxCoreWorkoutRun: Number(records?.maxCoreWorkoutRun) || 0,
+  };
+}
+
+// Folds one rewardable workout onto the aggregates, in place. Tonnage per
+// set is weight × reps — for a bodyweight set `weight` already carries the
+// lifter's mass (economy.js). `totalVolumeKg` is the workout's own stored
+// figure and is preferred for the lifetime sum so it matches the feed;
+// the per-set sum is what the lower-body SHARE is taken over, since that
+// needs the split, not the total.
+function foldBadgeAggregates(next, exercises, totalVolumeKg) {
+  let total = 0;
+  let lower = 0;
+  let coreWork = false;
+  for (const exercise of exercises ?? []) {
+    const id = typeof exercise?.exerciseId === 'string' ? exercise.exerciseId : null;
+    const lowerBody = isLowerBody(exercise);
+    let completedSets = 0;
+    let mostReps = 0;
+    for (const set of exercise?.sets ?? []) {
+      if (set?.completed === false) continue;
+      const reps = Number(set?.reps);
+      if (!Number.isFinite(reps) || reps <= 0) continue;
+      completedSets += 1;
+      if (reps > mostReps) mostReps = reps;
+      const weight = Number(set?.weight);
+      const kg = Number.isFinite(weight) && weight > 0 ? weight * reps : 0;
+      total += kg;
+      if (lowerBody) lower += kg;
+    }
+    if (completedSets === 0) continue;
+    if (isCore(exercise)) coreWork = true;
+    if (!id) continue;
+    const tracked = (map) => id in map || Object.keys(map).length < MAX_TRACKED_EXERCISES;
+    if (tracked(next.setCountByExercise)) {
+      next.setCountByExercise[id] = (Number(next.setCountByExercise[id]) || 0) + completedSets;
+    }
+    if (tracked(next.bestRepsByExercise) && mostReps > (Number(next.bestRepsByExercise[id]) || 0)) {
+      next.bestRepsByExercise[id] = mostReps;
+    }
+  }
+  const stored = Number(totalVolumeKg);
+  const sessionKg = Number.isFinite(stored) && stored > 0 ? stored : total;
+  next.lifetimeVolumeKg = Math.round((next.lifetimeVolumeKg + sessionKg) * 100) / 100;
+  if (total > 0) {
+    next.maxLowerBodyShare = Math.max(next.maxLowerBodyShare, Math.round((lower / total) * 1000) / 1000);
+  }
+  // Consecutive SESSIONS, not days: three workouts in a row with core work,
+  // however they fall on the calendar. A session with none resets the run.
+  next.coreWorkoutRun = coreWork ? next.coreWorkoutRun + 1 : 0;
+  next.maxCoreWorkoutRun = Math.max(next.maxCoreWorkoutRun, next.coreWorkoutRun);
+  return next;
+}
+
+// The aggregates from a full history, oldest session first so the core
+// run reads in the order the sessions happened.
+function badgeAggregatesFrom(rewardable) {
+  const ordered = [...(rewardable ?? [])].sort((a, b) =>
+    String(a?.finishedAt ?? '').localeCompare(String(b?.finishedAt ?? '')),
+  );
+  const agg = emptyBadgeAggregates();
+  for (const workout of ordered) foldBadgeAggregates(agg, workout?.exercises, workout?.totalVolumeKg);
+  return { ...agg, badgeAggregatesVersion: BADGE_AGGREGATES_VERSION };
+}
+
+// Adds the badge aggregates to a records doc written before they existed.
+// Everything else on the doc is left exactly as stored — see the section
+// comment on why this is not a rebuild.
+function seedBadgeAggregates(records, workouts) {
+  const rewardable = (workouts ?? []).filter((w) => w && !w.recoveryWorkout);
+  return { ...(records ?? {}), ...badgeAggregatesFrom(rewardable) };
 }
 
 // Computes the FULL users/{uid}/meta/records aggregate from a complete
@@ -236,9 +355,7 @@ function buildRecordsSnapshot(workouts) {
   // Distinct calendar days (UTC), ascending — walking oldest to newest and
   // resetting on any gap leaves `streakDays` holding the run ending at the
   // MOST RECENT day, i.e. the current streak.
-  const days = [...new Set(finished.map((w) => dayIndex(w.finishedAt)).filter((d) => d != null))].sort(
-    (a, b) => a - b,
-  );
+  const days = [...new Set(finished.map((w) => dayIndex(w.finishedAt)).filter((d) => d != null))].sort((a, b) => a - b);
   let streakDays = 0;
   let lastWorkoutDay = null;
   for (const d of days) {
@@ -259,6 +376,8 @@ function buildRecordsSnapshot(workouts) {
     // Otherwise a veteran who already has a 12-tonne session on record
     // would have to do another one to get credit for it.
     maxWorkoutVolumeKg: rewardable.reduce((m, w) => Math.max(m, Number(w.totalVolumeKg) || 0), 0),
+    // What the Gena badge tree reads — see the section above.
+    ...badgeAggregatesFrom(rewardable),
   };
 }
 
@@ -285,8 +404,16 @@ function applyWorkoutToRecords(records, { cleanExercises, finishedAtIso, totalSc
     ...(records?.dumbbellRecordsVersion !== undefined
       ? { dumbbellRecordsVersion: records.dumbbellRecordsVersion }
       : {}),
+    // Same rule for the badge aggregates and their own marker: named here
+    // or dropped on the next log.
+    ...carryBadgeAggregates(records),
+    ...(records?.badgeAggregatesVersion !== undefined
+      ? { badgeAggregatesVersion: records.badgeAggregatesVersion }
+      : {}),
   };
   if (isRecovery) return next;
+
+  foldBadgeAggregates(next, cleanExercises, totalVolumeKg);
 
   for (const exercise of cleanExercises ?? []) {
     const top = bestSetOf(exercise);
@@ -326,6 +453,8 @@ function applyWorkoutToRecords(records, { cleanExercises, finishedAtIso, totalSc
 }
 
 module.exports = {
+  BADGE_AGGREGATES_VERSION,
+  seedBadgeAggregates,
   publishableRecord,
   bestWeightPerExercise,
   lifetimeVolumeOf,

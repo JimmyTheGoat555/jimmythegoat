@@ -28,6 +28,21 @@
 // (see restNotification.js); this module is the foreground alarm.
 
 let ctx = null;
+// A limiter between the beep and the speaker, made once with the
+// context. The two voices summed at full scale would clip, and clipping
+// on a phone speaker is a crackle, not more volume.
+let limiter = null;
+
+// How loud, and how sharp. A gym is a loud room and the phone is on a
+// bench, not in a hand: the old 800 Hz sine at a third of full scale
+// was polite, and polite does not carry over a squat rack and a
+// playlist. The pitch sits where phone speakers are loudest and ears
+// most sensitive (2-4 kHz), and a square wave brings the harmonics that
+// make a tone cut through music rather than blend into it.
+const BEEP_HZ = 2200;
+const BEEP_MS = 190;
+const BEEP_GAP_MS = 110;
+const BEEP_GAIN = 0.9;
 
 function audioContextClass() {
   return typeof window === 'undefined' ? null : window.AudioContext || window.webkitAudioContext;
@@ -45,7 +60,16 @@ export function unlockRestAlarm() {
   const AudioCtx = audioContextClass();
   if (!AudioCtx) return;
   try {
-    if (!ctx) ctx = new AudioCtx();
+    if (!ctx) {
+      ctx = new AudioCtx();
+      limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -6;
+      limiter.knee.value = 4;
+      limiter.ratio.value = 12;
+      limiter.attack.value = 0.002;
+      limiter.release.value = 0.08;
+      limiter.connect(ctx.destination);
+    }
     // Returning from a locked screen can leave it suspended even though it
     // was fine when created, so this is a resume as much as an unlock.
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -53,28 +77,37 @@ export function unlockRestAlarm() {
     // No WebAudio at all. The vibration and the full-screen colour change
     // still carry the alarm.
     ctx = null;
+    limiter = null;
   }
 }
 
 // One beep of the double. Shaped rather than switched on and off: a raw
-// start/stop on a sine wave clicks, and a click on a 90-second timer is
-// the sound people remember.
-function beep(at, frequency, durationMs) {
-  const oscillator = ctx.createOscillator();
-  const gain = ctx.createGain();
-  oscillator.type = 'sine';
-  oscillator.frequency.value = frequency;
-  oscillator.connect(gain);
-  gain.connect(ctx.destination);
+// start/stop clicks, and a click on a 90-second timer is the sound
+// people remember. Two voices — the square carries the edge, a sine an
+// octave up adds the whistle that reads as an alarm and not a game sound.
+function beep(at) {
+  const seconds = BEEP_MS / 1000;
+  const envelope = ctx.createGain();
+  envelope.connect(limiter);
+  envelope.gain.setValueAtTime(0.0001, at);
+  envelope.gain.exponentialRampToValueAtTime(BEEP_GAIN, at + 0.008);
+  envelope.gain.setValueAtTime(BEEP_GAIN, at + seconds - 0.03);
+  envelope.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
 
-  const seconds = durationMs / 1000;
-  gain.gain.setValueAtTime(0.0001, at);
-  gain.gain.exponentialRampToValueAtTime(0.32, at + 0.012);
-  gain.gain.setValueAtTime(0.32, at + seconds - 0.05);
-  gain.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
-
-  oscillator.start(at);
-  oscillator.stop(at + seconds + 0.02);
+  for (const [type, hz, level] of [
+    ['square', BEEP_HZ, 1],
+    ['sine', BEEP_HZ * 2, 0.35],
+  ]) {
+    const oscillator = ctx.createOscillator();
+    oscillator.type = type;
+    oscillator.frequency.value = hz;
+    const voice = ctx.createGain();
+    voice.gain.value = level;
+    oscillator.connect(voice);
+    voice.connect(envelope);
+    oscillator.start(at);
+    oscillator.stop(at + seconds + 0.02);
+  }
 }
 
 // Beep-beep. Two hits read as deliberate where one reads as a
@@ -90,8 +123,8 @@ export function playRestAlarm() {
   try {
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     const now = ctx.currentTime;
-    beep(now, 800, 180);
-    beep(now + 0.27, 800, 180);
+    beep(now);
+    beep(now + (BEEP_MS + BEEP_GAP_MS) / 1000);
     return true;
   } catch {
     return false;

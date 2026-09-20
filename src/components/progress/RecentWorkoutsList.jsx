@@ -1,25 +1,21 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getMuscleGroup } from '../../data/exercises';
 import { workoutVolume, workoutSetCount } from '../../utils/workoutStats';
+import { QuickShareSheet, ShareWorkoutButton } from '../workout/QuickShare';
 
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
 }
 
-function WorkoutRow({ workout }) {
-  const groups = [...new Set(workout.exercises.map((e) => e.muscleGroup))]
-    .map(getMuscleGroup)
-    .filter(Boolean);
+function WorkoutRow({ workout, onShare }) {
+  const groups = [...new Set(workout.exercises.map((e) => e.muscleGroup))].map(getMuscleGroup).filter(Boolean);
 
   return (
-    <Link to={`/workouts/${workout.id}`} className="card flex items-center gap-3 p-4">
-      <span className="w-14 shrink-0 text-sm font-medium text-neutral-400">
-        {formatDate(workout.finishedAt)}
-      </span>
+    <Link to={`/workouts/${workout.id}`} state={{ from: '/progress' }} className="card flex items-center gap-3 p-4">
+      <span className="w-14 shrink-0 text-sm font-medium text-neutral-400">{formatDate(workout.finishedAt)}</span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-neutral-200 truncate">
-          {groups.map((g) => g.label).join(', ') || 'Workout'}
-        </p>
+        <p className="text-sm text-neutral-200 truncate">{groups.map((g) => g.label).join(', ') || 'Workout'}</p>
         <p className="text-xs text-neutral-500">
           {workout.exercises.length} exercises · {workoutSetCount(workout)} sets
         </p>
@@ -30,6 +26,9 @@ function WorkoutRow({ workout }) {
         </p>
         <p className="text-xs text-neutral-500">kg</p>
       </div>
+      {/* Straight to the stickers for this session — no detail page,
+          no replay. Stops the row's Link itself (QuickShare.jsx). */}
+      <ShareWorkoutButton onClick={() => onShare(workout)} />
     </Link>
   );
 }
@@ -37,13 +36,16 @@ function WorkoutRow({ workout }) {
 export default function RecentWorkoutsList({ workouts }) {
   const finished = workouts.filter((w) => w.finishedAt);
   const recent = finished.slice(0, 3);
+  // The session being shared from its row, or null. Held here rather
+  // than in the row: the share screen must mount outside the row's Link.
+  const [sharing, setSharing] = useState(null);
 
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold text-neutral-100">Recent</h2>
         {finished.length > 0 && (
-          <Link to="/history" className="text-sm font-medium text-[var(--ember)]">
+          <Link to="/history" state={{ from: '/progress' }} className="text-sm font-medium text-[var(--ember)]">
             See all
           </Link>
         )}
@@ -53,10 +55,11 @@ export default function RecentWorkoutsList({ workouts }) {
       ) : (
         <div className="flex flex-col gap-2">
           {recent.map((w) => (
-            <WorkoutRow key={w.id} workout={w} />
+            <WorkoutRow key={w.id} workout={w} onShare={setSharing} />
           ))}
         </div>
       )}
+      <QuickShareSheet workout={sharing} onClose={() => setSharing(null)} />
     </section>
   );
 }

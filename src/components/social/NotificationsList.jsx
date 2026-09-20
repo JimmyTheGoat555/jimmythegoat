@@ -26,6 +26,10 @@ const ICONS = {
   // fan-out (functions/economy.js), capped so the official account cannot
   // push the whole user base.
   friend_evolved: '🎉',
+  // The inbox copy of a direct message from the founder — the message
+  // itself opens as a sheet (FounderMessageModal.jsx); this row is what
+  // remains of it afterwards.
+  founder_message: '💌',
 };
 
 // The shared inbox surface — lives on the Social tab (see SocialPage.jsx),

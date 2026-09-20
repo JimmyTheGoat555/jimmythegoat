@@ -15,20 +15,43 @@
          also measure the real occluded height themselves (see
          src/hooks/useKeyboardInset.js).
 
-         maximum-scale=1 + user-scalable=no are GONE on purpose: they
-         locked out pinch-zoom, which is an accessibility control, not a
-         polish detail — someone who needs to magnify a weight they just
-         logged could not. Double-tap-to-zoom (the one that fires by
-         accident on a fast double-tap of a set button) is still off, via
-         touch-action: manipulation in index.css. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
-    <meta name="theme-color" content="#0a0a0a" />
+         maximum-scale=1 + user-scalable=no lock the page to 1x so the
+         app cannot be pinched or double-tapped out of alignment — asked
+         for explicitly as part of the pre-launch polish pass, to make the
+         shell feel native rather than like a web page in a frame.
+
+         Know what this does and does not reach. In the Capacitor
+         WKWebView (the App Store build) it is honoured, and that is the
+         surface it was asked for. iOS SAFARI has deliberately ignored
+         user-scalable=no since iOS 10 — Apple treats pinch-zoom as an
+         accessibility guarantee a page may not revoke — so the installed
+         PWA and any iPhone browser tab keep pinch-zoom regardless of
+         what is written here. Android Chrome honours it.
+
+         The accessibility cost is real and is the reason this was
+         removed once before: someone who needs to magnify a logged
+         weight can no longer pinch it larger inside the native app. It
+         is a deliberate trade, not an oversight. If it ever needs
+         reversing, delete the two tokens below and nothing else — the
+         accidental double-tap zoom on a fast set-button tap is handled
+         separately by touch-action: manipulation (index.css), which is
+         what actually fixed that bug and is unaffected by this. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#333333" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Jimmy Goat" />
-    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+    <!-- The brand logo (public/newlogo.zozo.png, 512x512, opaque) is the
+         one icon file everywhere: favicon, Apple home-screen icon, the
+         manifest icons in vite.config.js, the launch screen below, and
+         the in-app marks. iOS wants this opaque and masks its own
+         corners; browsers scale the 512 down for the tab. -->
+    <link rel="apple-touch-icon" href="/newlogo.zozo.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/newlogo.zozo.png" />
     <!-- Fortnite/arcade-style display font for headers and primary CTAs —
          a single heavy weight, no italic face (see the CSS-synthesized
          slant in index.css), used sparingly on purpose: body copy stays
@@ -37,20 +60,179 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet" />
     <title>Jimmy the Goat | Strength Tracker</title>
+    <!-- ── Splash ──────────────────────────────────────────────────────
+         The first frame, before a byte of JavaScript has parsed. Plain
+         CSS in the document itself, so it needs nothing that is still on
+         its way: the white flash this replaces was the body waiting for
+         the Tailwind bundle to paint it dark. The <html> background below
+         is the actual fix for that; the rest is the launch screen.
+
+         The markup lives inside #root as the launch surface, and
+         src/lib/splash.js lifts it out to <body> a moment before React
+         mounts (a fresh root clears its container's children), then
+         fades it away once App has a real screen to show — sign-in, a
+         gate, or the app — rather than at mount, which is minutes of
+         auth-and-profile blank on a slow connection.
+
+         Theme-aware via prefers-color-scheme. Note the app itself is
+         dark-only (index.css sets color-scheme: dark), so a light-mode
+         device sees a light launch card, then the dark app. Delete the
+         light block, or pin the dark values on :root, to launch dark
+         everywhere. -->
+    <style>
+      :root {
+        --splash-bg: #f6f4f0;
+        --splash-fg: #111114;
+        --splash-muted: #6f6f78;
+        --splash-track: rgba(0, 0, 0, 0.1);
+        --splash-accent: #ff8c1a;
+        --splash-ring: rgba(88, 60, 200, 0.16);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --splash-bg: #0a0a0a;
+          --splash-fg: #fafafa;
+          --splash-muted: #8a8a93;
+          --splash-track: rgba(255, 255, 255, 0.12);
+          --splash-ring: rgba(96, 64, 220, 0.3);
+        }
+      }
+      html {
+        background: var(--splash-bg);
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 30px;
+        background: var(--splash-bg);
+        color: var(--splash-fg);
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        transition:
+          opacity 0.45s ease,
+          transform 0.45s ease;
+      }
+      #splash.splash--out {
+        opacity: 0;
+        transform: scale(1.04);
+        pointer-events: none;
+      }
+      .splash-glow {
+        position: absolute;
+        width: 62vmin;
+        height: 62vmin;
+        max-width: 380px;
+        max-height: 380px;
+        border-radius: 50%;
+        background: radial-gradient(circle, var(--splash-ring), transparent 68%);
+        filter: blur(14px);
+        animation: splash-breathe 2.6s ease-in-out infinite;
+      }
+      .splash-logo {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        animation: splash-breathe 2.6s ease-in-out infinite;
+      }
+      /* The logo, as an app-icon tile: a third of a phone's width, capped
+         so it does not balloon on a tablet, corners rounded to the same
+         proportion iOS gives a home-screen icon. The background is the
+         logo's own ground, painted for the frames before the PNG has
+         decoded so the tile never flashes a different colour. */
+      .splash-mark {
+        display: block;
+        width: clamp(120px, 34vw, 156px);
+        height: auto;
+        aspect-ratio: 1 / 1;
+        border-radius: 26%;
+        object-fit: cover;
+        background: #221a5c;
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.08),
+          0 22px 56px -18px rgba(70, 48, 180, 0.75);
+      }
+      .splash-name {
+        margin-top: 10px;
+        font-size: 30px;
+        font-weight: 900;
+        font-style: italic;
+        letter-spacing: -0.01em;
+        text-transform: uppercase;
+        line-height: 1;
+      }
+      .splash-tag {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.26em;
+        text-transform: uppercase;
+        color: var(--splash-muted);
+      }
+      .splash-bar {
+        position: relative;
+        width: 136px;
+        height: 3px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: var(--splash-track);
+      }
+      .splash-bar::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 40%;
+        border-radius: inherit;
+        background: var(--splash-accent);
+        animation: splash-slide 1.2s ease-in-out infinite;
+      }
+      @keyframes splash-breathe {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.045);
+        }
+      }
+      @keyframes splash-slide {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(250%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .splash-logo,
+        .splash-glow {
+          animation: none;
+        }
+        .splash-bar::after {
+          animation-duration: 2.4s;
+        }
+      }
+    </style>
   </head>
   <body class="bg-neutral-950 text-neutral-100">
-    <div id="root"></div>
-    <!-- Portrait-only guard for when the app is running in a plain browser
-         tab (not installed) — the manifest's orientation:'portrait' locks
-         rotation for the installed/standalone PWA, but a regular browser
-         tab can't be orientation-locked from JS without the Fullscreen API,
-         so this CSS-only overlay blocks interaction and asks the player to
-         rotate back instead. Lives outside the React root so it works even
-         before the app has hydrated. Scoped to narrow/phone widths only —
-         never blocks a desktop browser window someone happens to widen. -->
-    <div id="rotate-overlay">
-      <p>🐐</p>
-      <p>Rotate back to portrait to keep training.</p>
+    <div id="root">
+      <div id="splash" role="status" aria-live="polite" aria-label="Loading Jimmy the Goat">
+        <div class="splash-glow" aria-hidden="true"></div>
+        <div class="splash-logo">
+          <img class="splash-mark" src="/newlogo.zozo.png" width="512" height="512" alt="" fetchpriority="high" />
+          <div class="splash-name">Jimmy the Goat</div>
+          <div class="splash-tag">Strength Tracker</div>
+        </div>
+        <div class="splash-bar" aria-hidden="true"></div>
+      </div>
     </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

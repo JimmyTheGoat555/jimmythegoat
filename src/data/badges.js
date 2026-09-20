@@ -9,12 +9,24 @@
 // time), written only by the Admin SDK. See firestore.rules —
 // `badges` is in serverManagedFieldsUnchanged().
 //
-// SHAPE: categories, each with tiers.
+// SHAPE: two trees of categories, each with tiers.
 //
-// Ten lifting categories, three tiers each, plus three single-tier
-// originals. The shelf renders one slot per CATEGORY showing the best
-// tier reached — thirty tiles would be a wall, and "what have I got on
-// bench" is the question a trophy case should answer at a glance.
+// ACHIEVEMENTS.jimmy is the ten lifting categories this app shipped
+// with plus a lifetime-tonnage ladder; ACHIEVEMENTS.gena is a tree built
+// around a female lifter's training — glutes and lower body, core, the
+// first unassisted pull-up, push-ups, and tonnage ladders at 0.65 of
+// Jimmy's, the same ratio the evolution thresholds and the coin rate use
+// (utils/evolutionTiers.js). Three consistency badges are in both. The
+// server awards from the tree of the character the account wears
+// (functions/badges.js), and the picker lists the wearer's own tree
+// first (achievementsFor); every lookup by id reads the UNION
+// (BADGE_CATEGORIES), so a badge earned on either tree resolves wherever
+// it is shown — an account that switches character keeps its shelf.
+//
+// Three tiers per category, and one slot per CATEGORY on the shelf
+// showing the best tier reached — every tile at once would be a wall,
+// and "what have I got on bench" is the question a trophy case should
+// answer at a glance.
 //
 // WHY THE GOLD IDS LOOK OLD: they are. Every gold threshold here is the
 // flat threshold this app already shipped, so `bench-100kg` and friends
@@ -30,7 +42,7 @@ export const TIER_STYLE = {
 
 // `metric` is what the number MEANS, so the shelf can say "Bench Press —
 // Silver · 80 kg" without each tier repeating the noun.
-export const BADGE_CATEGORIES = [
+const JIMMY_CATEGORIES = [
   {
     id: 'bench_absolute',
     // Plain language for the detail sheet: what you actually DID.
@@ -161,7 +173,111 @@ export const BADGE_CATEGORIES = [
       { id: 'ten-ton-titan', tier: 'gold', label: '10,000 kg in a session' },
     ],
   },
+  {
+    id: 'lifetime_volume_jimmy',
+    how: 'Moved %s, all time',
+    name: 'Volume King',
+    icon: '👑',
+    blurb: 'Every kilogram you have ever moved, added up.',
+    tiers: [
+      { id: 'volume-king-10t', tier: 'bronze', label: '10,000 kg lifetime' },
+      { id: 'volume-king-50t', tier: 'silver', label: '50,000 kg lifetime' },
+      { id: 'volume-king-100t', tier: 'gold', label: '100,000 kg lifetime' },
+    ],
+  },
+];
 
+// ── Gena's tree ──────────────────────────────────────────────────────
+// Where the brief named one number it is the entry tier, with two rungs
+// above it to keep chasing; Squat Queen puts the named 1× bodyweight at
+// gold instead — a big day for a female lifter, and the same 0.5 / 0.75
+// / 1 shape as the relative bench ladder above. Thresholds live in
+// functions/badges.js's GENA_LADDERS; these labels must say the same.
+const GENA_CATEGORIES = [
+  {
+    id: 'peach_builder',
+    how: 'Logged %s of hip thrusts and glute bridges',
+    name: 'Peach Builder',
+    icon: '🍑',
+    blurb: 'Hip thrusts and glute bridges, counted for life. The sets add up.',
+    tiers: [
+      { id: 'peach-builder-10', tier: 'bronze', label: '10 sets' },
+      { id: 'peach-builder-50', tier: 'silver', label: '50 sets' },
+      { id: 'peach-builder-150', tier: 'gold', label: '150 sets' },
+    ],
+  },
+  {
+    id: 'squat_queen',
+    how: 'Squatted %s',
+    name: 'Squat Queen',
+    icon: '👑',
+    blurb: 'Your squat against what you weigh. Your own bodyweight on the bar is the crown.',
+    tiers: [
+      { id: 'squat-queen-half-bw', tier: 'bronze', label: '0.5× bodyweight' },
+      { id: 'squat-queen-075-bw', tier: 'silver', label: '0.75× bodyweight' },
+      { id: 'squat-queen-bw', tier: 'gold', label: '1× bodyweight' },
+    ],
+  },
+  {
+    id: 'leg_day',
+    how: 'Finished a session that was %s',
+    name: 'Leg Day Survivor',
+    icon: '🦵',
+    blurb: 'A session where the legs did nearly all the work. Stairs tomorrow are your problem.',
+    tiers: [
+      { id: 'leg-day-75', tier: 'bronze', label: '75% lower body' },
+      { id: 'leg-day-85', tier: 'silver', label: '85% lower body' },
+      { id: 'leg-day-95', tier: 'gold', label: '95% lower body' },
+    ],
+  },
+  {
+    id: 'core_steel',
+    how: 'Trained core in %s',
+    name: 'Core of Steel',
+    icon: '🛡️',
+    blurb: 'Core work in every session, session after session. No skipped abs.',
+    tiers: [
+      { id: 'core-steel-3', tier: 'bronze', label: '3 workouts in a row' },
+      { id: 'core-steel-7', tier: 'silver', label: '7 workouts in a row' },
+      { id: 'core-steel-14', tier: 'gold', label: '14 workouts in a row' },
+    ],
+  },
+  {
+    id: 'first_pullup',
+    how: 'Did %s',
+    name: 'First Pull-Up',
+    icon: '🔝',
+    blurb: 'Chin over the bar under your own power. One of the biggest days a lifter gets.',
+    tiers: [{ id: 'first-pullup', tier: 'gold', label: 'your first unassisted pull-up' }],
+  },
+  {
+    id: 'pushup_warrior',
+    how: 'Did %s',
+    name: 'Push-Up Warrior',
+    icon: '⚔️',
+    blurb: 'Full push-ups, chest to the floor, in one unbroken set.',
+    tiers: [
+      { id: 'pushup-10', tier: 'bronze', label: '10 push-ups in a set' },
+      { id: 'pushup-20', tier: 'silver', label: '20 push-ups in a set' },
+      { id: 'pushup-30', tier: 'gold', label: '30 push-ups in a set' },
+    ],
+  },
+  {
+    id: 'lifetime_volume_gena',
+    how: 'Moved %s, all time',
+    name: 'Volume Queen',
+    icon: '👸',
+    blurb: 'Every kilogram you have ever moved, added up.',
+    tiers: [
+      { id: 'volume-queen-6t', tier: 'bronze', label: '6,500 kg lifetime' },
+      { id: 'volume-queen-32t', tier: 'silver', label: '32,500 kg lifetime' },
+      { id: 'volume-queen-65t', tier: 'gold', label: '65,000 kg lifetime' },
+    ],
+  },
+];
+
+// ── Both trees ───────────────────────────────────────────────────────
+const SHARED_CATEGORIES = [
   // ── Single-tier originals ────────────────────────────────────────────
   // Not lifting milestones and not tiered, kept because these ids are
   // already in real users' arrays — dropping one from the registry would
@@ -195,6 +311,20 @@ export const BADGE_CATEGORIES = [
     tiers: [{ id: 'relative-titan', tier: 'gold', label: '2.0+ relative score in one set' }],
   },
 ];
+
+// The two trees, keyed by mascot id (data/mascots.js), each ending in the
+// shared three; and the union, which every lookup by id reads.
+export const ACHIEVEMENTS = {
+  jimmy: [...JIMMY_CATEGORIES, ...SHARED_CATEGORIES],
+  gena: [...GENA_CATEGORIES, ...SHARED_CATEGORIES],
+};
+export const BADGE_CATEGORIES = [...JIMMY_CATEGORIES, ...GENA_CATEGORIES, ...SHARED_CATEGORIES];
+
+// The tree an account earns from. Unknown or missing falls to Jimmy's,
+// the same way resolveMascotId falls to Jimmy.
+export function achievementsFor(mascotId) {
+  return ACHIEVEMENTS[mascotId] ?? ACHIEVEMENTS.jimmy;
+}
 
 // Flat view: every tier as its own record, with its category folded in.
 // This is what anything keyed by badge ID reads — the celebration modal,
@@ -301,10 +431,15 @@ export function bestOfEachCategory(ids) {
 }
 
 // One entry per category the user has ANY tier in, holding their best.
-// The picker offers these rather than all 33 ids: "Bench Press · Bronze"
+// The picker offers these rather than every id: "Bench Press · Bronze"
 // is not a thing to choose when you already hold gold in that category.
-export function earnedCategoryBests(earned) {
-  return BADGE_CATEGORIES.map((category) => highestEarnedTier(category, earned))
+// With a `mascotId` the wearer's own tree comes first and anything held
+// from the other tree follows — shown, never dropped.
+export function earnedCategoryBests(earned, mascotId = null) {
+  const own = mascotId ? achievementsFor(mascotId) : BADGE_CATEGORIES;
+  const rest = BADGE_CATEGORIES.filter((category) => !own.includes(category));
+  return [...own, ...rest]
+    .map((category) => highestEarnedTier(category, earned))
     .filter(Boolean)
     .map((t) => getBadge(t.id))
     .filter(Boolean)

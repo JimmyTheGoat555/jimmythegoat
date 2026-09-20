@@ -11,12 +11,13 @@ import GradientBorder from '../shared/GradientBorder';
 // purely the roster they manage on top of that. Sign-out lives on the
 // shared Profile tab now, same as for a trainee, so there's no duplicate
 // sign-out control here.
-export default function TrainerDashboard({ profile, workouts, minStage = 1 }) {
+export default function TrainerDashboard({ profile, workouts, minStage = 1, progressionScale = 1 }) {
   const { roster } = useTrainerTrainees(profile.id);
   // Your OWN tier reflects your own neglect the same as it does on the
   // Workout/Progress tabs — a trainer who stops training slips a tier too.
   const { current: yourTier } = getEvolutionProgress(lifetimeVolume(workouts), {
     minStage,
+    scale: progressionScale,
     lastWorkoutAt: lastWorkoutAt(workouts),
   });
 
@@ -43,9 +44,7 @@ export default function TrainerDashboard({ profile, workouts, minStage = 1 }) {
       </GradientBorder>
 
       <div className="flex items-center justify-between mt-2">
-        <h2 className="text-lg font-bold text-neutral-50">
-          Your Trainees {roster.length > 0 && `(${roster.length})`}
-        </h2>
+        <h2 className="text-lg font-bold text-neutral-50">Your Trainees {roster.length > 0 && `(${roster.length})`}</h2>
       </div>
 
       {roster.length === 0 ? (
@@ -59,9 +58,7 @@ export default function TrainerDashboard({ profile, workouts, minStage = 1 }) {
               <Link to={`/trainees/${trainee.id}`} className="card flex items-center gap-3 p-4">
                 <span className="text-3xl leading-none">{trainee.evolution.current.emoji}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-base font-semibold text-neutral-100 truncate">
-                    {trainee.displayName}
-                  </p>
+                  <p className="text-base font-semibold text-neutral-100 truncate">{trainee.displayName}</p>
                   <p className="text-sm text-neutral-500">{trainee.evolution.current.label}</p>
                 </div>
                 <p className="text-sm font-semibold text-neutral-100 tabular-nums shrink-0">

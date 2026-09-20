@@ -20,7 +20,6 @@ const EMPTY = [];
 const JimmyLookContext = createContext({
   evolutionStage: 1,
   equippedAccessories: EMPTY,
-  streak: 0,
   mascot: DEFAULT_MASCOT_ID,
 });
 
@@ -36,11 +35,11 @@ export function JimmyLookProvider({ evolutionStage, account, children }) {
   const key = equipped.join(',');
   // Server-written (functions/economy.js's logWorkout), so it arrives on
   // the account doc alongside everything else here and needs no separate
-  // listener. Published as the raw NUMBER now rather than a pre-derived
-  // boolean: the aura has three tiers (utils/streak.js), so the length is
-  // the thing the avatar needs. Still shaped as props, which is what lets
-  // `<JimmyAvatar {...useJimmyLook()} />` keep working untouched — that is
-  // the whole reason this context hands over a props-shaped object.
+  // listener. It used to be handed to the avatar as `streak` so the fire
+  // aura came free with the `{...useJimmyLook()}` spread; the aura is gone
+  // (see JimmyAvatar) and so is that alias. The number itself stays on the
+  // context because it is the live streak for whoever is signed in, and
+  // the screens that show it as a NUMBER read it from here.
   const currentStreak = Number(account?.currentStreak) || 0;
   // Which character this account wears. Resolved here — once, from the one
   // document that holds both the explicit `mascot` field and the `gender`
@@ -55,7 +54,6 @@ export function JimmyLookProvider({ evolutionStage, account, children }) {
       evolutionStage,
       equippedAccessories: key ? key.split(',') : EMPTY,
       currentStreak,
-      streak: currentStreak,
       mascot,
     }),
     [evolutionStage, key, currentStreak, mascot],

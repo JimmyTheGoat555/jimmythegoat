@@ -1,4 +1,5 @@
-import { precacheAndRoute } from 'workbox-precaching';
+import { createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
+import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { initializeApp } from 'firebase/app';
 import { getMessaging, onBackgroundMessage } from 'firebase/messaging/sw';
 import {
@@ -17,6 +18,22 @@ import {
 // service worker (see vite.config.js for why: push notifications need
 // code running in the worker, which generateSW has no room for).
 precacheAndRoute(self.__WB_MANIFEST);
+
+// Every in-app URL is the same document: a real load of /progress or
+// /workouts/abc gets index.html, the rewrite vercel.json makes on the
+// server. Without this the worker answered only for the exact files
+// it precached, so a document load at any deep URL went to the network
+// no matter what — fine online, blank with no signal. The installed
+// app makes such loads more than it looks: iOS relaunches it at its
+// last URL, and the auto-update (main.jsx) reloads it in place, so a
+// gym with no reception could open a workout and never get back out.
+registerRoute(
+  new NavigationRoute(createHandlerBoundToURL('/index.html'), {
+    // Firebase's auth helper pages, and anything that looks like a
+    // file, are not the app shell.
+    denylist: [/^\/__\//, /\/[^/?]+\.[^/?]+(\?.*)?$/],
+  }),
+);
 
 // Config duplicated from lib/firebase.js rather than imported — a service
 // worker has its own separate global scope, but it's still compiled by the
@@ -47,8 +64,8 @@ if (firebaseConfig.apiKey && firebaseConfig.messagingSenderId) {
     const { title, body } = payload.notification ?? {};
     self.registration.showNotification(title ?? 'Jimmy the Goat', {
       body: body ?? '',
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
+      icon: '/newlogo.zozo.png',
+      badge: '/newlogo.zozo.png',
       data: payload.data ?? {},
     });
   });
@@ -97,8 +114,8 @@ async function maybeShowLazyNudge() {
 
   await self.registration.showNotification(LAZY_NUDGE_TITLE, {
     body: LAZY_NUDGE_BODY,
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
+    icon: '/newlogo.zozo.png',
+    badge: '/newlogo.zozo.png',
     tag: LAZY_NUDGE_TAG,
     data: { url: '/workout' },
   });

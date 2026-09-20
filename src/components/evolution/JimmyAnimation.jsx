@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { AccessoryLayer } from './JimmyAvatar';
-import { FIRE_STREAK_MIN, streakAuraClass } from '../../utils/streak';
 import { DEFAULT_MASCOT_ID, mascotHasDances, outfitSpriteFor } from '../../data/mascots';
 import { webpDurationMs } from '../../utils/webpDuration';
 
@@ -59,17 +58,16 @@ export default function JimmyAnimation({
   // numbers as Jimmy's (source-media/pipeline/build_gena.py), which is
   // what lets the object-contain layering below hold for her too.
   mascot = DEFAULT_MASCOT_ID,
-  // Streak fire, the same tiered API JimmyAvatar takes — the streak
-  // LENGTH, not a flag, because the aura has three tiers (utils/streak.js).
-  // WorkoutHome already spreads the whole useJimmyLook() object in here,
-  // so the hero goat — the biggest Jimmy in the app — lights up without
-  // touching that call site. A boolean still means tier 1, for the couple
-  // of callers that only ever had the pre-derived flag.
-  streak = 0,
   // Whether tapping the goat replays the clip. Off for a caller that owns
   // the tap itself (PublicFriendProfile drives playback from outside, so
   // two handlers would fight over the same press).
   interactive = true,
+  // Whether the clip plays on arrival, or waits for a tap. WorkoutHome
+  // turns it off for a character in an outfit set: the clips were keyed
+  // from the plain sprite, so an arrival dance would open the screen on
+  // her in the wrong clothes and only then cut to the set she paid for.
+  // At rest she is in the set, gear on; the dance is still one tap away.
+  autoplay = true,
 }) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -105,17 +103,28 @@ export default function JimmyAnimation({
   // it were the new one. Switching mascot goes through the same reset,
   // since it changes `clip` too.
   const [renderedSrc, setRenderedSrc] = useState(clip);
-  // ── OUTFITS AND THE CLIP ────────────────────────────────────────────
+  // ── THE CLIP IS A PERFORMANCE; THE SPRITE IS THE RESTING STATE ──────
   //
-  // The dance clips were keyed from the PLAIN sprites, so a character in
-  // an outfit set dances in her default gear. Ordinarily a clip plays
-  // once and the <img> simply holds its final frame — which for a plain
-  // sprite is indistinguishable from the sprite, so nothing ever hands
-  // back. In a set that final frame is the wrong outfit, held for as
-  // long as the screen is open. So while an outfit is worn the clip is
-  // given exactly its own length (read off the file — utils/webpDuration)
-  // and then faded out again over the sprite, which is her in the set.
-  // `settled` is that state; it clears for a replay and for a new clip.
+  // A clip plays once and then HANDS BACK: it is given exactly its own
+  // length (read off the file — utils/webpDuration) and then faded out
+  // over the sprite. Two reasons, both about what an animated WebP
+  // cannot do:
+  //
+  //   * Gear cannot follow the dance. There is no per-frame position in
+  //     the file, so worn accessories are placed against the sprite's
+  //     landmarks and would float over a head that is moving. So the
+  //     accessory layer is hidden while the clip is on top and returns
+  //     with the sprite — she takes the shades off to dance.
+  //   * The clips were keyed from the plain sprites, so a character in
+  //     an outfit set dances in default gear; holding the clip's final
+  //     frame would leave her in the wrong clothes for as long as the
+  //     screen is open.
+  //
+  // Every clip's settled frame is registered to its sprite (feet on the
+  // ground line, same body height — tools/normalize-sprites.mjs), so the
+  // hand-back is a crossfade between two images of the same character
+  // standing in the same place, not a hop. `settled` is that state; it
+  // clears for a replay and for a new clip.
   const [settled, setSettled] = useState(false);
   // When the current play began, so the hand-back is timed from the
   // frame the animation actually started on rather than from when the
@@ -129,9 +138,13 @@ export default function JimmyAnimation({
     setSettled(false);
   }
 
-  const showAnimation = Boolean(clip) && !failed;
-  const canReplay = interactive && showAnimation && isLoaded;
-  const handsBack = Boolean(outfitSrc) && showAnimation && isLoaded;
+  // Without autoplay the clip is not even requested until the first tap:
+  // `replay` counts taps, and 0 means "nobody asked yet".
+  const showAnimation = Boolean(clip) && !failed && (autoplay || replay > 0);
+  // Tappable whenever there is a clip to play — before it has loaded,
+  // too, when autoplay is off, because that tap is what loads it.
+  const canReplay = interactive && Boolean(clip) && !failed && (isLoaded || !autoplay);
+  const handsBack = showAnimation && isLoaded;
   useEffect(() => {
     if (!handsBack) return undefined;
     let cancelled = false;
@@ -154,23 +167,21 @@ export default function JimmyAnimation({
     setSettled(false);
     setReplay((n) => n + 1);
   };
-  // Identical derivation to JimmyAvatar's — the two draw the same aura on
-  // the same scale, so they share the helper rather than each deciding
-  // what a tier looks like.
-  const auraClass = streakAuraClass(streak === true ? FIRE_STREAK_MIN : streak);
-  const halo = auraClass.includes('--t3') ? <span className="streak-halo" aria-hidden="true" /> : null;
+  // No streak aura here either — see JimmyAvatar for why the fire was
+  // pulled from every surface rather than only from the lobby goat.
   // The counter only ever appends a fragment, so the browser reuses the
   // already-downloaded image and only the animation restarts.
   const playSrc = replay === 0 ? clip : `${clip}#${replay}`;
   // The clip is on top only while it is actually playing; before it has
   // loaded, and after it has handed back, the sprite shows.
   const clipOnTop = showAnimation && isLoaded && !settled;
-  const layer =
-    'absolute inset-0 w-full h-full object-contain object-bottom transition-opacity duration-200';
+  const layer = 'absolute inset-0 w-full h-full object-contain object-bottom transition-opacity duration-200';
+  // The gear goes with the sprite, on the same fade — see the note above.
+  const gearClass = `transition-opacity duration-200 ${clipOnTop ? 'opacity-0' : 'opacity-100'}`;
 
   return (
     <div
-      className={`relative ${className} ${auraClass} ${canReplay ? 'cursor-pointer' : ''}`}
+      className={`relative ${className} ${canReplay ? 'cursor-pointer' : ''}`}
       onClick={canReplay ? replayClip : undefined}
       onKeyDown={
         canReplay
@@ -186,7 +197,6 @@ export default function JimmyAnimation({
       tabIndex={canReplay ? 0 : undefined}
       aria-label={canReplay ? `Play ${alt}'s dance again` : undefined}
     >
-      {halo}
       {/* Behind the goat, so a collar passes under his neck rather than
           across it. Drawn before both layers below, all absolutely
           positioned, so paint order follows DOM order. */}
@@ -196,6 +206,7 @@ export default function JimmyAnimation({
           equippedAccessories={equippedAccessories}
           mascot={mascot}
           depth="behind"
+          className={gearClass}
         />
       )}
       <img
@@ -223,19 +234,15 @@ export default function JimmyAnimation({
           className={`${layer} ${clipOnTop ? 'opacity-100' : 'opacity-0'}`}
         />
       )}
-      {/* Anchored to the SPRITE's box, not the dance's. The two canvases
-          are different shapes (376x660 against the sprites' 528x1466), but
-          they were built to put Jimmy in the same place: laid out here,
-          the settled dance frame's head lands within ~2px of the sprite's
-          at lobby size, measured. Mid-move he leans and the gear does not
-          follow him — the honest fix would be per-frame anchors, which an
-          animated WebP gives no way to read. He holds his opening pose for
-          all but the couple of seconds a dance is actually playing. */}
+      {/* Anchored to the SPRITE's box, not the dance's, and shown only
+          with the sprite — hidden for the seconds a clip is on top, since
+          an animated WebP offers no per-frame anchors to follow. */}
       {evolutionStage != null && (
         <AccessoryLayer
           evolutionStage={evolutionStage}
           equippedAccessories={equippedAccessories}
           mascot={mascot}
+          className={gearClass}
         />
       )}
     </div>

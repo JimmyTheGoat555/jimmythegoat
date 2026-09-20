@@ -1,13 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { enablePushNotifications, disablePushNotifications } from '../../lib/messaging';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import { FITNESS_GOALS, WEEKLY_TARGETS } from '../../utils/onboarding';
 import { SELECTABLE_MASCOTS, resolveMascotId } from '../../data/mascots';
+import { EVOLUTION_TIERS, TRAINER_MIN_STAGE, getTierByStage } from '../../utils/evolutionTiers';
 import { useJimmyLook } from '../../context/JimmyLook';
 import JimmyAvatar from '../evolution/JimmyAvatar';
 import { REST_PRESETS, formatRestLabel, normalizeRestSeconds } from '../../utils/restPresets';
-import { PRIVACY_POLICY_SECTIONS, TERMS_OF_SERVICE_SECTIONS, LAST_UPDATED } from '../../content/legalContent';
+import {
+  PRIVACY_POLICY_SECTIONS,
+  TERMS_OF_SERVICE_SECTIONS,
+  LAST_UPDATED,
+  TERMS_LAST_UPDATED,
+} from '../../content/legalContent';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import LegalDocument from '../legal/LegalDocument';
 
@@ -28,6 +36,42 @@ function Toggle({ checked, onChange, disabled }) {
       <span className={`w-5 h-5 rounded-full bg-white transition-transform ${checked ? 'translate-x-5' : ''}`} />
     </button>
   );
+}
+
+// The same two cards the sign-up wizard offers (OnboardingFlow's role
+// step), because it is the same choice: which side of the whistle.
+const ROLE_OPTIONS = [
+  { id: 'trainee', icon: '🏋️', title: "I'm a Trainee", hint: 'Here to get stronger' },
+  { id: 'trainer', icon: '📋', title: "I'm a Trainer", hint: 'Here to coach lifters' },
+];
+
+// How many lifters this coach has, for the confirm dialog's honest
+// warning before stepping down. A count-only listener rather than
+// useTrainerTrainees, which also subscribes to every trainee's workouts
+// to build a roster — far more than a number needs. null while unknown
+// (or when the listener is refused), and the copy hedges accordingly.
+function useTraineeCount(trainerUid) {
+  const [count, setCount] = useState(null);
+  useEffect(() => {
+    if (!trainerUid) {
+      setCount(null);
+      return;
+    }
+    return onSnapshot(
+      query(collection(db, 'users'), where('trainerId', '==', trainerUid)),
+      (snap) => setCount(snap.size),
+      () => setCount(null),
+    );
+  }, [trainerUid]);
+  return count;
+}
+
+function describeRoleError(err) {
+  if (err?.code === 'functions/not-found' || err?.code === 'functions/unavailable') {
+    return 'Role switching is not live on the server yet — deploy functions and try again.';
+  }
+  if (err?.code === 'functions/resource-exhausted' || err?.code === 'functions/invalid-argument') return err.message;
+  return err?.message ?? 'Could not switch — try again.';
 }
 
 function Row({ label, description, children }) {
@@ -62,12 +106,20 @@ export default function SettingsPanel({
   onUpdateSharePRs,
   onUpdateAskForLocker,
   onUpdateMascot,
+  // Trainer ↔ trainee — useAuth's setRole, a callable (see
+  // functions/accountRole.js). Optional so a caller without it simply
+  // shows the current role with no way to change it.
+  onUpdateRole = null,
   onUpdateDefaultRestTimer,
   // Whether to draw the Admin entry at all. A visibility flag, not a
   // permission — see utils/appAdmin.js and functions/appAdmin.js for
   // where the actual boundary is.
   isAdmin = false,
   onOpenAdmin,
+  // The admin testing floor — see App.jsx's `forcedStage`. 1 means none.
+  forcedStage = 1,
+  onForceEvolve,
+  onResetForcedStage,
   onClose,
 }) {
   const keyboardInset = useKeyboardInset();
@@ -95,9 +147,7 @@ export default function SettingsPanel({
   // sendPushOnNotificationCreate in functions/index.js), but a solid,
   // synchronous starting point rather than always defaulting to "off" the
   // instant someone who already enabled push opens Settings again.
-  const [pushOn, setPushOn] = useState(
-    typeof Notification !== 'undefined' && Notification.permission === 'granted',
-  );
+  const [pushOn, setPushOn] = useState(typeof Notification !== 'undefined' && Notification.permission === 'granted');
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState(null);
 
@@ -136,6 +186,16 @@ export default function SettingsPanel({
   const mascotId = resolveMascotId(account);
   const [mascotBusy, setMascotBusy] = useState(null);
   const [mascotError, setMascotError] = useState(null);
+
+  // Which side of the whistle. `account.role` is live, so the cards
+  // repaint from the snapshot once the callable lands; the busy/notice
+  // state here only covers the round trip.
+  const currentRole = account.role === 'trainer' ? 'trainer' : 'trainee';
+  const [pendingRole, setPendingRole] = useState(null);
+  const [roleBusy, setRoleBusy] = useState(null);
+  const [roleError, setRoleError] = useState(null);
+  const [roleNotice, setRoleNotice] = useState(null);
+  const traineeCount = useTraineeCount(currentRole === 'trainer' ? uid : null);
   // The stage is drawn from the same context the rest of the app uses for
   // "your own goat" — legitimate here, since Settings is only ever your
   // own. It means the two cards preview the character at the tier you have
@@ -243,6 +303,41 @@ export default function SettingsPanel({
       setMascotError(err.message ?? 'Could not switch — try again.');
     } finally {
       setMascotBusy(null);
+    }
+  };
+
+  const handleChooseRole = (next) => {
+    if (next === currentRole || roleBusy) return;
+    setRoleError(null);
+    setRoleNotice(null);
+    setPendingRole(next);
+  };
+
+  const confirmRole = async () => {
+    const next = pendingRole;
+    setPendingRole(null);
+    if (!next || !onUpdateRole) return;
+    setRoleBusy(next);
+    try {
+      const result = await onUpdateRole(next);
+      if (next === 'trainer') {
+        setRoleNotice(
+          result?.trainerCode
+            ? `You're a trainer now. Your coach code is ${result.trainerCode} — share it with your trainees.`
+            : "You're a trainer now.",
+        );
+      } else {
+        const released = Number(result?.traineesReleased) || 0;
+        setRoleNotice(
+          released > 0
+            ? `You're a trainee now. ${released} trainee${released === 1 ? ' was' : 's were'} disconnected.`
+            : "You're a trainee now.",
+        );
+      }
+    } catch (err) {
+      setRoleError(describeRoleError(err));
+    } finally {
+      setRoleBusy(null);
     }
   };
 
@@ -467,16 +562,20 @@ export default function SettingsPanel({
                 {/* A value that isn't one of the presets (set on another
                     build, or by hand) still needs an option to sit in, or
                     the control renders empty and looks broken. */}
-                {(REST_PRESETS.includes(restSeconds) ? REST_PRESETS : [...REST_PRESETS, restSeconds].sort((a, b) => a - b)).map(
-                  (seconds) => (
-                    <option key={seconds} value={seconds}>
-                      {formatRestLabel(seconds)}
-                    </option>
-                  ),
-                )}
+                {(REST_PRESETS.includes(restSeconds)
+                  ? REST_PRESETS
+                  : [...REST_PRESETS, restSeconds].sort((a, b) => a - b)
+                ).map((seconds) => (
+                  <option key={seconds} value={seconds}>
+                    {formatRestLabel(seconds)}
+                  </option>
+                ))}
               </select>
             </Row>
-            <Row label="Share PRs with Friends" description={sharePRsError ?? "Let friends see your all-time bests on your profile."}>
+            <Row
+              label="Share PRs with Friends"
+              description={sharePRsError ?? 'Let friends see your all-time bests on your profile.'}
+            >
               <Toggle checked={sharePRs} onChange={handleToggleSharePRs} disabled={sharePRsBusy} />
             </Row>
             <Row
@@ -517,7 +616,8 @@ export default function SettingsPanel({
               <div className="py-3">
                 <p className="text-base text-neutral-100">Your Mascot</p>
                 <p className="mt-0.5 text-xs text-neutral-500">
-                  {mascotError ?? 'Who shows up for your workouts. Changes everywhere, including your feed posts from here on.'}
+                  {mascotError ??
+                    'Who shows up for your workouts. Changes everywhere, including your feed posts from here on.'}
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-3" role="radiogroup" aria-label="Your mascot">
                   {SELECTABLE_MASCOTS.map((character) => {
@@ -531,9 +631,7 @@ export default function SettingsPanel({
                         disabled={Boolean(mascotBusy)}
                         onClick={() => handleChooseMascot(character.id)}
                         className={`flex flex-col items-center gap-1.5 rounded-2xl border px-3 py-3 transition active:scale-[0.98] disabled:opacity-50 ${
-                          active
-                            ? 'border-[var(--tier-accent)] bg-white/10'
-                            : 'border-white/10 bg-white/5'
+                          active ? 'border-[var(--tier-accent)] bg-white/10' : 'border-white/10 bg-white/5'
                         }`}
                       >
                         <JimmyAvatar
@@ -543,9 +641,7 @@ export default function SettingsPanel({
                           size={84}
                           alt={character.name}
                         />
-                        <span
-                          className={`text-sm font-semibold ${active ? 'text-neutral-50' : 'text-neutral-400'}`}
-                        >
+                        <span className={`text-sm font-semibold ${active ? 'text-neutral-50' : 'text-neutral-400'}`}>
                           {mascotBusy === character.id ? 'Switching…' : character.name}
                         </span>
                       </button>
@@ -553,6 +649,57 @@ export default function SettingsPanel({
                   })}
                 </div>
               </div>
+            )}
+          </section>
+
+          {/* ── Your role ────────────────────────────────────────────────
+              Trainee or trainer, the choice made once at sign-up, now
+              changeable here. The write is a callable, never a client
+              write: `role` is server-trusted (a coach's tier floor) and
+              the switch mints a coach code or releases trainees on the
+              way — which is why the other card asks before it acts. */}
+          <section className="py-4 flex flex-col gap-1">
+            <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-1">Your Role</p>
+            <p
+              className={`text-xs ${roleError ? 'text-[var(--danger)]' : roleNotice ? 'text-[var(--success)]' : 'text-neutral-500'}`}
+            >
+              {roleError ??
+                roleNotice ??
+                'Trainees can connect to a coach. Trainers get a coach code and a Trainees tab.'}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3" role="radiogroup" aria-label="Your role">
+              {ROLE_OPTIONS.map((option) => {
+                const active = option.id === currentRole;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    disabled={Boolean(roleBusy) || !onUpdateRole}
+                    onClick={() => handleChooseRole(option.id)}
+                    data-testid={`role-${option.id}`}
+                    className={`flex flex-col items-center gap-1 rounded-2xl border px-3 py-3 text-center transition active:scale-[0.98] disabled:opacity-50 ${
+                      active ? 'border-[var(--tier-accent)] bg-white/10' : 'border-white/10 bg-white/5'
+                    }`}
+                  >
+                    <span className="text-3xl leading-none" aria-hidden="true">
+                      {option.icon}
+                    </span>
+                    <span className={`mt-1 text-sm font-semibold ${active ? 'text-neutral-50' : 'text-neutral-400'}`}>
+                      {roleBusy === option.id ? 'Switching…' : option.title}
+                    </span>
+                    <span className="text-[11px] text-neutral-500">{option.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {currentRole === 'trainer' && account.trainerCode && (
+              <p className="mt-3 text-xs text-neutral-500">
+                Your coach code:{' '}
+                <span className="font-semibold tracking-widest text-neutral-100">{account.trainerCode}</span> — trainees
+                enter it to connect to you.
+              </p>
             )}
           </section>
 
@@ -565,17 +712,62 @@ export default function SettingsPanel({
                 className="flex items-center justify-between text-left text-sm text-neutral-300 py-1.5"
               >
                 <span>Analytics Dashboard</span>
-                <span aria-hidden="true" className="text-neutral-600">&rsaquo;</span>
+                <span aria-hidden="true" className="text-neutral-600">
+                  &rsaquo;
+                </span>
               </button>
+
+              {/* ── TEMPORARY, TESTING ONLY ──────────────────────────────
+                  Walks the account through the tiers so the store items
+                  and the gear placement can be checked at every stage.
+                  This device only, nothing written — App.jsx explains the
+                  floor it raises. Delete this block when the testing is
+                  done. */}
+              <div className="mt-2 rounded-xl border border-white/10 bg-white/5 px-3 py-3">
+                <p className="text-sm text-neutral-100">Force Next Evolve</p>
+                <p className="mt-0.5 text-xs text-neutral-500">
+                  {evolutionStage >= EVOLUTION_TIERS.length
+                    ? `Showing ${getTierByStage(evolutionStage).label} — the top tier.`
+                    : `Showing ${getTierByStage(evolutionStage).label}. Jumps this device to ${getTierByStage(evolutionStage + 1).label}; your real tier, the leaderboard and the feed are untouched.`}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={onForceEvolve}
+                    disabled={evolutionStage >= EVOLUTION_TIERS.length}
+                    className="rounded-lg bg-[var(--ember)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                  >
+                    ⚡ Evolve to{' '}
+                    {evolutionStage >= EVOLUTION_TIERS.length ? 'max' : getTierByStage(evolutionStage + 1).label}
+                  </button>
+                  {forcedStage > 1 && (
+                    <button
+                      type="button"
+                      onClick={onResetForcedStage}
+                      className="rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold text-neutral-200"
+                    >
+                      Reset to real tier
+                    </button>
+                  )}
+                </div>
+              </div>
             </section>
           )}
 
           <section className="py-4 flex flex-col gap-1">
             <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-1">Legal</p>
-            <button type="button" onClick={() => setLegalDoc('privacy')} className="text-left text-sm text-neutral-300 py-1.5">
+            <button
+              type="button"
+              onClick={() => setLegalDoc('privacy')}
+              className="text-left text-sm text-neutral-300 py-1.5"
+            >
               Privacy Policy
             </button>
-            <button type="button" onClick={() => setLegalDoc('terms')} className="text-left text-sm text-neutral-300 py-1.5">
+            <button
+              type="button"
+              onClick={() => setLegalDoc('terms')}
+              className="text-left text-sm text-neutral-300 py-1.5"
+            >
               Terms of Service
             </button>
           </section>
@@ -595,7 +787,12 @@ export default function SettingsPanel({
                 setDeleteError(null);
                 setConfirmingDelete(true);
               }}
-              className="w-full text-center text-xs text-neutral-500 py-1"
+              // A destructive button rather than the muted grey line this
+              // used to be. Apple requires account deletion to be easy to
+              // FIND, and a reviewer who cannot spot it rejects the build;
+              // the typed-DELETE confirmation below is what keeps it from
+              // being easy to hit by accident.
+              className="w-full rounded-xl border border-[var(--danger)]/40 py-3 text-center text-sm font-semibold text-[var(--danger)] transition active:scale-[0.98]"
             >
               Delete my account
             </button>
@@ -603,6 +800,28 @@ export default function SettingsPanel({
         </div>
       </div>
 
+      {pendingRole && (
+        <ConfirmDialog
+          title={pendingRole === 'trainer' ? 'Become a trainer?' : 'Switch to trainee?'}
+          message={
+            pendingRole === 'trainer'
+              ? `You'll get a coach code to share, a Trainees tab, and a coaching account starts at ${getTierByStage(TRAINER_MIN_STAGE).label}.${
+                  account.trainerId ? ' Your own link to a coach ends.' : ''
+                }`
+              : `${
+                  traineeCount === null
+                    ? 'Any trainees connected to you will be disconnected and the workouts you assigned them removed.'
+                    : traineeCount === 0
+                      ? 'No trainees are connected to you right now.'
+                      : `Your ${traineeCount} trainee${traineeCount === 1 ? '' : 's'} will be disconnected and the workouts you assigned them removed.`
+                } Your coach code is kept in case you come back.`
+          }
+          confirmLabel={pendingRole === 'trainer' ? "Yes, I'm a trainer" : 'Yes, switch'}
+          tone={pendingRole === 'trainer' ? 'primary' : 'danger'}
+          onConfirm={confirmRole}
+          onCancel={() => setPendingRole(null)}
+        />
+      )}
       {confirmingGoals && (
         <ConfirmDialog
           title="Change your goals?"
@@ -624,8 +843,8 @@ export default function SettingsPanel({
           >
             <h3 className="text-lg font-bold text-neutral-50">Delete your account?</h3>
             <p className="text-sm text-neutral-400">
-              This erases your profile, every workout you've logged, your templates, your coins and
-              everything you've bought, and removes you from your friends' lists. It cannot be undone.
+              This erases your profile, every workout you've logged, your templates, your coins and everything you've
+              bought, and removes you from your friends' lists. It cannot be undone.
             </p>
             <label className="text-xs text-neutral-500" htmlFor="delete-confirm">
               Type <span className="font-bold text-neutral-300">DELETE</span> to confirm
@@ -673,7 +892,7 @@ export default function SettingsPanel({
         <LegalDocument
           title="Terms of Service"
           sections={TERMS_OF_SERVICE_SECTIONS}
-          lastUpdated={LAST_UPDATED}
+          lastUpdated={TERMS_LAST_UPDATED}
           onClose={() => setLegalDoc(null)}
         />
       )}

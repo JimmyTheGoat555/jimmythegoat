@@ -79,16 +79,18 @@ export function adUnitIdFor(platform = currentPlatform()) {
 
 // Event names emitted by @capacitor-community/admob.
 //
-// These are the string values of the package's own RewardAdPluginEvents
-// enum. They are duplicated here so this file builds with the plugin NOT
-// installed (which is the state the web app is in). Once you have run the
-// install, the better move is to delete this object and import the enum:
+// VERIFIED against the installed @capacitor-community/admob v8 — all six
+// below match its RewardAdPluginEvents enum exactly (the enum also adds
+// AdImpression, "onRewardedVideoAdImpression", for impression-level
+// revenue, which nothing here listens for).
 //
-//   import { RewardAdPluginEvents } from '@capacitor-community/admob';
-//
-// — then a version bump that renames an event breaks the build instead of
-// silently never firing. Check these against the installed package the
-// first time you run on a device.
+// Still strings rather than `import { RewardAdPluginEvents }`, now that
+// the plugin IS a dependency: importing it pulls the plugin module — and
+// its registerPlugin() call — into the WEB bundle every PWA user
+// downloads, to read six constants that never change between majors. The
+// bridge lookup in useRewardedAd keeps the web build clear of it for the
+// same reason. Re-check this list on a major version bump; a renamed
+// event fails silently, by never firing.
 export const REWARD_AD_EVENTS = {
   loaded: 'onRewardedVideoAdLoaded',
   failedToLoad: 'onRewardedVideoAdFailedToLoad',

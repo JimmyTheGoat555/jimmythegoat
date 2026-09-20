@@ -11,8 +11,10 @@ import { REST_BOOST_OFFER_MIN_SECONDS } from '../../hooks/useRestBoost';
 //
 // So: full-screen, one enormous tabular-nums clock, and touch targets big
 // enough to hit without crouching. The colour does the state-reading work
-// from a distance — neutral while counting, green the moment it's up, red
-// once it has been sitting at zero long enough that Jimmy has opinions.
+// from a distance — white while counting, red the moment it's up. At 0:00
+// the clock does not stop: it turns red and counts UP (+00:01, +00:02…),
+// so a lifter who let a rest run knows by exactly how much. Jimmy's
+// opinions arrive once it has been sitting there long enough (isOverdue).
 //
 // The countdown itself is NOT owned here. hooks/useRestTimer derives it
 // from one absolute `endsAt` timestamp, which is what makes it survive the
@@ -28,12 +30,19 @@ import { REST_BOOST_OFFER_MIN_SECONDS } from '../../hooks/useRestBoost';
 // never cause the missed-alarm problem this redesign exists to fix.
 
 function formatClock(totalSeconds) {
-  const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
-  const s = Math.floor(totalSeconds % 60).toString().padStart(2, '0');
+  const m = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, '0');
+  const s = Math.floor(totalSeconds % 60)
+    .toString()
+    .padStart(2, '0');
   return `${m}:${s}`;
 }
 
 const QUICK_STEP = 15;
+// Tailwind's red-500, as an inline colour because the clock's colour is
+// one style expression across its states.
+const OVERTIME_RED = '#ef4444';
 const TIP_ROTATE_MS = 15000;
 const TIP_FADE_OUT_MS = 280; // must match .tip-exit's duration in index.css
 
@@ -51,7 +60,16 @@ const TIP_FADE_OUT_MS = 280; // must match .tip-exit's duration in index.css
 // at 9px next to uppercase text where that reads as a glitch).
 function TapIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3 w-3"
+      aria-hidden="true"
+    >
       <path d="M12 11V6a2 2 0 0 0-4 0v9" />
       <path d="M8 13.5 6.3 15a2 2 0 0 0-.3 2.5l2.2 3.3a3 3 0 0 0 2.5 1.2h4.4a4 4 0 0 0 4-3.6l.4-4.3a2 2 0 0 0-2-2.1H12" />
     </svg>
@@ -199,12 +217,18 @@ function RestTipCard() {
 //
 // Opt-in and quiet by design: one row under the tip card, in the gold the
 // app already uses for coins, never a modal and never between the lifter
-// and the controls. Three states, and only three:
+// and the controls. Four states, and only four:
 //
 //   * a button, while there is time to take it — at least
-//     REST_BOOST_OFFER_MIN_SECONDS on the clock and nothing armed yet;
-//   * an "armed" chip once a token is waiting, held for the rest of the
-//     countdown so the lifter knows the next exercise pays double;
+//     REST_BOOST_OFFER_MIN_SECONDS on the clock, this exercise not yet
+//     doubled, and nothing armed;
+//   * an "active" notice, held for the whole of every rest the boosted
+//     exercise starts, so the lifter knows the boost is running and that
+//     there is no second ad to take for it. Not a button, deliberately —
+//     the one thing it must not read as is "tap for another";
+//   * an "armed" chip for a token with nowhere to land yet (a leftover
+//     from an earlier session — see ActiveWorkoutLogger), held for the
+//     rest of the countdown;
 //   * nothing, once the window has closed or today's boosts are spent —
 //     an offer that cannot be taken is not greyed out, it is gone.
 //
@@ -216,6 +240,25 @@ function RestTipCard() {
 // extended for them.
 function RestBoostOffer({ offer, secondsLeft, isDone }) {
   if (!offer) return null;
+
+  // Read first, ahead of the clock: this holds for the whole rest, done
+  // and overdue included, because it answers "where did the button go",
+  // and that question does not stop at 1:00.
+  if (offer.active) {
+    return (
+      <div
+        className="w-full max-w-sm rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-2.5 text-center"
+        role="status"
+      >
+        {/* Two lines on a phone; text-balance splits them evenly instead of
+            leaving one word orphaned on the second. */}
+        <p className="text-balance text-sm font-bold uppercase tracking-[0.18em] text-amber-300">
+          🔥 {REST_BOOST_MULTIPLIER}× coins active for this exercise!
+        </p>
+        <p className="mt-0.5 text-xs text-amber-200/70">Every set you log in it pays double. No second ad needed.</p>
+      </div>
+    );
+  }
 
   if (offer.armed) {
     return (
@@ -233,7 +276,10 @@ function RestBoostOffer({ offer, secondsLeft, isDone }) {
 
   if (offer.busy) {
     return (
-      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-center" role="status">
+      <div
+        className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-center"
+        role="status"
+      >
         <p className="text-sm font-semibold text-neutral-300">🎬 Watching ad…</p>
         <p className="mt-0.5 text-xs text-neutral-500">The clock keeps running.</p>
       </div>
@@ -259,7 +305,7 @@ function RestBoostOffer({ offer, secondsLeft, isDone }) {
         className="w-full rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-2.5 text-center transition active:scale-[0.98]"
       >
         <span className="block text-sm font-bold text-amber-300">
-          🎬 Watch an ad · {REST_BOOST_MULTIPLIER}× coins on your next exercise
+          🎬 Watch an ad · {REST_BOOST_MULTIPLIER}× coins for THIS exercise
         </span>
         <span className="mt-0.5 block text-[11px] text-amber-200/60">
           Optional. Offer closes at 1:00 — the clock keeps running.
@@ -275,11 +321,14 @@ export default function FullScreenTimer({
   isDone,
   isOverdue,
   overdueMessage,
+  // Seconds past 0:00 — the number the clock shows once the rest is up.
+  overdueSeconds = 0,
   onAddTime,
   onSkip,
   onMinimize,
-  // { armed, available, busy, error, onWatch } from ActiveWorkoutLogger,
-  // or null on a screen with no offer to make. See RestBoostOffer.
+  // { active, armed, available, busy, error, onWatch } from
+  // ActiveWorkoutLogger, or null on a screen with no offer to make. See
+  // RestBoostOffer.
   boostOffer = null,
 }) {
   // No audio here any more. The alarm — sound, vibration and the
@@ -289,7 +338,7 @@ export default function FullScreenTimer({
   // <audio> element; that element is what took over the phone's media
   // session and paused the lifter's music. See utils/restAlarm.js.
 
-  const accent = isOverdue ? 'var(--danger)' : isDone ? 'var(--success)' : '#ffffff';
+  const accent = isDone ? OVERTIME_RED : '#ffffff';
   const label = isOverdue ? overdueMessage : isDone ? "REST'S OVER" : 'RESTING';
 
   return (
@@ -303,13 +352,16 @@ export default function FullScreenTimer({
       <div
         className="pointer-events-none absolute inset-0 transition-opacity duration-500"
         style={{
-          opacity: isDone ? 0.22 : 0.08,
+          // Lifted from 0.08 while counting: the wash is what makes the
+          // screen read as "resting" before the digits resolve, and at
+          // 8% it was doing that job for nobody.
+          opacity: isDone ? 0.24 : 0.14,
           background: `radial-gradient(circle at 50% 42%, ${accent}, transparent 62%)`,
         }}
       />
 
       <div className="relative flex w-full max-w-md items-center justify-between">
-        <span className="text-sm font-bold uppercase tracking-[0.25em] text-white/45">Rest</span>
+        <span className="text-sm font-bold uppercase tracking-[0.25em] text-white/70">Rest</span>
         <button
           type="button"
           onClick={onMinimize}
@@ -320,9 +372,13 @@ export default function FullScreenTimer({
       </div>
 
       <div className="relative flex flex-col items-center">
+        {/* The state, in the state's own colour and at a size that is
+            readable at the same distance the clock is. It used to be
+            16px grey-ish text over a screen whose whole point is being
+            legible across a gym. */}
         <p
-          className="mb-1 max-w-xs text-balance text-center text-base font-extrabold uppercase tracking-[0.2em]"
-          style={{ color: accent }}
+          className="mb-1.5 max-w-xs text-balance text-center text-lg font-black uppercase tracking-[0.22em]"
+          style={{ color: accent, textShadow: `0 0 24px ${accent}55` }}
         >
           {label}
         </p>
@@ -333,15 +389,18 @@ export default function FullScreenTimer({
             29vw leaves a margin at 320px and still fills the screen, and
             the rem cap keeps it sane on a tablet. tabular-nums so the
             digits don't jitter as they count down. */}
+        {/* Overtime adds a leading "+", a sixth glyph, so it steps down to
+            24vw: 3.4F wide at 24vw is 82% of the screen, where 29vw would
+            clip. */}
         <p
-          className="font-extrabold leading-none tabular-nums"
+          className={`leading-none tabular-nums ${isDone ? 'font-black' : 'font-extrabold'}`}
           style={{
             color: accent,
-            fontSize: 'clamp(4rem, 29vw, 11rem)',
+            fontSize: isDone ? 'clamp(3.4rem, 24vw, 9rem)' : 'clamp(4rem, 29vw, 11rem)',
             textShadow: `0 0 46px ${accent}55`,
           }}
         >
-          {formatClock(secondsLeft)}
+          {isDone ? `+${formatClock(overdueSeconds)}` : formatClock(secondsLeft)}
         </p>
       </div>
 

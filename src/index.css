@@ -1,5 +1,80 @@
 @import 'tailwindcss';
 
+/* ── THE BRAND PALETTE ───────────────────────────────────────────────────
+   One place every brand colour in the app is defined. Tailwind v4 emits
+   each @theme token both as a utility (bg-jimmy-500, text-gold-400,
+   border-jimmy-700) and as a plain custom property on :root, so the same
+   name works in a className, in an inline style, and in a raw SVG
+   stroke/fill attribute. That dual life is the point: this codebase paints
+   in all three, and a palette only half of them can reach is a palette
+   people route around with a literal hex.
+
+   TWO families, deliberately:
+
+     jimmy — the deep blue-violet the product already lives in. The splash
+             ground (#221a5c), the ambient backdrop (#120a2e, #06021c) and
+             the arcade grid were all already drawn from this family by
+             eye; naming it makes the relationship explicit and stops the
+             next screen inventing a fourth near-identical purple.
+
+     gold  — the premium accent, and the payoff colour. Used sparingly:
+             coins, the max evolution tier, and nothing else. A reward
+             colour that shows up on ordinary chrome stops reading as a
+             reward, which is exactly what happened to the orange this
+             replaces (see tierTheme.js).
+
+   Scales run light→dark on jimmy so the dark UI mostly lives in 800–950
+   and the light end is available for text on a coloured ground.
+
+   NOT in here on purpose: the canvas artwork (utils/workoutSticker.js,
+   utils/workoutSummaryScene.js) and the SilverChest illustration. Those
+   are drawings, not chrome — their greys and metal gradients are picked
+   per-shape to make an object look like an object, and a canvas cannot
+   read a CSS variable anyway (utils/tierTheme.js's tierColorsAt exists
+   precisely to bridge that gap for the few values that must match). */
+@theme {
+  /* Primary — Jimmy violet. */
+  --color-jimmy-50: #f3f1ff;
+  --color-jimmy-100: #e7e2ff;
+  --color-jimmy-200: #cec6ff;
+  --color-jimmy-300: #ab9cff;
+  --color-jimmy-400: #8b78ff;
+  --color-jimmy-500: #6d4dff;
+  --color-jimmy-600: #5a32f0;
+  --color-jimmy-700: #4a23c8;
+  --color-jimmy-800: #341a92;
+  --color-jimmy-900: #221a5c;
+  --color-jimmy-950: #120a2e;
+  /* Below 950: the page ground itself. Two steps, because the ambient
+     backdrop needs a floor darker than the panels that sit on it. */
+  --color-jimmy-ink: #06021c;
+  --color-jimmy-void: #03010f;
+
+  /* Accent — premium gold. */
+  --color-gold-100: #fff6d0;
+  --color-gold-200: #fff3c4;
+  --color-gold-300: #ffd76a;
+  --color-gold-400: #f7cf5e;
+  --color-gold-500: #d4af37;
+  --color-gold-600: #b8912a;
+  --color-gold-700: #8a6b1c;
+
+  /* Neutral chrome. `muted` is the inactive-icon / axis-label grey that
+     used to be Apple's system grey, copied as a literal into BottomNav,
+     TopHud and both ProgressView charts. Same weight, nudged
+     a few degrees toward the violet so it sits ON the brand ground
+     instead of on top of it. */
+  --color-chrome-muted: #8b8a99;
+  --color-chrome-line: #ffffff1a;
+
+  /* Semantic. Unchanged values — these already read correctly and are
+     referenced app-wide as --success / --danger (aliased in :root
+     below); they live here so the palette is complete in one place. */
+  --color-state-success: #39ff14;
+  --color-state-danger: #ff1744;
+  --color-state-warning: #f2c14e;
+}
+
 :root {
   /* Legacy name, new palette: repointed to the "Fortnite/Arcade" neon set
      so every screen/component still referencing var(--ember) for a small
@@ -27,22 +102,44 @@
      them exactly one home indicator too low. */
   --nav-total: calc(var(--nav-h) + var(--safe-b));
 
-  --ember: #ff8c1a;
-  --success: #39ff14;
-  --danger: #ff1744;
+  /* What TopHud occupies: the status-bar inset, 1rem of breathing room and
+     its 2.5rem control row (TopHud.jsx pins its min-height to this so the
+     two cannot drift). A tab page that wants to fill the rest of the
+     screen — the lobby's min-height in WorkoutHome.jsx — subtracts this
+     from the viewport rather than guessing; it used to subtract 1.5rem
+     from 100vh, overshoot the screen by 2rem plus the notch, and park its
+     Start Workout button in that overshoot, under the tab row. */
+  --hud-h: calc(var(--safe-t) + 3.5rem);
+
+  /* What the minimised-workout bar (FloatingWorkoutBar.jsx) adds on top of
+     the tab row while a session is parked: 0 normally, its stack height
+     while it shows — App.jsx's Layout flips it on the page container, so
+     .pb-nav and the lobby's floating button below both clear it without
+     either knowing the bar exists. */
+  --float-bar-h: 0px;
+  --float-bar-stack: 4.5rem;
+
+  /* Short semantic aliases, pointed at the palette above rather than
+     holding their own literals. --ember keeps its legacy name (it is
+     referenced across a lot of files for small accents) but is now simply
+     the brand accent, so those references pick up the gold identity for
+     free instead of dragging the retired orange along behind them. */
+  --ember: var(--color-gold-500);
+  --success: var(--color-state-success);
+  --danger: var(--color-state-danger);
 
   /* The app-wide "Evolution" theme: any screen showing a user's own
      progress sets these to that user's current tier (see utils/tierTheme.js
-     + App.jsx), so buttons/borders/active-tab color match how far they've
-     evolved — drawn from the neon rarity-style palette (energetic orange →
-     electric cyan → neon purple → mythic magenta). Defaults here are the
-     "goat" tier's orange — the new floor tier since "kid" was removed —
-     for screens rendered before a user's tier is known (e.g. AuthScreen,
-     pre-login). */
-  --tier-from: #ff8c1a;
-  --tier-to: #ff5e00;
-  --tier-accent: #ff8c1a;
-  --tier-glow: rgba(255, 140, 26, 0.55);
+     + App.jsx), so buttons/borders/active-tab colour match how far they've
+     evolved. Defaults here are the FLOOR tier's cyan, for screens rendered
+     before a user's tier is known (AuthScreen, pre-login). Kept in sync by
+     hand with TIER_THEME's `goat` entry in utils/tierTheme.js — the two
+     cannot import from each other, and a default that disagrees with the
+     floor tier shows up as a colour flash on first paint. */
+  --tier-from: #00e5ff;
+  --tier-to: #00b8d4;
+  --tier-accent: #00e5ff;
+  --tier-glow: rgba(0, 229, 255, 0.55);
 
   /* Heavy, condensed, all-caps display font for headers/callouts/primary
      buttons — Anton has one weight and no italic face on purpose; the
@@ -60,7 +157,7 @@ html {
 body {
   margin: 0;
   font-family: -apple-system, 'SF Pro Text', system-ui, 'Segoe UI', Roboto, sans-serif;
-  background: #06021c;
+  background: var(--color-jimmy-ink);
 }
 
 /* `manipulation` = everything except double-tap-to-zoom. That keeps the
@@ -86,35 +183,7 @@ body {
    to land. 1.75rem of slack on top of the row keeps the visible gap
    identical to what pb-24 gave on a phone with no home indicator. */
 .pb-nav {
-  padding-bottom: calc(var(--nav-total) + 1.75rem);
-}
-
-/* Portrait-only guard for a plain (non-installed) browser tab — see the
-   comment on #rotate-overlay in index.html for why this can't just be a
-   JS orientation lock. Hidden by default; only takes over on phone-width
-   landscape so a desktop window someone widens is never affected. */
-#rotate-overlay {
-  display: none;
-}
-@media (orientation: landscape) and (max-width: 900px) {
-  #rotate-overlay {
-    display: flex;
-    position: fixed;
-    inset: 0;
-    z-index: 999;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    background: #06021c;
-    color: #fff;
-    text-align: center;
-    padding: 2rem;
-  }
-  #rotate-overlay p:first-child {
-    font-size: 3.5rem;
-    transform: rotate(90deg);
-  }
+  padding-bottom: calc(var(--nav-total) + var(--float-bar-h) + 1.75rem);
 }
 
 /* Number inputs without native spinners across the whole app */
@@ -143,6 +212,21 @@ h2 {
     4px 4px 0 rgba(0, 0, 0, 0.35);
 }
 
+/* …except in a document meant to be READ. The public policy and support
+   pages (components/legal/PublicInfoPage.jsx) are the URLs App Store
+   Connect is given, and eight shouting italic drop-shadowed section
+   headings over a page of legal copy is both hard to scan and the wrong
+   register for it. The brand still carries the page — the logo, the
+   wordmark in the masthead, the palette — while the document itself is
+   set like a document. */
+.doc-prose h1,
+.doc-prose h2 {
+  font-family: inherit;
+  text-transform: none;
+  font-style: normal;
+  text-shadow: none;
+}
+
 /* A fixed, full-viewport arcade backdrop (guideline 5): a deep navy/purple
    base, a Tron-style cyan grid, scattered particle dots, and a diagonal
    speed-line sweep — layered as separate background-images on one fixed
@@ -157,7 +241,7 @@ h2 {
   inset: 0;
   z-index: -2;
   pointer-events: none;
-  background-color: #06021c;
+  background-color: var(--color-jimmy-ink);
   background-image:
     radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.28) 1px, transparent 1.6px),
     repeating-linear-gradient(
@@ -224,6 +308,158 @@ h2 {
   z-index: -1;
   pointer-events: none;
   background: linear-gradient(to bottom, rgba(4, 1, 14, 0.5), rgba(4, 1, 14, 0.28) 45%, rgba(4, 1, 14, 0.6));
+}
+
+/* ── MAX TIER: the gold room ─────────────────────────────────────────────
+
+   The one visual reward reserved for the top of the ladder. App.jsx puts
+   `tier-max` on the page root when the current tier carries
+   `animated: true` (only `legend` does — see utils/tierTheme.js), and the
+   permanent arcade backdrop becomes a slow-drifting gold field: the same
+   grid and particles, re-tinted, over three gold stops that travel across
+   the element on both axes.
+
+   Written as an override of .ambient-bg rather than a separate element so
+   there is still exactly ONE fixed backdrop layer in the tree. Adding a
+   second fixed, animated layer is what caused the compositing bug the
+   .ambient-bg comment above describes, and this is the same trap.
+
+   The drift is 18s and the travel is small. A background that visibly
+   moves behind every screen you use for the rest of the account's life
+   stops being premium and starts being a distraction within a day — the
+   goal is that it reads as "this surface is alive" in peripheral vision,
+   not as an animation playing. */
+.tier-max .ambient-bg {
+  background-color: #1a1205;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255, 246, 208, 0.3) 1px, transparent 1.6px),
+    repeating-linear-gradient(
+      90deg,
+      rgba(247, 207, 94, 0.16) 0px,
+      rgba(247, 207, 94, 0.16) 1px,
+      transparent 1px,
+      transparent 56px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(247, 207, 94, 0.16) 0px,
+      rgba(247, 207, 94, 0.16) 1px,
+      transparent 1px,
+      transparent 56px
+    ),
+    repeating-linear-gradient(
+      115deg,
+      rgba(255, 246, 208, 0.07) 0px,
+      rgba(255, 246, 208, 0.07) 3px,
+      transparent 3px,
+      transparent 160px
+    ),
+    radial-gradient(ellipse at 18% 12%, rgba(255, 215, 106, 0.34), transparent 55%),
+    radial-gradient(ellipse at 85% 90%, rgba(212, 175, 55, 0.3), transparent 55%),
+    linear-gradient(135deg, #2a1b06 0%, #5c4212 45%, #8a6b1c 100%);
+  background-size:
+    28px 28px,
+    56px 56px,
+    56px 56px,
+    auto,
+    auto,
+    auto,
+    220% 220%;
+  /* ONE animation, not two. background-position is a single shorthand
+     covering every layer, so stacking `arcade-grid-drift` and a separate
+     gradient drift here would not compose — the later one would win the
+     property outright and silently kill the grid movement. This keyframe
+     set therefore does both jobs at once: the two grid layers step 56px
+     (one full cell, so it loops seamlessly) while the gold field travels
+     across and back. */
+  animation: gold-room-drift 22s ease-in-out infinite;
+}
+
+@keyframes gold-room-drift {
+  0% {
+    background-position:
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0% 50%;
+  }
+  50% {
+    background-position:
+      0 0,
+      28px 0,
+      0 28px,
+      0 0,
+      0 0,
+      0 0,
+      100% 50%;
+  }
+  100% {
+    background-position:
+      0 0,
+      56px 0,
+      0 56px,
+      0 0,
+      0 0,
+      0 0,
+      0% 50%;
+  }
+}
+
+/* The premium drift on its own, for a single-layer element that wants the
+   same treatment: give it a gradient background and add
+   `animate-gradient-xy`. Deliberately NOT what .tier-max uses — that has
+   seven background layers and needs the combined keyframes above. */
+@keyframes gradient-xy {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient-xy {
+  background-size: 220% 220%;
+  animation: gradient-xy 18s ease-in-out infinite;
+}
+
+/* Nobody who has asked the OS to stop animations wants a drifting
+   backdrop. The gold stays; only the motion goes. */
+@media (prefers-reduced-motion: reduce) {
+  .tier-max .ambient-bg,
+  .animate-gradient-xy {
+    animation: none;
+  }
+}
+
+/* The transient message pill (components/shared/Toast.jsx). Rises from
+   behind the tab row and settles — short, and eased out so it arrives
+   rather than bounces. Nothing animates on the way out: the pill is
+   removed on dismiss, and an exit animation would mean keeping a
+   dismissed message mounted for the length of it. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast-in {
+  animation: toast-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-in {
+    animation: none;
+  }
 }
 
 /* Arcade card aesthetic (guideline 2): angled cut corners via clip-path
@@ -295,27 +531,40 @@ button.card:hover {
   box-shadow: 0 6px 0 rgba(0, 0, 0, 0.55);
 }
 
-/* The "lobby pedestal" Jimmy stands on (guideline 3) — a flattened glowing
-   ellipse with a neon ring, breathing gently. Purely decorative, sits
-   behind the mascot sprite. */
-.pedestal {
-  border-radius: 50%;
-  border: 3px solid var(--tier-accent);
-  background: radial-gradient(ellipse at center, var(--tier-glow), transparent 72%);
-  filter: drop-shadow(0 0 22px var(--tier-glow));
-  animation: pedestal-pulse 2.6s ease-in-out infinite;
+/* The lobby's floating Start Workout pill (WorkoutHome.jsx). The same
+   tier-tuned fill and arcade face as .btn-arcade, minus the slanted clip
+   and the hard 6px drop: this one hovers above the tab row on a soft
+   shadow cast in its own tier glow, so it reads as a raised control, not
+   a block welded to the bottom edge. The text shadow is what keeps white
+   type legible on the paler tiers (Buff Goat's cyan). Radius, size and
+   the sticky offset are the component's — this is only the look. */
+.btn-launch {
+  font-family: var(--font-arcade);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fff;
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.45),
+    0 0 18px rgba(0, 0, 0, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0) 52%);
+  background-color: color-mix(in srgb, var(--tier-from) 55%, var(--tier-to) 45%);
+  box-shadow:
+    0 16px 36px -10px var(--tier-glow),
+    0 10px 24px -12px rgba(0, 0, 0, 0.75);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
 }
-
-@keyframes pedestal-pulse {
-  0%,
-  100% {
-    opacity: 0.65;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.05);
-  }
+.btn-launch:active {
+  transform: scale(0.97);
+  box-shadow:
+    0 8px 20px -10px var(--tier-glow),
+    0 4px 12px -8px rgba(0, 0, 0, 0.75);
+}
+.btn-launch:disabled {
+  filter: grayscale(0.6) brightness(0.7);
+  box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.75);
 }
 
 /* Swiping (or tapping) between bottom-nav tabs — see hooks/useTabSwipe.js
@@ -350,6 +599,20 @@ button.card:hover {
 }
 .tab-enter-backward {
   animation: tab-slide-in-backward 0.22s ease-out;
+}
+
+/* The bottom sheet's motion (components/shared/BottomSheet.jsx): one
+   curve for the slide and the dim so they read as a single movement.
+   The duration is mirrored by MOTION_MS there. */
+.sheet-motion {
+  transition:
+    transform 0.32s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.32s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet-motion {
+    transition-duration: 0.01s;
+  }
 }
 
 /* Crossfade used when Jimmy's evolution sprite advances a tier. */
@@ -416,10 +679,18 @@ button.card:hover {
    brief asked for framer-motion, which has never been a dependency here,
    and a 260ms two-keyframe animation is not worth ~40KB of runtime. */
 @keyframes cheer-pop {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.35); }
-  70% { transform: scale(0.92); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.35);
+  }
+  70% {
+    transform: scale(0.92);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .cheer-pop {
@@ -429,17 +700,31 @@ button.card:hover {
 /* Anyone who has asked the OS for less motion gets the colour change and
    the count, and no bouncing. */
 @media (prefers-reduced-motion: reduce) {
-  .cheer-pop { animation: none; }
+  .cheer-pop {
+    animation: none;
+  }
 }
 
 /* The double-tap burst: a big heart over the item that swells and fades.
    Starts under 1 and overshoots, so it reads as landing rather than being
    pasted on. */
 @keyframes cheer-burst {
-  0% { opacity: 0; transform: scale(0.4); }
-  35% { opacity: 1; transform: scale(1.25); }
-  60% { opacity: 1; transform: scale(1.05); }
-  100% { opacity: 0; transform: scale(1.5); }
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
 }
 
 .cheer-burst {
@@ -447,7 +732,10 @@ button.card:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cheer-burst { animation: none; opacity: 0; }
+  .cheer-burst {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 @keyframes screen-shake {
@@ -494,6 +782,25 @@ button.card:hover {
   }
 }
 
+/* A horizontal row of pills that scrolls but shows no bar — the muscle
+   group strip, the sticker theme row. */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* A scroll window whose foot fades out — the leaderboard's list
+   (Leaderboard.tsx). With the bar hidden, the fade is what says "there is
+   more below"; the window's own bottom padding is what fades, so the last
+   row is still whole once scrolled to the end. */
+.fade-bottom {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
 /* ---- WheelPicker (src/components/shared/WheelPicker.jsx) ---- */
 /* iOS-style scroll wheel: CSS scroll-snap does the momentum + snapping so
    the component only has to read back the settled value. Scrollbar hidden;
@@ -516,13 +823,7 @@ button.card:hover {
      fights the native touch/snap. The component asks for smooth
      explicitly via scrollTo({behavior:'smooth'}) only for the +/- and
      arrow-key steps. */
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    #000 24%,
-    #000 76%,
-    transparent 100%
-  );
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 24%, #000 76%, transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0%, #000 24%, #000 76%, transparent 100%);
 }
 .wheel-scroll::-webkit-scrollbar {
@@ -774,200 +1075,6 @@ button.card:hover {
   }
 }
 
-/* ---- Streak fire (components/evolution/JimmyAvatar.jsx) ---- */
-/* An aura for a live workout streak. Drawn as a pseudo-element behind the
-   goat rather than a box-shadow on him, and that is the whole performance
-   story: an animated `box-shadow` re-rasterises the element's paint on
-   every frame, whereas `opacity` and `transform` on a separate layer are
-   handled by the compositor and never touch paint. `will-change` promotes
-   it once instead of letting the browser guess per frame.
-
-   Two offset copies of the same keyframe at different durations (2.4s and
-   1.7s, deliberately not multiples of each other) so the two never re-sync
-   into a single visible pulse — the loop reads as flicker rather than a
-   heartbeat. Radial gradients, no blur filter: `filter: blur()` on a
-   repainting element is the other classic way to make this janky on a
-   mid-range phone. */
-.streak-fire {
-  position: relative;
-  isolation: isolate;
-}
-.streak-fire::before,
-.streak-fire::after {
-  content: '';
-  position: absolute;
-  inset: -18%;
-  z-index: -1;
-  border-radius: 50%;
-  pointer-events: none;
-  will-change: opacity, transform;
-}
-/* Colours come from the tier skins below; everything structural —
-   position, layering, the keyframes — is shared, so a tier is only ever
-   two gradients and two durations. */
-.streak-fire::before {
-  background: var(--aura-outer);
-  animation: streak-fire var(--aura-slow, 2.4s) ease-in-out infinite;
-}
-.streak-fire::after {
-  background: var(--aura-inner);
-  animation: streak-fire var(--aura-fast, 1.7s) ease-in-out infinite reverse;
-}
-
-/* ---- Tier 1 · Warm Fire (2-4) ---- */
-/* The original flame, and deliberately the quietest of the three: at two
-   workouts this is an encouragement, not a trophy, and it has to survive
-   being the most common state in a scrolling feed. */
-.streak-fire--t1 {
-  --aura-outer: radial-gradient(
-    circle at 50% 62%,
-    rgba(255, 148, 32, 0.55) 0%,
-    rgba(255, 78, 20, 0.32) 42%,
-    rgba(255, 40, 0, 0) 72%
-  );
-  --aura-inner: radial-gradient(
-    circle at 50% 70%,
-    rgba(255, 226, 130, 0.5) 0%,
-    rgba(255, 136, 24, 0.22) 38%,
-    rgba(255, 96, 0, 0) 66%
-  );
-}
-
-/* ---- Tier 2 · Hot Flame (5-9) ---- */
-/* Hotter hue, wider reach, quicker breath. The durations drop rather than
-   the opacity climbing to the ceiling, because *rate* is what reads as
-   intensity at avatar size — a brighter static glow just looks bigger. */
-.streak-fire--t2 {
-  --aura-slow: 1.9s;
-  --aura-fast: 1.35s;
-  --aura-outer: radial-gradient(
-    circle at 50% 60%,
-    rgba(255, 60, 120, 0.6) 0%,
-    rgba(232, 20, 60, 0.38) 40%,
-    rgba(190, 0, 60, 0) 74%
-  );
-  --aura-inner: radial-gradient(
-    circle at 50% 70%,
-    rgba(255, 190, 120, 0.55) 0%,
-    rgba(255, 60, 90, 0.28) 36%,
-    rgba(220, 0, 80, 0) 68%
-  );
-}
-.streak-fire--t2::before,
-.streak-fire--t2::after {
-  inset: -24%;
-}
-
-/* ---- Tier 3 · Legendary (10+) ---- */
-/* Gold with a blue-flame core, plus a third layer: a conic sweep that
-   rotates slowly behind the other two. `transform: rotate()` on an already
-   promoted layer is a compositor transform — it never repaints — which is
-   why the rotation is a whole extra element rather than an animated
-   `background-position` or a gradient angle, both of which repaint every
-   frame and would be felt immediately on a feed full of these. */
-.streak-fire--t3 {
-  --aura-slow: 2.6s;
-  --aura-fast: 1.55s;
-  --aura-outer: radial-gradient(
-    circle at 50% 60%,
-    rgba(255, 214, 80, 0.62) 0%,
-    rgba(255, 158, 20, 0.4) 40%,
-    rgba(255, 120, 0, 0) 74%
-  );
-  --aura-inner: radial-gradient(
-    circle at 50% 74%,
-    rgba(190, 240, 255, 0.6) 0%,
-    rgba(90, 175, 255, 0.34) 30%,
-    rgba(40, 110, 255, 0) 60%
-  );
-}
-.streak-fire--t3::before,
-.streak-fire--t3::after {
-  inset: -28%;
-}
-/* The rotating halo. A real element, not a pseudo — ::before and ::after
-   are both already spoken for, and this needs its own transform to spin
-   on while the other two are busy scaling. */
-.streak-halo {
-  position: absolute;
-  /* Sized off HEIGHT with aspect-ratio 1, not `inset`, so it is a true
-     circle on both shapes this draws on: a tall full-body goat and a
-     square head crop. `inset` made it an ellipse on the tall one, and a
-     conic gradient inside an ellipse reads as a diagonal smear rather
-     than a halo — which is exactly how the first version looked. */
-  left: 50%;
-  top: 50%;
-  height: 118%;
-  aspect-ratio: 1;
-  z-index: -2;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0.85;
-  will-change: transform;
-  background: conic-gradient(
-    from 0deg,
-    rgba(255, 205, 60, 0) 0deg,
-    rgba(255, 205, 60, 0.95) 55deg,
-    rgba(255, 240, 170, 0.8) 95deg,
-    rgba(110, 200, 255, 0.85) 165deg,
-    rgba(255, 205, 60, 0) 235deg,
-    rgba(255, 170, 30, 0.75) 305deg,
-    rgba(255, 205, 60, 0) 360deg
-  );
-  animation: streak-halo 6s linear infinite;
-  /* Fades to nothing at the rim so the conic reads as a halo rather than
-     a hard-edged disc behind a round avatar. */
-  -webkit-mask-image: radial-gradient(circle, transparent 46%, #000 62%, #000 74%, transparent 84%);
-  mask-image: radial-gradient(circle, transparent 46%, #000 62%, #000 74%, transparent 84%);
-}
-
-/* The centring translate has to live inside the keyframes: `transform` is
-   one property, so animating rotate() alone would drop the translate and
-   fling the halo off-centre on the first frame. */
-@keyframes streak-halo {
-  from {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-  to {
-    transform: translate(-50%, -50%) rotate(360deg);
-  }
-}
-
-@keyframes streak-fire {
-  0%,
-  100% {
-    opacity: 0.55;
-    transform: scale(0.94) translate3d(0, 2%, 0);
-  }
-  35% {
-    opacity: 0.95;
-    transform: scale(1.06) translate3d(0, -1%, 0);
-  }
-  62% {
-    opacity: 0.72;
-    transform: scale(1) translate3d(0, 1%, 0);
-  }
-}
-
-/* Reduced motion keeps the glow — it carries the meaning — and drops only
-   the movement. Removing it entirely would hide the streak from the people
-   who asked for less animation, not less information. */
-@media (prefers-reduced-motion: reduce) {
-  .streak-fire::before,
-  .streak-fire::after {
-    animation: none;
-    opacity: 0.7;
-    transform: none;
-  }
-  /* The halo keeps its colour and loses its spin — a legendary streak
-     should still look legendary to someone who asked for less motion. */
-  .streak-halo {
-    animation: none;
-    /* Without the animation nothing applies the centring transform. */
-    transform: translate(-50%, -50%);
-  }
-}
-
 /* ---- Badge celebration (components/workout/BadgeCelebrationModal.jsx) ---- */
 /* One trophy at full screen, so it can be loud where the shelf's
    badge-glow has to stay quiet across thirteen tiles.
@@ -1007,5 +1114,106 @@ button.card:hover {
   .badge-celebrate {
     animation: none;
     filter: drop-shadow(0 0 16px rgba(247, 207, 94, 0.7));
+  }
+}
+
+/* ── App entrance ─────────────────────────────────────────────────────
+   Pairs with index.html's launch screen (src/lib/splash.js): the splash
+   fades out while the app fades in underneath it, on the same frame, so
+   there is never a bare-ground frame between the two. Opacity only — a
+   transform here would make #root the containing block for every fixed
+   layer inside it (the ambient background, the tab bar) for the length
+   of the animation. */
+@keyframes app-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+html.app-ready #root {
+  animation: app-enter 0.5s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.app-ready #root {
+    animation: none;
+  }
+}
+
+/* ── Portrait gate (src/components/shared/RotateGate.jsx) ─────────────
+   Shown only when a PHONE is held sideways — the component decides, by
+   asking screen.orientation rather than a media query, and the reason
+   that distinction matters is written out there. Plain CSS rather than
+   utilities because this layer has to paint correctly even on the frame
+   it mounts, above every modal in the app (those top out at z-50) and
+   above the launch screen's 9999. */
+.rotate-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 1.5rem calc(1.5rem + env(safe-area-inset-right)) 1.5rem calc(1.5rem + env(safe-area-inset-left));
+  text-align: center;
+  background: var(--color-jimmy-ink);
+  background-image: radial-gradient(circle at 50% 38%, rgba(109, 77, 255, 0.28), transparent 62%);
+  color: #fafafa;
+  overscroll-behavior: contain;
+}
+.rotate-gate-mark {
+  width: 64px;
+  height: 64px;
+  border-radius: 26%;
+  object-fit: cover;
+  background: var(--color-jimmy-900);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 14px 34px -14px rgba(70, 48, 180, 0.8);
+}
+.rotate-gate-icon {
+  color: var(--ember);
+  animation: rotate-hint 2.4s ease-in-out infinite;
+  transform-origin: 50% 50%;
+}
+.rotate-gate-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  max-width: 22rem;
+}
+.rotate-gate-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.rotate-gate-text {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: rgba(250, 250, 250, 0.62);
+}
+/* Sits still for most of the cycle, then turns — a loop that spins
+   continuously reads as a loading spinner, which is the one thing this
+   must not be mistaken for. */
+@keyframes rotate-hint {
+  0%,
+  22% {
+    transform: rotate(-90deg);
+  }
+  48%,
+  78% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(-90deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rotate-gate-icon {
+    animation: none;
+    transform: rotate(0deg);
   }
 }

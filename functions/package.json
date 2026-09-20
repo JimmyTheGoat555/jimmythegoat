@@ -1,14 +1,14 @@
 {
   "name": "functions",
   "private": true,
-  "description": "Cloud Functions for Jimmy the Goat — push notifications only (weekly weigh-in reminders + turning any notification doc into a real push).",
+  "description": "Cloud Functions for Jimmy the Goat \u2014 the coin economy, social writes, pushes and the Founder Console (see index.js).",
   "main": "index.js",
   "engines": {
     "node": "22"
   },
   "dependencies": {
-    "firebase-admin": "^14.3.0",
-    "firebase-functions": "^7.3.2"
+    "firebase-admin": "^14.4.0",
+    "firebase-functions": "^7.4.0"
   },
   "scripts": {
     "deploy": "firebase deploy --only functions"

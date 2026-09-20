@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useLocalStorage } from './useLocalStorage';
 import { useWakeLock } from './useWakeLock';
 import { isBodyweightExercise } from '../data/exercises';
+import { applySetPatch } from '../utils/setCascade';
 
 // Finished workout history — the source of truth for Dashboard/Progress.
 export function useWorkoutHistory() {
@@ -25,9 +26,7 @@ export function useWorkoutHistory() {
   // after the user tweaks weights/reps or removes a set/exercise.
   const updateWorkout = useCallback(
     (id, updater) => {
-      setWorkouts((prev) =>
-        prev.map((w) => (w.id === id ? { ...w, ...updater(w) } : w)),
-      );
+      setWorkouts((prev) => prev.map((w) => (w.id === id ? { ...w, ...updater(w) } : w)));
     },
     [setWorkouts],
   );
@@ -57,7 +56,10 @@ function emptySets() {
   }));
 }
 
-function emptyWorkout(presetExercises, { assignedWorkoutId = null, templateId = null } = {}) {
+function emptyWorkout(
+  presetExercises,
+  { assignedWorkoutId = null, templateId = null, programId = null, programTitle = null } = {},
+) {
   return {
     id: crypto.randomUUID(),
     startedAt: new Date().toISOString(),
@@ -84,6 +86,13 @@ function emptyWorkout(presetExercises, { assignedWorkoutId = null, templateId = 
     // the sender up from this id rather than being told who to pay. See
     // functions/acceptRecommendation.js.
     templateId: templateId ?? null,
+    // One of Jimmy's Workouts (data/jimmyWorkouts.js): "jimmy:<split>:<session>"
+    // and the session's name. Client-side only — never in the logWorkout
+    // payload (hooks/useEconomy.js names its fields) — and deliberately
+    // NOT a templateId: that would tell the finish flow this is already
+    // the lifter's own routine, and the point is to offer to make it one.
+    programId: programId ?? null,
+    programTitle: programTitle ?? null,
     // Gym locker, asked once at the top of the session and handed back at
     // the end ("don't forget your stuff"). Lives on the workout rather than
     // on the account because it is true for exactly this session — the
@@ -224,9 +233,7 @@ export function useActiveWorkout(uid) {
         for (const e of kept) if (e.supersetId) counts.set(e.supersetId, (counts.get(e.supersetId) ?? 0) + 1);
         return {
           ...prev,
-          exercises: kept.map((e) =>
-            e.supersetId && counts.get(e.supersetId) === 1 ? { ...e, supersetId: null } : e,
-          ),
+          exercises: kept.map((e) => (e.supersetId && counts.get(e.supersetId) === 1 ? { ...e, supersetId: null } : e)),
         };
       });
     },
@@ -248,9 +255,7 @@ export function useActiveWorkout(uid) {
         const groupId = a.supersetId ?? b.supersetId ?? crypto.randomUUID();
         return {
           ...prev,
-          exercises: prev.exercises.map((e, idx) =>
-            idx === i || idx === i + 1 ? { ...e, supersetId: groupId } : e,
-          ),
+          exercises: prev.exercises.map((e, idx) => (idx === i || idx === i + 1 ? { ...e, supersetId: groupId } : e)),
         };
       });
     },
@@ -270,14 +275,25 @@ export function useActiveWorkout(uid) {
         if (!groupId) return prev;
         return {
           ...prev,
-          exercises: prev.exercises.map((e) =>
-            e.supersetId === groupId ? { ...e, supersetId: null } : e,
-          ),
+          exercises: prev.exercises.map((e) => (e.supersetId === groupId ? { ...e, supersetId: null } : e)),
         };
       });
     },
     [setActiveWorkout],
   );
+
+  // A new set starts as a copy of the one above it — the same straight-set
+  // assumption the cascade makes (utils/setCascade.js), so the load
+  // travels with its entry context (bar, plates, per-dumbbell weight) and
+  // the set re-opens showing what was typed, not a total to back-solve.
+  // Never `completed` or `isDropSet`: those are about the set above.
+  const newSetAfter = (last) => {
+    const set = { id: crypto.randomUUID(), weight: last?.weight ?? '', reps: last?.reps ?? '', completed: false };
+    for (const field of ['addedWeight', 'barWeight', 'weightPerSide', 'perHandWeight', 'isPerHand']) {
+      if (last && field in last) set[field] = last[field];
+    }
+    return set;
+  };
 
   const addSet = useCallback(
     (exerciseId) => {
@@ -287,15 +303,7 @@ export function useActiveWorkout(uid) {
           e.exerciseId === exerciseId
             ? {
                 ...e,
-                sets: [
-                  ...e.sets,
-                  {
-                    id: crypto.randomUUID(),
-                    weight: e.sets.at(-1)?.weight ?? '',
-                    reps: e.sets.at(-1)?.reps ?? '',
-                    completed: false,
-                  },
-                ],
+                sets: [...e.sets, newSetAfter(e.sets.at(-1))],
               }
             : e,
         ),
@@ -304,17 +312,18 @@ export function useActiveWorkout(uid) {
     [setActiveWorkout],
   );
 
+  // One set's patch, and — for its load and reps — the same values carried
+  // down to every later set in the exercise that is still open: not
+  // completed, not a drop set. See utils/setCascade.js for the rules; this
+  // is the one place they run, so the sheet, the chips and the summary all
+  // read the same numbers. One functional update for the whole cascade,
+  // so a fast run of wheel ticks costs one render each, not one per set.
   const updateSet = useCallback(
     (exerciseId, setId, patch) => {
       setActiveWorkout((prev) => ({
         ...prev,
         exercises: prev.exercises.map((e) =>
-          e.exerciseId === exerciseId
-            ? {
-                ...e,
-                sets: e.sets.map((s) => (s.id === setId ? { ...s, ...patch } : s)),
-              }
-            : e,
+          e.exerciseId === exerciseId ? { ...e, sets: applySetPatch(e.sets, setId, patch) } : e,
         ),
       }));
     },

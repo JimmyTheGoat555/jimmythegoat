@@ -30,13 +30,16 @@ import {
 //
 //   globalThis.Capacitor.Plugins.AdMob
 //
-// which is how a Capacitor app exposes every registered plugin at runtime.
-// That keeps @capacitor-community/admob out of the WEB build's dependency
-// graph entirely — the current deploy needs no new npm package and cannot
-// break on one being absent. Once you have wrapped the app and installed
-// the plugin, swapping this for a normal import is a two-line change and
-// buys you types; until then, an import of a package that is not there is
-// a build failure on every Vercel deploy.
+// which is how a Capacitor app exposes every registered plugin at runtime:
+// the native bridge injects it, so no import is needed for it to be there
+// inside the shell, and it is correctly `undefined` in a browser.
+//
+// The plugin IS an npm dependency now (the iOS project needs it to build).
+// This still does not import it, because doing so would ship the plugin
+// module to every PWA user on the web — where it can only ever be a stub —
+// and this file already treats "no AdMob object" as the web path. The one
+// thing the bridge costs is types; see config/ads.js on the event names
+// that go with it.
 //
 // WHAT COUNTS AS EARNED: the Rewarded event, and only that. A rewarded ad
 // can be dismissed early, fail to show, or be closed after the video but
@@ -159,12 +162,27 @@ export function useRewardedAd(
       // only thing tying a signed reward to an account — an ad shown
       // without it is an ad nobody can be credited for.
       const uid = auth.currentUser?.uid;
+      // SERVER-SIDE VERIFICATION IS PART OF THE PREPARE CALL, not a
+      // separate one. The plugin used to expose
+      // AdMob.setServerSideVerificationOptions(); v8 removed it and moved
+      // the same two fields onto the `ssv` option here. Calling the old
+      // method against v8 throws "not implemented", which the catch below
+      // turns into an error state — meaning prepareRewardVideoAd never
+      // ran and no ad ever loaded. Only bites with SSV_ENABLED (live
+      // ads), which is why test builds never showed it.
+      //
+      // `customData` is omitted rather than sent empty: the plugin types
+      // this as at-least-one-of, and the Store's coin ad passes ''.
+      const ssv = {};
       if (SSV_ENABLED && uid) {
-        // `customData` rides along signed, so the callback can tell which
-        // reward this ad was for — see functions/admobSsv.js.
-        await AdMob.setServerSideVerificationOptions({ userId: uid, customData });
+        ssv.userId = uid;
+        if (customData) ssv.customData = customData;
       }
-      await AdMob.prepareRewardVideoAd({ adId: adUnitIdFor(currentPlatform()), isTesting: IS_TESTING });
+      await AdMob.prepareRewardVideoAd({
+        adId: adUnitIdFor(currentPlatform()),
+        isTesting: IS_TESTING,
+        ...(ssv.userId ? { ssv } : {}),
+      });
       // Loaded arrives as an event, not as this promise resolving — the
       // listener below is what flips isAdLoaded.
     } catch (err) {
@@ -192,11 +210,25 @@ export function useRewardedAd(
     };
 
     (async () => {
+      // The iOS App Tracking Transparency prompt, asked here rather than
+      // at launch so the first thing a new user sees is the app, not a
+      // dialog about advertising. It is its OWN call: it was never a key
+      // on initialize(), so the `requestTrackingAuthorization: true`
+      // option this used to pass was silently dropped and the prompt
+      // never appeared — which on iOS means no tracking consent and
+      // unpersonalised ads at best.
+      //
+      // Before initialize(), because AdMob wants the tracking status
+      // settled before the first ad request. In its own try/catch: it is
+      // a no-op off iOS, and a refusal must not stop the SDK starting —
+      // an unpersonalised ad still pays.
       try {
-        // requestTrackingAuthorization is the iOS ATT prompt. AdMob asks
-        // for it here rather than at launch so the first thing a new user
-        // sees is the app, not a permission dialog about advertising.
-        await AdMob.initialize({ requestTrackingAuthorization: true, initializeForTesting: IS_TESTING });
+        await AdMob.requestTrackingAuthorization();
+      } catch {
+        // Declined, unavailable, or not iOS — carry on either way.
+      }
+      try {
+        await AdMob.initialize({ initializeForTesting: IS_TESTING });
       } catch {
         // An SDK that will not start is a dead feature, not a dead app —
         // the card stays, the button stays disabled, nothing else breaks.

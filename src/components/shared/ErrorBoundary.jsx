@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import { dismissSplash } from '../../lib/splash';
 
 // A crash used to mean a blank white screen: no message, no way back, and
 // nothing in the UI to say whether the app was broken or just slow. This is
@@ -37,6 +38,8 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error) {
+    // A crash on launch must show this screen, not the splash forever.
+    dismissSplash();
     if (isStaleBuildError(error) && !sessionStorage.getItem(RELOAD_GUARD)) {
       sessionStorage.setItem(RELOAD_GUARD, '1');
       window.location.reload();
@@ -57,9 +60,7 @@ export default class ErrorBoundary extends Component {
         await Promise.all((await caches.keys()).map((k) => caches.delete(k)));
       }
       if ('serviceWorker' in navigator) {
-        await Promise.all(
-          (await navigator.serviceWorker.getRegistrations()).map((r) => r.unregister()),
-        );
+        await Promise.all((await navigator.serviceWorker.getRegistrations()).map((r) => r.unregister()));
       }
     } catch {
       // Best-effort: if the browser blocks either of these, the plain
@@ -73,7 +74,7 @@ export default class ErrorBoundary extends Component {
     if (!this.state.error) return this.props.children;
 
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center gap-4 bg-neutral-950">
+      <div className="flex flex-col items-center justify-center min-h-[100dvh] px-6 text-center gap-4 bg-neutral-950">
         <span className="text-5xl">🐐</span>
         <h1 className="text-2xl font-bold text-neutral-50">Jimmy tripped over something</h1>
         <p className="text-neutral-400 max-w-sm">
@@ -87,11 +88,7 @@ export default class ErrorBoundary extends Component {
           >
             Reload the app
           </button>
-          <button
-            type="button"
-            onClick={this.handleHardReload}
-            className="text-sm text-neutral-500 py-2"
-          >
+          <button type="button" onClick={this.handleHardReload} className="text-sm text-neutral-500 py-2">
             Still broken? Reset and start fresh
           </button>
         </div>

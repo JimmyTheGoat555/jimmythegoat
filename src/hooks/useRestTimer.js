@@ -18,6 +18,11 @@ export const REST_STEP_SECONDS = 30;
 // grace period the "hit zero" beep/vibrate already covers isn't a nag yet,
 // just a heads-up; this is for someone who saw that and kept scrolling.
 export const OVERDUE_THRESHOLD_SECONDS = 30;
+// How late the in-app alarm may be and still sound. Past this the rest
+// ended while the phone was away: the system notification has said so,
+// and the red overtime counter now on screen says by how much. A beep
+// two minutes after the fact is a startle, not news.
+export const MISSED_ALERT_GRACE_SECONDS = 3;
 // Same storage key SettingsPanel.jsx's sound-effects switch writes to —
 // read directly with loadJSON rather than useLocalStorage: this only
 // needs the CURRENT value at the moment the rest period actually ends,
@@ -60,11 +65,12 @@ function alertRestOver(soundEnabled) {
 // comes back, however long the interval was frozen.
 //
 // `secondsLeft` is null whenever no rest is running (banner hidden); it
-// holds at 0 once reached — vibrating/beeping exactly once — until the
-// lifter dismisses it or starts the next rest. If it keeps sitting at 0
-// past OVERDUE_THRESHOLD_SECONDS, Jimmy escalates — see
-// isOverdue/overdueMessage below. `overdueSeconds` is derived from the
-// same timestamp, so it too is correct after a freeze.
+// holds at 0 once reached — vibrating/beeping exactly once — and from
+// that moment `overdueSeconds` counts UP from the same timestamp, so the
+// screens can show how far past the rest the lifter is. Both are
+// derived, not counted: two minutes on the lock screen come back as
+// `+02:00` on the first frame, never as a clock that stopped. Past
+// OVERDUE_THRESHOLD_SECONDS Jimmy escalates — see isOverdue/overdueMessage.
 //
 // CALLED FROM App, not from the workout screen. That is deliberate and
 // load-bearing: ActiveWorkoutLogger is mounted by the /workout route, so
@@ -75,15 +81,25 @@ function alertRestOver(soundEnabled) {
 // the lifter wandered off to. App ends the rest when the session ends; see
 // the activeWorkoutId effect there.
 //
-// `defaultSeconds` is the length of a rest started with no argument, which
+// `defaultSeconds` is the length of a rest started with no `seconds`, which
 // is every rest the app starts by itself (checking a set off). It comes
 // from the signed-in account's `defaultRestTimer` — see App.jsx's call
 // site and SettingsPanel's dropdown — and falls back to 90 for accounts
 // that have never set one. Changing it mid-workout is safe: `start` closes
 // over it, so the NEXT rest uses the new length and a rest already
 // counting down is left alone.
+//
+// `start` also takes the `exerciseId` of the exercise whose set began the
+// rest, exposed as `exerciseId` for as long as that rest runs. The rest
+// itself does not care; the rest-timer 2× offer does — it is made for
+// THIS exercise, and a boost claimed during the rest is pinned to it (see
+// ActiveWorkoutLogger). Held here rather than on the workout screen for
+// the same reason the clock is: the screen unmounts on every tab change,
+// and a rest that forgot whose it was would offer a second ad for an
+// exercise that is already doubled.
 export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
   const [endsAt, setEndsAt] = useState(null);
+  const [exerciseId, setExerciseId] = useState(null);
   const [now, setNow] = useState(() => Date.now());
   const hasAlertedRef = useRef(false);
   const hasNaggedRef = useRef(false);
@@ -95,7 +111,7 @@ export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
   const overdueSeconds = isAtZero ? Math.floor(-remainingMs / 1000) : 0;
 
   const start = useCallback(
-    (seconds = defaultSeconds) => {
+    ({ seconds = defaultSeconds, exerciseId: forExerciseId = null } = {}) => {
       hasAlertedRef.current = false;
       hasNaggedRef.current = false;
       const t = Date.now();
@@ -112,6 +128,7 @@ export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
       scheduleRestNotification(ends);
       setNow(t);
       setEndsAt(ends);
+      setExerciseId(typeof forExerciseId === 'string' ? forExerciseId : null);
     },
     [defaultSeconds],
   );
@@ -121,9 +138,13 @@ export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
     // arrives for a rest that stopped existing two sets ago.
     cancelRestNotification();
     setEndsAt(null);
+    setExerciseId(null);
   }, []);
 
   const addTime = useCallback((delta) => {
+    // A tap on the timer is the other moment a permission prompt makes
+    // sense next to the thing that needs it (see start).
+    askRestNotificationPermission();
     const t = Date.now();
     setNow(t);
     setEndsAt((prev) => {
@@ -160,9 +181,13 @@ export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
       unlockRestAlarm();
     };
     document.addEventListener('visibilitychange', onVisible);
+    // A page restored from the back-forward cache is visible without a
+    // visibilitychange — same catch-up.
+    window.addEventListener('pageshow', onVisible);
     return () => {
       clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', onVisible);
     };
   }, [running]);
 
@@ -188,12 +213,15 @@ export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
   useEffect(() => {
     if (secondsLeft === 0 && !hasAlertedRef.current) {
       hasAlertedRef.current = true;
-      // The app is open and has just fired the alarm itself, so a system
-      // notification a moment later would be the same news twice.
-      cancelRestNotification();
+      // Only an alarm the lifter can hear makes the notification the same
+      // news twice. Backgrounded, the audio context is suspended and this
+      // beep is silent — leave the notification to do its job.
+      const onScreen = typeof document === 'undefined' || document.visibilityState === 'visible';
+      if (onScreen) cancelRestNotification();
+      if (overdueSeconds > MISSED_ALERT_GRACE_SECONDS) return;
       alertRestOver(loadJSON(SOUND_EFFECTS_KEY, true));
     }
-  }, [secondsLeft]);
+  }, [secondsLeft, overdueSeconds]);
 
   // The escalation gets its own, more insistent buzz — the whole point of
   // Jimmy's attitude kicking in is that the first alert clearly wasn't
@@ -214,6 +242,10 @@ export function useRestTimer(defaultSeconds = DEFAULT_REST_SECONDS) {
     isVisible: secondsLeft !== null,
     isOverdue,
     overdueMessage,
+    // Seconds past 0:00, counting up; 0 while the rest is still running.
+    overdueSeconds,
+    // The exercise this rest belongs to, or null when none is running.
+    exerciseId: running ? exerciseId : null,
     start,
     dismiss,
     addTime,

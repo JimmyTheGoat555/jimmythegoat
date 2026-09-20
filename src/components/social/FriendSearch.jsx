@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { sanitizeFriendData } from '../../utils/friendPrivacy';
 import { useFriendSearch, MIN_SEARCH_LENGTH } from '../../hooks/useFriendSearch';
 import GradientBorder from '../shared/GradientBorder';
@@ -15,7 +15,15 @@ import JimmyAvatar from '../evolution/JimmyAvatar';
 
 function SearchIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="h-4 w-4" aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
       <circle cx="11" cy="11" r="7" />
       <path d="m20 20-3.5-3.5" />
     </svg>
@@ -36,6 +44,7 @@ function Spinner() {
 }
 
 function ResultRow({ result, onAdd }) {
+  const { pathname } = useLocation();
   const person = sanitizeFriendData(result);
   const [state, setState] = useState(
     result.isFriend ? 'friend' : result.requestReceived ? 'received' : result.requestSent ? 'sent' : 'idle',
@@ -81,7 +90,7 @@ function ResultRow({ result, onAdd }) {
       {/* The name and avatar open their profile — the same public view a
           friend's row links to. Nothing there is gated on friendship, so a
           stranger sees exactly what they published. */}
-      <Link to={`/friends/${result.uid}`} className="flex min-w-0 flex-1 items-center gap-3">
+      <Link to={`/friends/${result.uid}`} state={{ from: pathname }} className="flex min-w-0 flex-1 items-center gap-3">
         <GradientBorder
           tierId={person.tierId}
           shape="circle"
@@ -92,7 +101,6 @@ function ResultRow({ result, onAdd }) {
           <JimmyAvatar
             evolutionStage={person.evolutionStage}
             equippedAccessories={person.equippedAccessories}
-            streak={person.currentStreak ?? (person.showFire ? 2 : 0)}
             mascot={person.mascot}
             crop="head"
             size={40}

@@ -101,8 +101,8 @@ export function useRestBoost(uid, { bypass = false } = {}) {
       if (!token || typeof token.id !== 'string' || !fresh(token.grantedAt, now) || byId.has(token.id)) continue;
       byId.set(token.id, { id: token.id, grantedAt: token.grantedAt });
     }
-    // Oldest first, so the token bound to the next exercise is the one
-    // closest to expiring.
+    // Oldest first, so the token pinned next is the one closest to
+    // expiring.
     return [...byId.values()].sort((a, b) => Date.parse(a.grantedAt) - Date.parse(b.grantedAt));
   }, [serverTokens, localTokens, now]);
 

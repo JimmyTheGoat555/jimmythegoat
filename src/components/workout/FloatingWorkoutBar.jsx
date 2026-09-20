@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 
+// Tailwind's red-500 — the overtime colour the full-screen timer uses.
+const OVERTIME_RED = '#ef4444';
+
 // Elapsed time, ticking. A second copy of WorkoutTimer's formatter rather
 // than that component itself, because this one needs a different size and
 // colour and an hour rollover — a workout browsed in the background can
@@ -50,7 +53,9 @@ export default function FloatingWorkoutBar({
   // itself belongs to App's useRestTimer — this bar only draws it, and
   // deliberately has no way to start, extend or skip one.
   restSecondsLeft = null,
-  restIsOverdue = false,
+  // Seconds past 0:00 once the rest is up — the bar counts up in red,
+  // exactly as the full-screen clock does.
+  restOverdueSeconds = 0,
   onRestore,
 }) {
   const [now, setNow] = useState(() => Date.now());
@@ -69,17 +74,12 @@ export default function FloatingWorkoutBar({
   // workout, only which number is on top.
   const isResting = restSecondsLeft !== null;
   const isDone = isResting && restSecondsLeft <= 0;
-  const clock = isResting ? formatRest(restSecondsLeft) : elapsed;
-  // Live at 0:00 and past it: the same escalation the full-screen timer
-  // uses, so the two read as one timer seen from two places. Overdue is
-  // --danger; the moment it hits zero (before the nag threshold) is
-  // --success, i.e. "go".
-  const clockColor = restIsOverdue
-    ? 'var(--danger)'
-    : isDone
-      ? 'var(--success)'
-      : 'var(--tier-accent)';
-  const label = isResting ? (isDone ? 'Go' : 'Rest') : 'Elapsed';
+  const clock = isResting ? (isDone ? `+${formatRest(restOverdueSeconds)}` : formatRest(restSecondsLeft)) : elapsed;
+  // Past 0:00 the clock turns red and counts up — the same treatment the
+  // full-screen timer gives it, so the two read as one timer seen from
+  // two places.
+  const clockColor = isDone ? OVERTIME_RED : 'var(--tier-accent)';
+  const label = isResting ? (isDone ? 'Over' : 'Rest') : 'Elapsed';
 
   return (
     // bottom-[var(--nav-total)] rather than a hard-coded offset:
@@ -94,15 +94,23 @@ export default function FloatingWorkoutBar({
         aria-label={
           isResting
             ? isDone
-              ? 'Back to your workout, rest over'
+              ? `Back to your workout, rest over by ${clock.slice(1)}`
               : `Back to your workout, ${clock} of rest left`
             : `Back to your workout, running ${elapsed}`
         }
-        className="mx-auto flex w-full max-w-md cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-left shadow-lg transition-transform duration-150 active:scale-[0.98] motion-reduce:active:scale-100"
+        // A rest is the one state this bar has to shout. Off a rest it is
+        // a quiet reminder that a session is open; during one it IS the
+        // rest timer as far as the lifter is concerned — they are on
+        // another tab, phone at arm's length — so the border thickens and
+        // takes the state colour outright instead of a 45% wash of it.
+        className={`mx-auto flex w-full max-w-md cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 text-left shadow-lg transition-transform duration-150 active:scale-[0.98] motion-reduce:active:scale-100 ${
+          isResting ? 'border-2' : 'border'
+        }`}
         style={{
-          borderColor: 'color-mix(in srgb, var(--tier-accent) 45%, transparent)',
+          borderColor: isResting ? clockColor : 'color-mix(in srgb, var(--tier-accent) 45%, transparent)',
           background: 'linear-gradient(180deg, rgba(23,23,23,0.98), rgba(10,10,10,0.98))',
           backdropFilter: 'blur(8px)',
+          boxShadow: isResting ? `0 0 28px -10px ${clockColor}` : undefined,
         }}
       >
         {/* The pulse. Two stacked dots — a solid core and a ring that
@@ -136,12 +144,15 @@ export default function FloatingWorkoutBar({
             gone wrong; with it, the swap explains itself. Labelling it in
             one state only would also shift the row's height on every rest. */}
         <span className="flex shrink-0 flex-col items-end leading-none">
-          <span className="font-mono text-base font-bold tabular-nums" style={{ color: clockColor }}>
+          {/* Half again as large during a rest — this is a countdown read
+              across a room, not a session clock glanced at. */}
+          <span
+            className={`font-mono font-bold tabular-nums ${isResting ? 'text-2xl' : 'text-base'}`}
+            style={{ color: clockColor, textShadow: isResting ? `0 0 18px ${clockColor}66` : undefined }}
+          >
             {clock}
           </span>
-          <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-            {label}
-          </span>
+          <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{label}</span>
         </span>
 
         {/* Chevron up: the visual inverse of the Minimize control on the

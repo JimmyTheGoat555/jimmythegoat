@@ -106,6 +106,11 @@ const LIMITS = {
   // deliberately permits as a no-op — so without a cap it is a free
   // read+write loop. 10/hour is far past any human retyping a name.
   usernameClaim: { windowMs: HOUR_MS, max: 10 },
+  // Role switches (trainer ↔ trainee, functions/accountRole.js): each one
+  // rewrites the coach-code table and, stepping down, every trainee's
+  // link — a flip-flop loop is a write amplifier with no legitimate use.
+  // Six a day is generous for a decision people make about once.
+  roleSwitch: { windowMs: DAY_MS, max: 6 },
 };
 
 // Rolling-window caps with no per-target dimension. `field` names a live
@@ -141,6 +146,11 @@ const WINDOWED_ACTIONS = {
     limit: LIMITS.usernameClaim,
     field: 'usernameClaims',
     message: 'Too many name changes in a row — give it an hour.',
+  },
+  roleSwitch: {
+    limit: LIMITS.roleSwitch,
+    field: 'roleSwitches',
+    message: "You've switched roles a lot today — try again tomorrow.",
   },
 };
 

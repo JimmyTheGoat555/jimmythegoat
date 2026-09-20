@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useReturnTo } from '../../hooks/useReturnTo';
 import { WEEKDAY_LABELS, isWeighInDayToday, isWeighInDayTomorrow, goalMatchesDelta } from '../../utils/weighIn';
 import WeighInModal from './WeighInModal';
 import BadgeRibbon from './BadgeRibbon';
@@ -22,9 +22,19 @@ function formatDate(iso) {
 // notification/sound toggles, and sign-out all moved to SettingsPanel
 // (reached via the gear icon in TopHud) so this stays what its own
 // heading says: your numbers, not app preferences.
-export default function ProfileView({ account, profile, updateDetails, logBodyWeight, deleteBodyWeightEntry, onConnectToTrainer, onDisconnectFromTrainer, onNotifyTrainer, onSetFeaturedBadges }) {
+export default function ProfileView({
+  account,
+  profile,
+  updateDetails,
+  logBodyWeight,
+  deleteBodyWeightEntry,
+  onConnectToTrainer,
+  onDisconnectFromTrainer,
+  onNotifyTrainer,
+  onSetFeaturedBadges,
+}) {
   const [pickingBadges, setPickingBadges] = useState(false);
-  const navigate = useNavigate();
+  const goBack = useReturnTo('/progress');
   const jimmyLook = useJimmyLook();
   const [weightInput, setWeightInput] = useState('');
   const [trainerCodeInput, setTrainerCodeInput] = useState('');
@@ -106,7 +116,7 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
   return (
     <div className="flex flex-col gap-6 pt-6 pb-nav">
       <div>
-        <button type="button" onClick={() => navigate(-1)} className="text-sm text-neutral-500 mb-1">
+        <button type="button" onClick={goBack} className="text-sm text-neutral-500 mb-1">
           ← Back
         </button>
         {/* This page had no goat on it at all — the one screen that is
@@ -124,7 +134,7 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
           <p className="text-sm text-neutral-200 flex-1">
             {weighInToday
               ? "It's your weigh-in day — log your weight below to keep your streak going."
-              : 'Weigh-in day is tomorrow — a heads up so it doesn\'t sneak up on you.'}
+              : "Weigh-in day is tomorrow — a heads up so it doesn't sneak up on you."}
           </p>
         </div>
       )}
@@ -138,7 +148,8 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
 
           {account.role === 'trainer' ? (
             <p className="text-sm text-neutral-500">
-              Your trainer code: <span className="text-neutral-100 font-semibold tracking-widest">{account.trainerCode}</span>
+              Your trainer code:{' '}
+              <span className="text-neutral-100 font-semibold tracking-widest">{account.trainerCode}</span>
             </p>
           ) : account.trainerId ? (
             <div className="flex flex-col gap-1.5 items-start">
@@ -146,8 +157,8 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
               {confirmingDisconnect ? (
                 <>
                   <p className="text-xs text-neutral-400">
-                    Your coach will stop seeing your workouts and weigh-ins, and any workouts they
-                    assigned you will be removed. Your own history stays.
+                    Your coach will stop seeing your workouts and weigh-ins, and any workouts they assigned you will be
+                    removed. Your own history stays.
                   </p>
                   <div className="flex gap-2 mt-1">
                     <button
@@ -171,7 +182,10 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
               ) : (
                 <button
                   type="button"
-                  onClick={() => { setDisconnectError(null); setConfirmingDisconnect(true); }}
+                  onClick={() => {
+                    setDisconnectError(null);
+                    setConfirmingDisconnect(true);
+                  }}
                   className="text-xs text-neutral-500 underline underline-offset-2"
                 >
                   Disconnect from my coach
@@ -321,6 +335,7 @@ export default function ProfileView({ account, profile, updateDetails, logBodyWe
         <BadgePickerModal
           badges={account?.badges}
           featured={account?.featuredBadges}
+          mascot={jimmyLook.mascot}
           onSave={onSetFeaturedBadges}
           onClose={() => setPickingBadges(false)}
         />

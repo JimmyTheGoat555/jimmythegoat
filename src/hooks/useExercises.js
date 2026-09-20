@@ -16,17 +16,23 @@ export function useExercises(uid) {
     [allExercises],
   );
 
-  const getExercise = useCallback(
-    (id) => allExercises.find((exercise) => exercise.id === id),
-    [allExercises],
-  );
+  const getExercise = useCallback((id) => allExercises.find((exercise) => exercise.id === id), [allExercises]);
 
+  // `details` is the optional `description` / `tips` half of the schema
+  // (see data/exercises.js). Stored only when given, so an exercise added
+  // with just a name is exactly the object it always was.
   const addCustomExercise = useCallback(
-    (name, muscleGroup) => {
+    (name, muscleGroup, details = {}) => {
       const trimmed = name.trim();
       if (!trimmed) return null;
       const id = `custom-${trimmed.toLowerCase().replace(/\s+/g, '-')}-${Date.now().toString(36)}`;
       const exercise = { id, name: trimmed, muscleGroup, custom: true };
+      const description = typeof details.description === 'string' ? details.description.trim() : '';
+      if (description) exercise.description = description;
+      const tips = Array.isArray(details.tips)
+        ? details.tips.filter((tip) => typeof tip === 'string' && tip.trim()).map((tip) => tip.trim())
+        : [];
+      if (tips.length) exercise.tips = tips;
       setCustomExercises((prev) => [...prev, exercise]);
       return exercise;
     },

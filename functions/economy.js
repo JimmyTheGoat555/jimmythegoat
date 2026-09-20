@@ -18,7 +18,8 @@ const { evaluateBadges } = require('./badges');
 const logger = require('firebase-functions/logger');
 const { isAppAdminUid } = require('./appAdmin');
 const { resolveMascotId } = require('./mascots');
-const { EVOLUTION_TIERS, evolutionCrossed } = require('./evolution');
+const { EVOLUTION_TIERS, evolutionCrossed, progressionScaleFor, coinMultiplierFor } = require('./evolution');
+const { BADGE_AGGREGATES_VERSION, seedBadgeAggregates } = require('./records');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const {
   MIN_WEIGHT_KG,
@@ -40,8 +41,9 @@ const {
   MAX_COINS_PER_WORKOUT,
   RECOMMENDATION_BOUNTY_COINS,
   REST_BOOST_MULTIPLIER,
+  LEGACY_BODYWEIGHT_KG,
   STORE_ITEMS_BY_ID,
-  STARTER_DANCE_ID,
+  STARTER_ACCESSORY_ID,
 } = require('./storeCatalog');
 const { livePendingBoosts, BOOST_TOKEN_RE } = require('./restBoost');
 const {
@@ -112,15 +114,33 @@ function validateAndScoreWorkout(exercises, bodyWeightKg) {
       `A single workout can't include more than ${MAX_EXERCISES_PER_WORKOUT} exercises.`,
     );
   }
-  if (!Number.isFinite(bodyWeightKg) || bodyWeightKg <= 0) {
-    throw new HttpsError(
-      'failed-precondition',
-      'Add your body weight in Profile — Jimmy scores every workout by strength-to-bodyweight now.',
-    );
-  }
+  // ── A missing body weight never costs somebody their workout ────────
+  //
+  // This used to throw failed-precondition. It was the right instinct —
+  // the score is strength-relative, so without a body weight there is
+  // nothing to divide by — and the wrong trade: the check fires at the
+  // very END of a session, after every set has been logged, and the only
+  // way forward was to leave the app, find Profile, enter a number and
+  // come back. From the lifter's side that is "the app ate my workout",
+  // and no amount of correct scoring is worth it.
+  //
+  // So an account with nothing on file is scored against an assumed
+  // average lifter (LEGACY_BODYWEIGHT_KG — the same 75 kg the evolution
+  // migration uses for exactly this "we don't know, assume typical"
+  // job). The workout saves, the coins pay, and `bodyWeightAssumed` rides
+  // back to the client so it can ask for the real number afterwards,
+  // when asking is a prompt rather than a wall.
+  //
+  // The assumption is NOT written to bodyWeightLog: inventing a body
+  // weight the lifter never entered would then be the number every later
+  // workout is scored against, silently and forever. It is used for this
+  // one scoring pass and thrown away.
+  const bodyWeightAssumed = !Number.isFinite(bodyWeightKg) || bodyWeightKg <= 0;
   // Clamp the scoring divisor so a tampered-low body weight can't inflate
   // relative volume (see storeCatalog.js).
-  const bw = Math.min(MAX_BODYWEIGHT_KG, Math.max(MIN_BODYWEIGHT_KG, bodyWeightKg));
+  const bw = bodyWeightAssumed
+    ? LEGACY_BODYWEIGHT_KG
+    : Math.min(MAX_BODYWEIGHT_KG, Math.max(MIN_BODYWEIGHT_KG, bodyWeightKg));
 
   let totalScore = 0;
   let totalVolumeKg = 0;
@@ -171,7 +191,10 @@ function validateAndScoreWorkout(exercises, bodyWeightKg) {
 
       const reps = Number(rawSet.reps);
       if (!Number.isInteger(reps) || reps < MIN_REPS || reps > MAX_REPS) {
-        throw new HttpsError('invalid-argument', `Reps must be a whole number between ${MIN_REPS} and ${MAX_REPS} — got ${rawSet.reps}.`);
+        throw new HttpsError(
+          'invalid-argument',
+          `Reps must be a whole number between ${MIN_REPS} and ${MAX_REPS} — got ${rawSet.reps}.`,
+        );
       }
 
       let effectiveWeight;
@@ -184,7 +207,10 @@ function validateAndScoreWorkout(exercises, bodyWeightKg) {
         // bodyweight rep's ratio stays exactly body/body = 1.
         addedWeight = round1(rawSet.addedWeight || 0);
         if (!Number.isFinite(addedWeight) || addedWeight < 0 || addedWeight > MAX_ADDED_WEIGHT_KG) {
-          throw new HttpsError('invalid-argument', `Added weight must be between 0 and ${MAX_ADDED_WEIGHT_KG} kg — got ${rawSet.addedWeight}.`);
+          throw new HttpsError(
+            'invalid-argument',
+            `Added weight must be between 0 and ${MAX_ADDED_WEIGHT_KG} kg — got ${rawSet.addedWeight}.`,
+          );
         }
         effectiveWeight = round1(bw + addedWeight);
       } else {
@@ -203,7 +229,10 @@ function validateAndScoreWorkout(exercises, bodyWeightKg) {
         // make a re-opened set silently change its own total.
         effectiveWeight = round1(deriveWeight(rawSet, exercise.exerciseId));
         if (!Number.isFinite(effectiveWeight) || effectiveWeight < MIN_WEIGHT_KG || effectiveWeight > MAX_WEIGHT_KG) {
-          throw new HttpsError('invalid-argument', `Weight must be between ${MIN_WEIGHT_KG} and ${MAX_WEIGHT_KG} kg — got ${rawSet.weight}.`);
+          throw new HttpsError(
+            'invalid-argument',
+            `Weight must be between ${MIN_WEIGHT_KG} and ${MAX_WEIGHT_KG} kg — got ${rawSet.weight}.`,
+          );
         }
       }
 
@@ -276,7 +305,7 @@ function validateAndScoreWorkout(exercises, bodyWeightKg) {
   }
 
   totalScore = round2(totalScore);
-  return { cleanExercises, totalScore, totalVolumeKg: Math.round(totalVolumeKg), boostClaims };
+  return { cleanExercises, totalScore, totalVolumeKg: Math.round(totalVolumeKg), boostClaims, bodyWeightAssumed };
 }
 
 // The coin payout for a validated workout.
@@ -294,13 +323,18 @@ function validateAndScoreWorkout(exercises, bodyWeightKg) {
 // total. And it is applied HERE and nowhere else: `totalScore`, the number
 // that feeds lifetime volume, tiers, records and the feed, is untouched by
 // a boost. An ad doubles coins; it never doubles what somebody lifted.
-function coinsFor(cleanExercises, boostedIndexes) {
+//
+// `accountMultiplier` is the account's own rate — evolution.js's
+// coinMultiplierFor: ~1.54 for a female lifter, 1 for everyone else. It
+// goes on the whole payout, after the boosts and before the cap, so the
+// cap still binds and the rest boost still doubles exactly what it says.
+function coinsFor(cleanExercises, boostedIndexes, accountMultiplier = 1) {
   let points = 0;
   cleanExercises.forEach((exercise, i) => {
     const multiplier = boostedIndexes.has(i) ? REST_BOOST_MULTIPLIER : 1;
     for (const set of exercise.sets) points += set.relativeVolume * multiplier;
   });
-  return Math.min(MAX_COINS_PER_WORKOUT, Math.round(round2(points) * COINS_PER_RELATIVE_POINT));
+  return Math.min(MAX_COINS_PER_WORKOUT, Math.round(round2(points) * COINS_PER_RELATIVE_POINT * accountMultiplier));
 }
 
 // "3542s" is unreadable for a wait that can now run up to an hour or most
@@ -378,8 +412,12 @@ function loadContextFor(rawSet, exerciseId, effectiveWeight) {
   if (BARBELL_EXERCISE_IDS.has(exerciseId)) {
     const bar = Number(rawSet.barWeight);
     const side = Number(rawSet.weightPerSide);
-    if (ALLOWED_BAR_WEIGHTS.has(bar) && Number.isFinite(side) && side >= 0
-        && round1(bar + side * 2) === effectiveWeight) {
+    if (
+      ALLOWED_BAR_WEIGHTS.has(bar) &&
+      Number.isFinite(side) &&
+      side >= 0 &&
+      round1(bar + side * 2) === effectiveWeight
+    ) {
       // round2, not round1: a side can legitimately be 21.25 (one 20 and
       // one 1.25), and rounding that to 21.3 would store a bar that no
       // longer adds up to its own total — the set would then re-open
@@ -398,10 +436,28 @@ function loadContextFor(rawSet, exerciseId, effectiveWeight) {
   return {};
 }
 
-// Marker for the one-time dumbbell rebasing below. A field on the records
+// Marker for the one-time per-hand rebasing below. A field on the records
 // doc rather than a separate migration script: it runs inside the call
 // that needs it, exactly once, for accounts that actually train again.
-const DUMBBELL_RECORDS_VERSION = 2;
+//
+// VERSION 3 exists because a movement was added to the per-hand list
+// LATE — cable-crossover (functions/exercises.js). An account already at
+// version 2 has had every dumbbell best doubled and must not have them
+// doubled a second time; it needs only the crossover rebased. So the
+// migration is not "double everything in the set", it is a per-version
+// list of what that version added, and an account runs only the steps
+// above the version it is on. Adding a per-hand movement in future means
+// bumping this by one and adding its ids below — nothing else.
+const DUMBBELL_RECORDS_VERSION = 3;
+
+// version -> the exercise ids that BECAME per-hand at that version.
+// Version 2 is spelled as "the whole original set" because that is what
+// it did: it introduced the per-hand format for every dumbbell movement
+// at once, before any of these ids were split out.
+const PER_HAND_RECORD_MIGRATIONS = [
+  { version: 2, ids: null }, // null = every id in DUMBBELL_EXERCISE_IDS
+  { version: 3, ids: ['cable-crossover'] },
+];
 
 // A 25 kg dumbbell in each hand is 50 kg of load, and new sets store it
 // that way (see src/utils/setLoad.js). Every dumbbell best recorded before
@@ -420,10 +476,23 @@ const DUMBBELL_RECORDS_VERSION = 2;
 // comparison needs to be on one scale with the new data — it is the only
 // place old and new numbers are compared against each other.
 function normalizeDumbbellRecords(records) {
-  if (!records || records.dumbbellRecordsVersion >= DUMBBELL_RECORDS_VERSION) return records;
+  if (!records) return records;
+  const from = Number(records.dumbbellRecordsVersion) || 0;
+  if (from >= DUMBBELL_RECORDS_VERSION) return records;
+
+  // Everything this account has not run yet, and ONLY that — an account
+  // already on 2 rebases the crossover and nothing else, so its dumbbell
+  // bests are not doubled twice.
+  const due = PER_HAND_RECORD_MIGRATIONS.filter((step) => step.version > from);
+  const toRebase = new Set();
+  for (const step of due) {
+    if (step.ids === null) for (const id of DUMBBELL_EXERCISE_IDS) toRebase.add(id);
+    else for (const id of step.ids) toRebase.add(id);
+  }
+
   const bestPerExercise = { ...(records.bestPerExercise ?? {}) };
   for (const [exerciseId, best] of Object.entries(bestPerExercise)) {
-    if (!DUMBBELL_EXERCISE_IDS.has(exerciseId)) continue;
+    if (!toRebase.has(exerciseId)) continue;
     const weight = Number(best?.weight);
     if (!Number.isFinite(weight) || weight <= 0) continue;
     bestPerExercise[exerciseId] = { ...best, weight: round1(weight * 2) };
@@ -446,14 +515,8 @@ function headline(exercises) {
 exports.logWorkout = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   const uid = request.auth.uid;
-  const {
-    exercises,
-    assignedWorkoutId,
-    templateId,
-    startedAt,
-    sharePersonalRecords,
-    sharedRecordExerciseIds,
-  } = request.data ?? {};
+  const { exercises, assignedWorkoutId, templateId, startedAt, sharePersonalRecords, sharedRecordExerciseIds } =
+    request.data ?? {};
 
   const db = getFirestore();
   const userRef = db.collection('users').doc(uid);
@@ -468,10 +531,8 @@ exports.logWorkout = onCall(async (request) => {
   const bwLog = profileSnap.data()?.bodyWeightLog;
   const bodyWeightKg = Array.isArray(bwLog) && bwLog.length ? Number(bwLog[0]?.weight) : null;
 
-  const { cleanExercises, totalScore, totalVolumeKg, boostClaims } = validateAndScoreWorkout(
-    exercises,
-    bodyWeightKg,
-  );
+  const { cleanExercises, totalScore, totalVolumeKg, boostClaims, bodyWeightAssumed } =
+    validateAndScoreWorkout(exercises, bodyWeightKg);
 
   const economyRef = userRef.collection('meta').doc('economy');
   const workoutRef = userRef.collection('workouts').doc();
@@ -517,11 +578,21 @@ exports.logWorkout = onCall(async (request) => {
 
   const recordsRef = userRef.collection('meta').doc('records');
   const recordsSnap = await recordsRef.get();
-  const records = normalizeDumbbellRecords(
-    recordsSnap.exists
-      ? recordsSnap.data()
-      : buildRecordsSnapshot((await userRef.collection('workouts').get()).docs.map((d) => d.data())),
+  // The full history, read at most once per call and only when something
+  // needs it: a records doc that does not exist yet (bootstrapped from
+  // it), or one from before the badge aggregates (seeded from it, once —
+  // records.js's BADGE_AGGREGATES_VERSION).
+  let history = null;
+  const loadHistory = async () => {
+    if (!history) history = (await userRef.collection('workouts').get()).docs.map((d) => d.data());
+    return history;
+  };
+  let records = normalizeDumbbellRecords(
+    recordsSnap.exists ? recordsSnap.data() : buildRecordsSnapshot(await loadHistory()),
   );
+  if (!(records.badgeAggregatesVersion >= BADGE_AGGREGATES_VERSION)) {
+    records = seedBadgeAggregates(records, await loadHistory());
+  }
 
   const personalRecords = findNewPersonalRecordsFromBest(cleanExercises, records.bestPerExercise);
 
@@ -546,7 +617,9 @@ exports.logWorkout = onCall(async (request) => {
     if (Array.isArray(sharedRecordExerciseIds)) {
       // Bounded before it becomes a Set — the array is attacker-controlled
       // and nothing downstream reads its length.
-      const chosen = new Set(sharedRecordExerciseIds.slice(0, MAX_SHARED_RECORD_IDS).filter((id) => typeof id === 'string'));
+      const chosen = new Set(
+        sharedRecordExerciseIds.slice(0, MAX_SHARED_RECORD_IDS).filter((id) => typeof id === 'string'),
+      );
       return personalRecords.filter((r) => chosen.has(r.exerciseId));
     }
     return sharePersonalRecords === true ? personalRecords : [];
@@ -588,7 +661,15 @@ exports.logWorkout = onCall(async (request) => {
 
   await db.runTransaction(async (tx) => {
     const [userSnap, economySnap] = await Promise.all([tx.get(userRef), tx.get(economyRef)]);
-    if (!userSnap.exists) throw new HttpsError('failed-precondition', "Your profile doc doesn't exist yet — try again in a moment.");
+    if (!userSnap.exists)
+      throw new HttpsError('failed-precondition', "Your profile doc doesn't exist yet — try again in a moment.");
+    // Whose economy this is (functions/evolution.js): the ladder scale —
+    // 0.65 for a female lifter, 1 otherwise — and the coin rate, its
+    // inverse. Both from the doc this transaction just read, once, and
+    // used for the payout below and for the evolution decision, the
+    // summary and the feed post further down, so none of them disagree.
+    const progressionScale = progressionScaleFor(userSnap.data());
+    const coinMultiplier = coinMultiplierFor(userSnap.data());
 
     // Every read in a Firestore transaction has to happen before the first
     // write, so the bounty lookup is resolved here even though the payout
@@ -696,7 +777,7 @@ exports.logWorkout = onCall(async (request) => {
       name: cleanExercises[i].name,
       multiplier: REST_BOOST_MULTIPLIER,
     }));
-    effectiveCoins = isRecovery ? 0 : coinsFor(cleanExercises, boostedIndexes);
+    effectiveCoins = isRecovery ? 0 : coinsFor(cleanExercises, boostedIndexes, coinMultiplier);
 
     // A recovery workout only lifts the neglect penalty (refreshes
     // lastWorkoutAt) if it clears a real minimum-effort bar
@@ -756,6 +837,11 @@ exports.logWorkout = onCall(async (request) => {
       exercises: cleanExercises.map((exercise, i) =>
         boostedIndexes.has(i) ? { ...exercise, coinBoost: REST_BOOST_MULTIPLIER } : exercise,
       ),
+      // Written only when true, like isDropSet above: this session was
+      // scored against an assumed 75 kg because the account had no body
+      // weight on file. Kept on the document so a later "why is my score
+      // like that" has an answer, and so a backfill could find these.
+      ...(bodyWeightAssumed ? { bodyWeightAssumed: true } : {}),
       // Bounded to [now - 48h, now] — see sanitizeStartedAt. Never fed
       // into scoring/coins, only the displayed workout duration.
       startedAt: safeStartedAt,
@@ -878,6 +964,7 @@ exports.logWorkout = onCall(async (request) => {
     // announced as having just reached stage 2.
     evolution = evolutionCrossed(records.lifetimeVolume, nextRecords.lifetimeVolume, {
       minStage: userData.role === 'trainer' ? 2 : 1,
+      scale: progressionScale,
     });
     // Captured for the fan-out, which runs without the transaction's
     // snapshot of the user doc.
@@ -897,7 +984,9 @@ exports.logWorkout = onCall(async (request) => {
     const heldBadgeIds = new Set(heldBadges.map((b) => (typeof b === 'string' ? b : b?.id)));
     newBadges = isRecovery
       ? []
-      : [...evaluateBadges(nextRecords, { bodyWeightKg })].filter((id) => !heldBadgeIds.has(id));
+      : [...evaluateBadges(nextRecords, { bodyWeightKg, mascot: resolveMascotId(userData) })].filter(
+          (id) => !heldBadgeIds.has(id),
+        );
     const awardedBadges = [...heldBadges, ...newBadges.map((id) => ({ id, at: finishedAtIso }))];
     if (newBadges.length > 0) {
       tx.update(userRef, {
@@ -905,15 +994,15 @@ exports.logWorkout = onCall(async (request) => {
       });
     }
 
-    // Resolved here rather than read straight off userData because the
-    // Silver Lootbox below may add to it in this very transaction — and
-    // the summary is written before that runs. Publishing the pre-grant
-    // list would hide a brand-new account's free dance from friends until
-    // their SECOND workout.
     const ownedDances = Array.isArray(userData.unlockedDances) ? [...userData.unlockedDances] : [];
-    const grantsStarterDance =
-      !isRecovery && (records.workoutCount ?? 0) === 0 && !ownedDances.includes(STARTER_DANCE_ID);
-    if (grantsStarterDance) ownedDances.push(STARTER_DANCE_ID);
+    // The Silver Lootbox grant, decided here so the condition and the
+    // write below cannot drift. It used to hand out a dance; it hands out
+    // the Ball Cap now (STARTER_ACCESSORY_ID — see storeCatalog.js for
+    // why). Accessories are not part of the published summary, so unlike
+    // the dance this needs nothing folded into `summary` beside it.
+    const ownedAccessories = Array.isArray(userData.unlockedAccessories) ? userData.unlockedAccessories : [];
+    const grantsStarterItem =
+      !isRecovery && (records.workoutCount ?? 0) === 0 && !ownedAccessories.includes(STARTER_ACCESSORY_ID);
 
     // Refresh the friend-visible profile summary — see publicProfile.js.
     // `sharePersonalRecords` below is a one-off, per-post consent ("call
@@ -946,6 +1035,12 @@ exports.logWorkout = onCall(async (request) => {
       // trainer". Same field either way in practice, but the narrow one is
       // the one that cannot grow a second meaning later.
       minStage: userData.role === 'trainer' ? 2 : 1,
+      // The threshold scale this tier was decided with (functions/
+      // evolution.js). Same class of field as minStage: a friend's device
+      // needs the ladder to draw the tier and the bar the server did, and
+      // a number says that without saying why. (What it derives from —
+      // the mascot — is published anyway, two lines down.)
+      progressionScale,
       // Trophies are for showing. Published as the same { id, at } shape
       // the private doc holds, so a friend's shelf and your own read one
       // format — and ids only, no thresholds or lift numbers, so a badge
@@ -971,18 +1066,29 @@ exports.logWorkout = onCall(async (request) => {
     // (records.workoutCount is the count BEFORE this one folded in, and a
     // recovery workout requires a prior workout to exist at all — so
     // `!isRecovery && workoutCount === 0` can only be true once, ever, per
-    // account) grants one free dance instead of quietly landing in
-    // unlockedDances with no fanfare. The client shows this as a
-    // full-screen chest-opening moment (see SilverLootboxModal.jsx) rather
-    // than folding it into the normal "+N coins" toast.
+    // account) grants one free item instead of it quietly landing in the
+    // inventory with no fanfare. The client shows this as a full-screen
+    // chest-opening moment (see SilverLootboxModal.jsx) rather than
+    // folding it into the normal "+N coins" toast.
     //
-    // Both the condition and the resulting list are resolved above, next
-    // to the summary write, so the published showcase and the real grant
-    // can never disagree about what this account owns.
-    if (grantsStarterDance) {
-      tx.update(userRef, { unlockedDances: FieldValue.arrayUnion(STARTER_DANCE_ID) });
-      const starterItem = STORE_ITEMS_BY_ID.get(STARTER_DANCE_ID);
-      firstWorkoutReward = { itemId: STARTER_DANCE_ID, name: starterItem?.name ?? 'A new dance', emoji: starterItem?.emoji ?? '🎁' };
+    // EQUIPPED, not just unlocked. The head slot on a brand-new account is
+    // empty by definition (this is workout number one), so there is
+    // nothing to overwrite, and a reward you have to go and find in a
+    // shop is a reward most people never see on their goat. Written with
+    // arrayUnion on the same field the client toggles, so taking it off
+    // afterwards is the ordinary Store action.
+    if (grantsStarterItem) {
+      tx.update(userRef, {
+        unlockedAccessories: FieldValue.arrayUnion(STARTER_ACCESSORY_ID),
+        equippedAccessories: FieldValue.arrayUnion(STARTER_ACCESSORY_ID),
+      });
+      const starterItem = STORE_ITEMS_BY_ID.get(STARTER_ACCESSORY_ID);
+      firstWorkoutReward = {
+        itemId: STARTER_ACCESSORY_ID,
+        name: starterItem?.name ?? 'A new look',
+        emoji: starterItem?.emoji ?? '🎁',
+        slot: starterItem?.slot ?? null,
+      };
     }
 
     // A recovery workout is a private "get back on the horse" — no feed
@@ -1024,6 +1130,7 @@ exports.logWorkout = onCall(async (request) => {
         currentStreak,
         // So an old post still draws them at the tier they were.
         minStage: userData.role === 'trainer' ? 2 : 1,
+        progressionScale,
         equippedDance: userData.equippedDance ?? null,
         // Legacy single-slot field, still written so anything not yet
         // reading the array keeps working.
@@ -1171,9 +1278,7 @@ exports.logWorkout = onCall(async (request) => {
     // so nothing depends on this — it is here so the summary screen can
     // name the tier without re-deriving it, and so a caller can tell
     // whether friends were told.
-    evolution: evolution
-      ? { stage: evolution.to.stage, tierId: evolution.to.id, label: evolution.to.label }
-      : null,
+    evolution: evolution ? { stage: evolution.to.stage, tierId: evolution.to.id, label: evolution.to.label } : null,
     workoutId: workoutRef.id,
     coinsEarned: effectiveCoins,
     // Which exercises a rest-timer boost was applied to, by name, so the
@@ -1216,6 +1321,12 @@ exports.logWorkout = onCall(async (request) => {
     // the client's own `startedAt` may have been clamped on the way in,
     // and two different durations for one workout is a bug report.
     durationMs,
+    // True when this session was scored against an assumed average body
+    // weight because the account has none on file (see
+    // validateAndScoreWorkout). The workout saved and paid normally; this
+    // is the client's cue to ask for the real number NOW, with the
+    // session safely logged, rather than the wall it used to be.
+    bodyWeightAssumed,
   };
 });
 
@@ -1235,7 +1346,8 @@ exports.purchaseItem = onCall(async (request) => {
 
   const newBalance = await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
-    if (!snap.exists) throw new HttpsError('failed-precondition', "Your profile doc doesn't exist yet — try again in a moment.");
+    if (!snap.exists)
+      throw new HttpsError('failed-precondition', "Your profile doc doesn't exist yet — try again in a moment.");
 
     const data = snap.data();
     const coins = Number(data.coins) || 0;
@@ -1244,7 +1356,10 @@ exports.purchaseItem = onCall(async (request) => {
       throw new HttpsError('already-exists', `You already own ${item.name}.`);
     }
     if (coins < item.cost) {
-      throw new HttpsError('failed-precondition', `Not enough coins — ${item.name} costs ${item.cost}, you have ${coins}.`);
+      throw new HttpsError(
+        'failed-precondition',
+        `Not enough coins — ${item.name} costs ${item.cost}, you have ${coins}.`,
+      );
     }
 
     const updated = coins - item.cost;

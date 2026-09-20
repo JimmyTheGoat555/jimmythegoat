@@ -24,6 +24,8 @@ const SIZE = Number(params.get('size')) || 240;
 // to look at one body large without scrolling.
 const ONLY_MASCOT = params.get('mascot');
 const ONLY_STAGE = Number(params.get('stage')) || null;
+// `?outfit=blue` keeps only that set's rows (plus the plain sprite row).
+const ONLY_OUTFIT = params.get('outfit');
 const TIERS = [1, 2, 3, 4].filter((t) => !ONLY_STAGE || t === ONLY_STAGE);
 
 const accessories = STORE_ITEMS.filter((i) => i.type === 'accessory');
@@ -128,7 +130,7 @@ function Gallery() {
           {TIERS.map((stage) => (
             <div key={stage}>
               <Row mascot={m.id} stage={stage} />
-              {Object.keys(m.outfits ?? {}).map((outfitId) => (
+              {Object.keys(m.outfits ?? {}).filter((id) => !ONLY_OUTFIT || id.includes(ONLY_OUTFIT)).map((outfitId) => (
                 <Row key={outfitId} mascot={m.id} stage={stage} outfitId={outfitId} />
               ))}
             </div>

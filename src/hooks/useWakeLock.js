@@ -15,6 +15,13 @@ export function useWakeLock() {
     if (!('wakeLock' in navigator) || sentinelRef.current) return;
     try {
       const sentinel = await navigator.wakeLock.request('screen');
+      // release() may have been called while this was in flight (finish
+      // a workout the instant the screen wakes) — a lock stored now would
+      // be held with nobody left to let it go.
+      if (!wantsLockRef.current) {
+        sentinel.release().catch(() => {});
+        return;
+      }
       sentinelRef.current = sentinel;
       setIsActive(true);
       sentinel.addEventListener('release', () => {

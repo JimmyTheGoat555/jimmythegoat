@@ -40,7 +40,7 @@
 // the same pedestal, the same head crop and the same size tokens work for
 // both without a single conditional at a call site.
 
-import { getStoreItem, readEquippedAccessories } from './storeItems';
+import { getStoreItem, readEquippedAccessories } from './storeItems.js';
 
 export const MASCOT_JIMMY = 'jimmy';
 export const MASCOT_GENA = 'gena';
@@ -194,9 +194,7 @@ export function resolveMascotId(source) {
 // itself, or a whole account/post/summary object (readEquippedAccessories
 // also tolerates the pre-multi-slot `equippedAccessory` string).
 function equippedList(equippedAccessories) {
-  return Array.isArray(equippedAccessories)
-    ? equippedAccessories
-    : readEquippedAccessories(equippedAccessories);
+  return Array.isArray(equippedAccessories) ? equippedAccessories : readEquippedAccessories(equippedAccessories);
 }
 
 // The outfit set this mascot is wearing, or null. Last one wins if the

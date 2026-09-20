@@ -91,14 +91,20 @@ export function useTabSwipe(tabPaths, containerRef) {
       navigate(paths[targetIndex], { state: { navDirection: dx < 0 ? 'forward' : 'backward' } });
     }
 
+    // Named, so it can be removed: an inline handler here was the one
+    // listener this hook never took back off the container.
+    function handleTouchCancel() {
+      touch = null;
+    }
     el.addEventListener('touchstart', handleTouchStart, { passive: true });
     el.addEventListener('touchmove', handleTouchMove, { passive: true });
     el.addEventListener('touchend', handleTouchEnd, { passive: true });
-    el.addEventListener('touchcancel', () => { touch = null; }, { passive: true });
+    el.addEventListener('touchcancel', handleTouchCancel, { passive: true });
     return () => {
       el.removeEventListener('touchstart', handleTouchStart);
       el.removeEventListener('touchmove', handleTouchMove);
       el.removeEventListener('touchend', handleTouchEnd);
+      el.removeEventListener('touchcancel', handleTouchCancel);
     };
     // containerRef.current is stable for Layout's lifetime and `navigate`
     // is a stable function reference from react-router-dom, so in

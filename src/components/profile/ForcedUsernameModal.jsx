@@ -53,7 +53,7 @@ export default function ForcedUsernameModal({ currentName, onSubmit, onSignOut }
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-neutral-950 px-6 py-10">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-neutral-950 px-6 py-10">
       <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-zinc-900/80 p-6">
         <p className="text-4xl" aria-hidden="true">
           🐐

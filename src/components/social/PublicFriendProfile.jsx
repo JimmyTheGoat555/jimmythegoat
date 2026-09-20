@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { useReturnTo } from '../../hooks/useReturnTo';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
 import { sanitizeFriendData } from '../../utils/friendPrivacy';
 import { getStoreItem } from '../../data/storeItems';
@@ -9,8 +10,10 @@ import JimmyAnimation from '../evolution/JimmyAnimation';
 import { getTierByStage } from '../../utils/evolutionTiers';
 import { mascotSpriteFor } from '../../data/mascots';
 import { danceNumberForItemId, getDanceAnimationPath } from '../../utils/danceAnimations';
+import { ENABLE_EMOTES } from '../../config/features';
 import BadgeRibbon from '../profile/BadgeRibbon';
 import NudgeModal from './NudgeModal';
+import { relativeTime } from '../../utils/relativeTime';
 
 // Someone else's profile. Read-only by construction — there is nothing here
 // to edit, and nothing here that they have not published.
@@ -23,6 +26,9 @@ import NudgeModal from './NudgeModal';
 // one behind it.
 
 function MysteryProgress({ percent, nextTierLabel, isMaxTier, name }) {
+  // Clamped, and 0 for anything that is not a number. An undefined width
+  // is not "no bar": the fill is a block, so it would render FULL.
+  const width = Math.min(100, Math.max(0, Number(percent) || 0));
   if (isMaxTier) {
     return (
       <div className="flex flex-col gap-2">
@@ -38,7 +44,7 @@ function MysteryProgress({ percent, nextTierLabel, isMaxTier, name }) {
       <div className="h-2 w-full rounded-full bg-neutral-800 overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-700"
-          style={{ width: `${percent}%`, background: 'var(--tier-accent)' }}
+          style={{ width: `${width}%`, background: 'var(--tier-accent)' }}
           // The bar is the only quantity on screen, and the label below it
           // is deliberately vague. A friend gets to see that someone is
           // close to evolving without being handed a number to measure
@@ -48,7 +54,17 @@ function MysteryProgress({ percent, nextTierLabel, isMaxTier, name }) {
         />
       </div>
       <p className="text-xs text-neutral-500">
-        Approaching <span className="text-neutral-300 font-medium">{nextTierLabel}</span>…
+        {width > 0 ? (
+          <>
+            Approaching <span className="text-neutral-300 font-medium">{nextTierLabel}</span>…
+          </>
+        ) : (
+          // "Approaching" at zero reads as a taunt. A fresh account is not
+          // approaching anything yet; say what comes first instead.
+          <>
+            Just getting started. Next up: <span className="text-neutral-300 font-medium">{nextTierLabel}</span>.
+          </>
+        )}
       </p>
     </div>
   );
@@ -63,30 +79,33 @@ function RoutineCard({ routine, onCopy, ownerUid, myUid }) {
     >
       {(cheer) => (
         <>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-neutral-100">{routine.name}</p>
-        <CheerButton {...cheer} onToggle={cheer.toggleLike} />
-      </div>
-      <ul className="flex flex-col gap-1">
-        {routine.exercises.map((exercise, i) => (
-          <li key={exercise.id ?? `${exercise.name}-${i}`} className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="text-neutral-300">{exercise.name}</span>
-            {/* Omitted entirely rather than rendered as "× —". A template
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-neutral-100">{routine.name}</p>
+            <CheerButton {...cheer} onToggle={cheer.toggleLike} />
+          </div>
+          <ul className="flex flex-col gap-1">
+            {routine.exercises.map((exercise, i) => (
+              <li
+                key={exercise.id ?? `${exercise.name}-${i}`}
+                className="flex items-baseline justify-between gap-3 text-sm"
+              >
+                <span className="text-neutral-300">{exercise.name}</span>
+                {/* Omitted entirely rather than rendered as "× —". A template
                 in this app stores no sets at all (useWorkoutTemplates:
                 exerciseId/name/muscleGroup and nothing else), so setCount
                 is null for every routine published today and this span
                 would otherwise be a dangling multiplication sign on every
                 single line. The branch stays for a future published shape
                 that does carry set data. */}
-            {exercise.setCount != null && (
-              <span className="text-neutral-500 tabular-nums whitespace-nowrap">
-                {exercise.setCount} × {formatReps(exercise.repRange)}
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
-      {onCopy && <CopyRoutineButton routine={routine} onCopy={onCopy} />}
+                {exercise.setCount != null && (
+                  <span className="text-neutral-500 tabular-nums whitespace-nowrap">
+                    {exercise.setCount} × {formatReps(exercise.repRange)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {onCopy && <CopyRoutineButton routine={routine} onCopy={onCopy} />}
         </>
       )}
     </Cheerable>
@@ -245,7 +264,9 @@ function CopyRoutineButton({ routine, onCopy }) {
     timer.current = setTimeout(() => setState('idle'), COPIED_HOLD_MS);
   };
 
-  const label = { idle: 'Copy to My Workouts', saving: 'Copying…', copied: '✓ Copied!', failed: "Couldn't copy" }[state];
+  const label = { idle: 'Copy to My Workouts', saving: 'Copying…', copied: '✓ Copied!', failed: "Couldn't copy" }[
+    state
+  ];
   const tone =
     state === 'copied'
       ? 'bg-[var(--success)]/15 text-[var(--success)] border-[var(--success)]/40'
@@ -269,21 +290,80 @@ function CopyRoutineButton({ routine, onCopy }) {
   );
 }
 
+// The brand mark that signs the share stickers, at rest here as the quiet
+// centrepiece of an empty section — the same file WorkoutCelebration's
+// BrandMark ghosts onto its buttons.
+const BRAND_MARK = '/assets/logo-mark.png';
+
+// The empty state for the Activity section — and only for that section.
+//
+// This used to be the whole page. A friend with no public/summary got one
+// line of copy in place of their profile, which hid exactly the things a
+// brand-new account has to show a friend: their goat, their name, and the
+// bar they are about to start filling. The header and the evolution card
+// now render for everyone, and this sits in the body where the workout
+// they have not logged yet would go.
+function NoActivityYet({ name, onNudge }) {
+  return (
+    <div className="flex flex-col items-center gap-1 py-2 text-center">
+      <img
+        src={BRAND_MARK}
+        alt=""
+        aria-hidden="true"
+        draggable="false"
+        className="mb-1.5 h-8 w-auto select-none opacity-30"
+      />
+      <p className="text-sm text-neutral-300">{name} hasn't logged a workout yet.</p>
+      <p className="text-xs text-neutral-500">Their first session shows up here.</p>
+      {onNudge && (
+        <button type="button" onClick={onNudge} className="mt-1.5 text-xs font-semibold text-[var(--ember)]">
+          Nudge them to get started →
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Their most recent session, as the feed already shows it to everyone —
+// see sanitizeActivity for the handful of fields that make it here.
+function LatestActivity({ activity }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className="text-base text-neutral-200">
+        {activity.headline}
+        {activity.totalSets != null && (
+          <>
+            {' · '}
+            <span className="tabular-nums">{activity.totalSets}</span> sets
+          </>
+        )}
+        {activity.totalVolumeKg != null && (
+          <>
+            {' · '}
+            <span className="font-semibold tabular-nums text-neutral-100">
+              {activity.totalVolumeKg.toLocaleString('en-US')} kg
+            </span>
+          </>
+        )}
+      </p>
+      {activity.at && <p className="text-xs text-neutral-500">Last workout {relativeTime(activity.at)}</p>}
+    </div>
+  );
+}
+
 export default function PublicFriendProfile({ friends, onSendNudge, onSaveTemplate, myUid }) {
   const { friendUid } = useParams();
-  const navigate = useNavigate();
-  const knownFriend = friends.find((f) => f.uid === friendUid);
-  const [nudging, setNudging] = useState(false);
-  // How many times the visitor has asked to see the emote. 0 means the
-  // clip has never been requested — and therefore never fetched.
-  const [avatarPlays, setAvatarPlays] = useState(0);
+  const goBack = useReturnTo('/social');
+  const knownFriend = (friends ?? []).find((f) => f.uid === friendUid);
 
   const raw = useFriendProfile(friendUid);
   const friend = sanitizeFriendData(raw);
 
   // The friends-list name arrives with no round trip; the published one is
   // preferred once it lands, since it is the more current source of truth.
-  const name = friend.displayName ?? knownFriend?.displayName ?? 'This friend';
+  // Their latest post is the third source, for someone reached from the
+  // feed or the leaderboard who is not on the friends list at all.
+  const name = friend.displayName ?? knownFriend?.displayName ?? friend.latestActivity?.posterName ?? 'This friend';
 
   if (raw.loading) {
     return (
@@ -293,25 +373,44 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
     );
   }
 
-  if (!raw.hasSummary) {
-    return (
-      <div className="flex flex-col gap-5 pt-6 pb-nav">
-        <button type="button" onClick={() => navigate(-1)} className="text-sm font-medium text-neutral-500 self-start">
-          ← Back
-        </button>
-        <p className="text-sm text-neutral-500">
-          {name} hasn't logged a workout yet, so there's nothing to show here.
-        </p>
-        {nudging && (
-          <NudgeModal
-            friendName={name}
-            onSend={(messageId) => onSendNudge(friendUid, messageId)}
-            onClose={() => setNudging(false)}
-          />
-        )}
-      </div>
-    );
-  }
+  // No branch for "nothing published" any more. An account that has never
+  // trained has no public/summary, and used to get a single line of copy
+  // in place of the whole page; it now renders the same screen as everyone
+  // else, on the sanitiser's defaults — base goat, 0% to the next tier —
+  // with each section showing its own empty state.
+  return (
+    <FriendProfileScreen
+      friend={friend}
+      name={name}
+      friendUid={friendUid}
+      myUid={myUid}
+      onBack={goBack}
+      onSendNudge={(messageId) => onSendNudge(friendUid, messageId)}
+      onSaveTemplate={onSaveTemplate}
+    />
+  );
+}
+
+// The screen itself, as a pure function of sanitised data. Split from the
+// loader above so it can be handed ANY input — a friend with nothing
+// published, an empty badge list, an undefined loadout, no data at all —
+// and still draw the header, and so dev/friend-profile.html can show every
+// one of those states without a Firestore round trip. Nothing in here
+// returns early: each section decides its own empty state, and the header
+// has none.
+export function FriendProfileScreen({
+  friend = sanitizeFriendData(null),
+  name = 'This friend',
+  friendUid = null,
+  myUid = null,
+  onBack,
+  onSendNudge,
+  onSaveTemplate,
+}) {
+  const [nudging, setNudging] = useState(false);
+  // How many times the visitor has asked to see the emote. 0 means the
+  // clip has never been requested — and therefore never fetched.
+  const [avatarPlays, setAvatarPlays] = useState(0);
 
   const friendTier = getTierByStage(friend.evolutionStage);
   const danceNumber = danceNumberForItemId(friend.equippedDance);
@@ -319,7 +418,9 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
   // `friend.mascot` is what sanitizeFriendData published — the id, never
   // the gender it was derived from — so this resolves to their character's
   // own clip, or to null for a mascot that has none.
-  const dancePath = getDanceAnimationPath(danceNumber, friend.evolutionStage, friend.mascot);
+  // Null while ENABLE_EMOTES (config/features.js) is off — nothing to
+  // play, nothing fetched, and the avatar below is not a button at all.
+  const dancePath = ENABLE_EMOTES ? getDanceAnimationPath(danceNumber, friend.evolutionStage, friend.mascot) : null;
   // Null until the first tap, so the WebP is never even requested for a
   // visitor who only came to read their PRs. Each further tap bumps the
   // fragment: a distinct URL to the image decoder (which is what restarts
@@ -364,12 +465,46 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
         )
     : null;
 
+  // The avatar markup, shared by both shells below: a <button> that plays
+  // the equipped emote when the emotes are on, a plain box when they are
+  // hidden (ENABLE_EMOTES, config/features.js).
+  const avatar = (
+    <span className="relative flex items-end justify-center">
+      {/* Tier-coloured glow standing in for the ring the head crop
+          used to have — it keeps the tier legible without boxing a
+          full-length goat into a circle. */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute bottom-2 h-32 w-40 rounded-full blur-3xl opacity-60"
+        style={{ background: 'radial-gradient(circle, var(--tier-glow), transparent 70%)' }}
+      />
+      <JimmyAnimation
+        animationSrc={avatarAnimationSrc}
+        staticImageSrc={mascotSpriteFor(friend.mascot, friendTier?.stage)}
+        alt={`${name} the ${friend.tierLabel}`}
+        className="relative h-44 w-40"
+        evolutionStage={friend.evolutionStage}
+        equippedAccessories={friend.equippedAccessories}
+        // Theirs, from the summary — see friendPrivacy's sanitize.
+        // It also gates the dance: a Gena profile holds her sprite
+        // instead of playing a clip of Jimmy doing her emote.
+        mascot={friend.mascot}
+        // This component owns the tap; two handlers on one press
+        // would each restart the clip.
+        interactive={false}
+      />
+    </span>
+  );
+
   return (
     <div className="flex flex-col gap-5 pt-6 pb-nav">
-      <button type="button" onClick={() => navigate(-1)} className="text-sm font-medium text-neutral-500 self-start">
+      <button type="button" onClick={onBack} className="text-sm font-medium text-neutral-500 self-start">
         ← Back
       </button>
 
+      {/* The header. Always drawn, whatever the data — a brand-new account
+          gets the base goat, its name and the bar at zero, which is a
+          profile, where a line saying there is nothing to see was not. */}
       <div className="flex flex-col items-center gap-3 text-center">
         {/* THEIR goat in THEIR gear — explicit props, never useJimmyLook().
             Reading the current user's context here would quietly dress every
@@ -383,41 +518,21 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
             a tap, so the clip is not even fetched — the profile of someone
             you just wanted to look at should not start performing at you.
             A real <button>, so it is keyboard-reachable and announced. */}
-        <button
-          type="button"
-          onClick={handleAvatarTap}
-          className="transition-transform duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ember)] rounded-3xl"
-          aria-label={
-            danceNumber ? `Play ${name}'s ${danceName}` : `See ${name}'s dances`
-          }
-        >
-          <span className="relative flex items-end justify-center">
-            {/* Tier-coloured glow standing in for the ring the head crop
-                used to have — it keeps the tier legible without boxing a
-                full-length goat into a circle. */}
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute bottom-2 h-32 w-40 rounded-full blur-3xl opacity-60"
-              style={{ background: 'radial-gradient(circle, var(--tier-glow), transparent 70%)' }}
-            />
-            <JimmyAnimation
-              animationSrc={avatarAnimationSrc}
-              staticImageSrc={mascotSpriteFor(friend.mascot, friendTier?.stage)}
-              alt={`${name} the ${friend.tierLabel}`}
-              className="relative h-44 w-40"
-              evolutionStage={friend.evolutionStage}
-              equippedAccessories={friend.equippedAccessories}
-              // Theirs, from the summary — see friendPrivacy's sanitize.
-              // It also gates the dance: a Gena profile holds her sprite
-              // instead of playing a clip of Jimmy doing her emote.
-              mascot={friend.mascot}
-              streak={friend.currentStreak ?? (friend.showFire ? 2 : 0)}
-              // This component owns the tap; two handlers on one press
-              // would each restart the clip.
-              interactive={false}
-            />
-          </span>
-        </button>
+        {ENABLE_EMOTES ? (
+          <button
+            type="button"
+            onClick={handleAvatarTap}
+            className="transition-transform duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ember)] rounded-3xl"
+            aria-label={danceNumber ? `Play ${name}'s ${danceName}` : `See ${name}'s dances`}
+          >
+            {avatar}
+          </button>
+        ) : (
+          // No emotes to play while the flag is off, so no button either: a
+          // control announced as "play their dance" with nothing behind it
+          // is worse than a still picture.
+          <div className="rounded-3xl">{avatar}</div>
+        )}
 
         <div>
           <h1 className="text-2xl font-bold text-neutral-50">{name}</h1>
@@ -448,9 +563,26 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
         />
       </section>
 
+      {/* Their feed, reduced to its most recent entry. This is the section
+          the old whole-page "nothing to show" copy belonged to, and where
+          it lives now. */}
+      <section className="card p-5 flex flex-col gap-3">
+        <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Activity</p>
+        {friend.latestActivity ? (
+          <LatestActivity activity={friend.latestActivity} />
+        ) : (
+          <NoActivityYet name={name} onNudge={() => setNudging(true)} />
+        )}
+      </section>
+
       <section className="card p-5 flex flex-col gap-3">
         <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Personal Records</p>
-        {!friend.sharesRecords ? (
+        {/* Checked before the sharing flag: an account that has never
+            trained has not "chosen" anything about its PRs, and telling a
+            visitor otherwise would read as a snub. */}
+        {!friend.hasActivity ? (
+          <p className="text-sm text-neutral-500">No personal records yet — they start with {name}'s first workout.</p>
+        ) : !friend.sharesRecords ? (
           <p className="text-sm text-neutral-500">{name} hasn't chosen to share their PRs.</p>
         ) : friend.personalRecords.length === 0 ? (
           <p className="text-sm text-neutral-500">No personal records logged yet.</p>
@@ -474,7 +606,8 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
                         <span className="text-neutral-300">{pr.name}</span>
                         <span className="flex items-center gap-2">
                           <span className="font-semibold text-neutral-100 tabular-nums">
-                            {formatRecordLoad(pr)}{pr.reps ? ` × ${pr.reps}` : ''}
+                            {formatRecordLoad(pr)}
+                            {pr.reps ? ` × ${pr.reps}` : ''}
                           </span>
                           <CheerButton {...cheer} onToggle={cheer.toggleLike} />
                         </span>
@@ -496,9 +629,7 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
       {friend.savedRoutines.length > 0 && (
         <section className="flex flex-col gap-3">
           <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Saved Routines</p>
-          <p className="text-xs text-neutral-600 -mt-1">
-            Structure only — steal the routine, not the numbers.
-          </p>
+          <p className="text-xs text-neutral-600 -mt-1">Structure only — steal the routine, not the numbers.</p>
           <div className="flex flex-col gap-3">
             {friend.savedRoutines.map((routine, i) => (
               <RoutineCard
@@ -513,13 +644,7 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
         </section>
       )}
 
-      {nudging && (
-        <NudgeModal
-          friendName={name}
-          onSend={(messageId) => onSendNudge(friendUid, messageId)}
-          onClose={() => setNudging(false)}
-        />
-      )}
+      {nudging && <NudgeModal friendName={name} onSend={onSendNudge} onClose={() => setNudging(false)} />}
     </div>
   );
 }

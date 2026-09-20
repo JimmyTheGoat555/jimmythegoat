@@ -1,0 +1,12 @@
+{
+  "appId": "com.jimmythegoat.app",
+  "appName": "Jimmy the Goat",
+  "webDir": "dist",
+  "backgroundColor": "#0a0a0a",
+  "ios": {
+    "contentInset": "never",
+    "preferredContentMode": "mobile",
+    "allowsLinkPreview": false,
+    "backgroundColor": "#0a0a0a"
+  }
+}

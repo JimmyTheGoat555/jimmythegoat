@@ -1,9 +1,18 @@
 import { NavLink, useLocation } from 'react-router-dom';
+import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import { TAB_PATHS, TRAINER_TAB_PATH } from './tabPaths';
 
 function WorkoutIcon({ active }) {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? 'var(--tier-accent)' : '#8e8e93'} strokeWidth="2" strokeLinecap="round">
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={active ? 'var(--tier-accent)' : 'var(--color-chrome-muted)'}
+      strokeWidth="2"
+      strokeLinecap="round"
+    >
       <path d="M6.5 6.5v11M17.5 6.5v11M2 9.5v5M22 9.5v5M6.5 12h11" />
     </svg>
   );
@@ -11,7 +20,16 @@ function WorkoutIcon({ active }) {
 
 function ProgressIcon({ active }) {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? 'var(--tier-accent)' : '#8e8e93'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={active ? 'var(--tier-accent)' : 'var(--color-chrome-muted)'}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M3 17l6-6 4 4 8-8" />
       <path d="M15 6h6v6" />
     </svg>
@@ -20,7 +38,16 @@ function ProgressIcon({ active }) {
 
 function SocialIcon({ active }) {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? 'var(--tier-accent)' : '#8e8e93'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={active ? 'var(--tier-accent)' : 'var(--color-chrome-muted)'}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <circle cx="9" cy="8" r="3" />
       <path d="M3 20c0-3 2.5-5 6-5s6 2 6 5" />
       <circle cx="17.5" cy="9" r="2.3" />
@@ -32,7 +59,16 @@ function SocialIcon({ active }) {
 // A shopping bag — the coin economy's storefront (see GymShop.jsx).
 function ShopIcon({ active }) {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? 'var(--tier-accent)' : '#8e8e93'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={active ? 'var(--tier-accent)' : 'var(--color-chrome-muted)'}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M6 8h12l-1 12.5a1.5 1.5 0 0 1-1.5 1.5h-7a1.5 1.5 0 0 1-1.5-1.5L6 8z" />
       <path d="M9 8V6a3 3 0 0 1 6 0v2" />
     </svg>
@@ -43,7 +79,16 @@ function ShopIcon({ active }) {
 // "the plans/roster I manage" for a trainer.
 function TraineesIcon({ active }) {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? 'var(--tier-accent)' : '#8e8e93'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={active ? 'var(--tier-accent)' : 'var(--color-chrome-muted)'}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <rect x="5" y="4" width="14" height="17" rx="2" />
       <path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
       <path d="M9 12.5l2 2 4-4.5" />
@@ -85,9 +130,41 @@ function tabsFor(isTrainer) {
 // utils/storeAlerts.js. Same red pill on purpose: it means the same
 // thing ("there is something in here for you"), and inventing a second
 // visual language for it would only make both harder to read.
+
+// How much of the viewport has to be covered before we call it a
+// keyboard. A soft keyboard is never under ~200px on a phone; the small
+// visualViewport deltas that are NOT a keyboard (Safari's collapsing URL
+// bar, the rubber-band at the end of a scroll) are well under 120. Picking
+// a threshold in the gap means neither is ever mistaken for the other.
+const KEYBOARD_OPEN_PX = 120;
+
 export default function BottomNav({ isTrainer, unreadNotifications = 0, unequippedRewards = 0 }) {
   const location = useLocation();
   const tabs = tabsFor(isTrainer);
+  // ── Why the tab row hides while you are typing ────────────────────────
+  //
+  // This is the fix for "the nav bar sometimes floats in the middle of the
+  // screen". `position: fixed` resolves against the LAYOUT viewport, and
+  // iOS does not shrink that when the keyboard opens — it leaves the
+  // layout viewport full-height and slides the keyboard over the top,
+  // then scrolls the page to reveal the focused field. The bar is still
+  // dutifully pinned to the bottom of a viewport that now extends behind
+  // the keyboard, and what you see is it stranded partway up the screen.
+  // No amount of bottom-0/w-full fixes that, because the bar is already
+  // exactly where it was told to go — the viewport is what moved.
+  //
+  // interactive-widget=resizes-content (index.html) makes Android Chrome
+  // shrink the layout viewport instead, so the bar rides the top of the
+  // keyboard there and looks fine. iOS ignores that hint entirely.
+  //
+  // So: measure the occluded height and take the row out while it is
+  // covered. A tab bar is not reachable behind a keyboard anyway, so
+  // nothing is lost, and this is what a native app does. Page padding is
+  // left alone on purpose — .pb-nav still reserves the row's space, so
+  // dismissing the keyboard brings it back with no reflow underneath.
+  const keyboardInset = useKeyboardInset();
+  if (keyboardInset > KEYBOARD_OPEN_PX) return null;
+
   // Exact-match only (not "which tab is this a sub-page of") — a tab
   // button click only ever targets one of these exact paths, so this is
   // just "which of THESE am I on right now", never -1 in practice for a

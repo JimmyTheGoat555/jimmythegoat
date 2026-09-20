@@ -11,42 +11,56 @@
 // address, since this string is public the moment anyone opens the
 // privacy/terms screen and will be scraped for spam.
 export const CONTACT_EMAIL = 'jimmythegoat.app@gmail.com';
-export const LAST_UPDATED = 'September 10, 2026';
+// Each document carries its own date. Both moved on September 18, 2026:
+// the terms (the automated-coaching disclaimer, injury liability,
+// governing law) and the policy (cookies and local storage, disclosure
+// when legally required, retention and the security disclaimer).
+export const LAST_UPDATED = 'September 18, 2026';
+export const TERMS_LAST_UPDATED = 'September 18, 2026';
+// What an account accepted. Stamped on users/{uid} at sign-up and by the
+// consent gate (hooks/useLegalConsent.js); bump it whenever either
+// document changes in a way people must agree to again, and every
+// signed-in account is asked once more before the app renders. The
+// suffix: the policy changed later the same day the terms did, after the
+// gate had already shipped with the plain date.
+export const LEGAL_VERSION = '2026-09-18.1';
 
 export const PRIVACY_POLICY_SECTIONS = [
   {
     heading: 'What we collect',
-    body: `Account info you provide: your email, display name, and password (Firebase Auth stores your password in hashed form — nobody at Jimmy the Goat, including us, can see it).
+    body: `Account info you provide: Your email, display name, and password (Firebase Auth stores your password in hashed form — nobody at Jimmy the Goat, including us, can see it).
 
-Fitness data you log: workouts (exercises, weights, reps, sets, timestamps), body-weight entries, height, body type, fitness goal, weekly workout target, and your weigh-in day.
+Fitness data you log: Workouts (exercises, weights, reps, sets, timestamps), body-weight entries, height, body type, fitness goal, weekly workout target, and your weigh-in day.
 
-Social & coaching data: a trainer code if you connect to a coach, friend connections (only formed when both people accept), and summaries of your completed workouts shown in your friends' feed (exercise name, total sets/volume, coins earned, and any cosmetic you had equipped) — never your body weight or email.
+Social & coaching data: A trainer code if you connect to a coach, friend connections (only formed when both people mutually accept), and summaries of your completed workouts shown in your friends' feed (exercise name, total sets/volume, coins earned, and any cosmetic you had equipped) — never your body weight or email.
 
-In-app economy: coins earned and items you've unlocked or equipped.
+In-app economy: Coins earned and items you've unlocked or equipped.
 
-Device data for notifications: if you turn on push notifications, a token identifying your device (not you personally) so we know where to deliver them.
+Device data for notifications: If you turn on push notifications, a token identifying your device (not you personally) so we know where to deliver them.
 
-Local-only preferences: things like your sound-effects setting stay in your browser and are never sent to us.`,
+Cookies & Local Storage: Because Jimmy the Goat is a web-based app (PWA), we use your browser's local storage to keep you logged in and save your local preferences (like sound effects). We do not use third-party tracking cookies.`,
   },
   {
     heading: 'How we use it',
-    body: `To run the app: track your workouts and progress, connect you with a trainer or friends you choose to add, award coins for verified workouts, and send you the reminders you've opted into (weekly weigh-in nudges, updates from your trainer).
-
-That's it. We don't run ads, we don't sell your data, and we don't use it for marketing outside the app.`,
+    body: `To run the app: track your workouts and progress, connect you with a trainer or friends you choose to add, award coins for verified workouts, and send you the reminders you've opted into (weekly weigh-in nudges, updates from your trainer). That's it. We don't run ads, we don't sell your data, and we don't use it for marketing outside the app.`,
   },
   {
     heading: 'Who can see your data',
-    body: `You always see everything of your own.
+    body: `You: Always see everything of your own.
 
-A trainer you're connected to can see your logged workouts and body-weight history — never anyone else's.
+A connected trainer: Can see your logged workouts and body-weight history — never anyone else's.
 
-Friends (only people who've mutually accepted a connection with you) can see a short summary of workouts you complete: which exercise, how much volume, coins earned, and any cosmetic you had on. They never see your body weight, your email, or your full workout log.
+Mutual friends: Can see a short summary of workouts you complete (exercise, volume, coins earned, and cosmetics). They never see your body weight, your email, or your full workout log.
 
-Nobody else. We don't share or sell your data to advertisers or unrelated third parties.`,
+Legal Requirements: While we strictly protect your privacy, we may disclose your information if legally required to do so (for example, to comply with a valid subpoena, court order, or legal process) or to protect the safety, rights, or property of Jimmy the Goat, our users, or the public.
+
+Nobody else: We don't share or sell your data to advertisers or unrelated third parties.`,
   },
   {
-    heading: 'Where it lives',
-    body: `Your data is stored and processed using Google Firebase (Firestore for data, Firebase Authentication for your login, Cloud Functions for the anti-cheat/reward logic, Cloud Messaging for push notifications) and the app itself is hosted on Vercel. Both are infrastructure providers processing data on our behalf under their own security standards — neither uses your data for their own separate purposes.`,
+    heading: 'Where it lives & data security',
+    body: `Your data is stored and processed using Google Firebase (Firestore for data, Firebase Authentication for your login, Cloud Functions for the anti-cheat/reward logic, Cloud Messaging for push notifications) and the app itself is hosted on Vercel. Both are infrastructure providers processing data on our behalf under their own strict security standards — neither uses your data for their own separate purposes.
+
+Data Retention & Security: We hold onto your data for as long as you have an active account. While we use industry-standard services like Firebase to secure your data, no method of transmission over the internet or electronic storage is 100% secure. We cannot guarantee absolute security, and you use the app at your own risk.`,
   },
   {
     heading: 'Your choices',
@@ -64,11 +78,11 @@ To request a full copy of your data, email us at ${CONTACT_EMAIL}.`,
   },
   {
     heading: 'Changes to this policy',
-    body: `If we materially change what we collect or how we use it, we'll update this page and the "last updated" date above. Continuing to use the app after a change means you accept the update.`,
+    body: `If we materially change what we collect or how we use it, we'll update this page and the "last updated" date. Continuing to use the app after a change means you accept the update.`,
   },
   {
     heading: 'Contact',
-    body: `Questions about this policy or your data? Email ${CONTACT_EMAIL}.`,
+    body: `Questions about this policy or your data? Email us at ${CONTACT_EMAIL}.`,
   },
 ];
 
@@ -83,7 +97,7 @@ export const TERMS_OF_SERVICE_SECTIONS = [
   },
   {
     heading: 'Not medical advice',
-    body: `Jimmy the Goat is not a medical device and doesn't provide medical or professional fitness advice. Talk to a physician before starting any new exercise program, especially if you have an existing health condition. You use the app, and perform any exercise you log or are assigned, entirely at your own risk.`,
+    body: `Jimmy the Goat is not a medical device and doesn't provide medical or professional fitness advice. Talk to a physician before starting any new exercise program, especially if you have an existing health condition. Any automated workout tips, prompts, or progression recommendations generated by the app are general suggestions, not tailored professional advice. You use the app, and perform any exercise you log or are assigned, entirely at your own risk.`,
   },
   {
     heading: 'Your account',
@@ -107,7 +121,11 @@ export const TERMS_OF_SERVICE_SECTIONS = [
   },
   {
     heading: '"As is", no warranty',
-    body: `The app is provided "as is," without guarantees that it will always be available, error-free, or uninterrupted. To the extent the law allows, we aren't liable for indirect or consequential damages arising from your use of the app.`,
+    body: `The app is provided "as is," without guarantees that it will always be available, error-free, or uninterrupted. To the maximum extent permitted by law, we aren't liable for any indirect or consequential damages, nor are we liable for any personal injury, death, or physical harm arising from your use of the app or reliance on its features.`,
+  },
+  {
+    heading: 'Governing law',
+    body: `These terms are governed by the laws of the State of Israel. Any legal disputes related to the app or these terms will be handled exclusively in the competent courts located in Israel.`,
   },
   {
     heading: 'Changes',

@@ -1,6 +1,28 @@
 import { useState } from 'react';
 import { useKeyboardInset } from '../../hooks/useKeyboardInset';
 import MuscleGroupPicker from './MuscleGroupPicker';
+import ExerciseGuideSheet from './ExerciseGuideSheet';
+
+// An (i) in a ring. Inline SVG so it inherits currentColor and sits on
+// the row's baseline at any size — the ℹ️ emoji is a blue square on half
+// the phones out there.
+function InfoIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      className="h-[18px] w-[18px]"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <path d="M12 8h.01" />
+    </svg>
+  );
+}
 
 // Picking exercises — and now un-picking them.
 //
@@ -65,6 +87,10 @@ export default function ExercisePicker({
   // modal on top of a modal to delete one list row is a lot of ceremony
   // for something that costs nothing to re-create.
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  // Which exercise's full entry is open in the guide sheet. The exercise
+  // is kept through the close so the sheet has its text while it slides
+  // out; only `open` flips.
+  const [guide, setGuide] = useState({ exercise: null, open: false });
   const groupExercises = exercisesByGroup(selectedGroup);
 
   const handleAddCustom = (e) => {
@@ -161,9 +187,7 @@ export default function ExercisePicker({
                   // still inert, because the alternative is losing them.
                   disabled={added && !removable}
                   onClick={() => (removable ? onRemove(exercise.id) : onAdd(exercise))}
-                  aria-label={
-                    removable ? `Remove ${exercise.name} from this workout` : `Add ${exercise.name}`
-                  }
+                  aria-label={removable ? `Remove ${exercise.name} from this workout` : `Add ${exercise.name}`}
                   className={`flex min-w-0 flex-1 items-center justify-between rounded-2xl px-4 py-3.5 text-base text-left transition border ${
                     added
                       ? removable
@@ -187,6 +211,20 @@ export default function ExercisePicker({
                     {added ? (removable ? '−' : '✓') : '+'}
                   </span>
                 </button>
+
+                {/* The full entry, for anything that has one. Quiet on
+                    purpose — a ring and a letter in the row's grey, so the
+                    list reads as names and not as a page of buttons. */}
+                {exercise.description && (
+                  <button
+                    type="button"
+                    onClick={() => setGuide({ exercise, open: true })}
+                    aria-label={`About ${exercise.name}`}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-500 transition active:scale-90"
+                  >
+                    <InfoIcon />
+                  </button>
+                )}
 
                 {/* Catalog delete, and only ever on your own entries — the
                     built-in list is not yours to edit and a ✕ on Bench
@@ -217,10 +255,7 @@ export default function ExercisePicker({
                 placeholder="New exercise name"
                 className="flex-1 bg-neutral-800 rounded-xl px-3.5 py-3 text-base text-neutral-100 focus:outline-none focus:ring-2 focus:ring-[var(--ember)]"
               />
-              <button
-                type="submit"
-                className="bg-[var(--ember)] text-white font-semibold text-base px-5 rounded-xl"
-              >
+              <button type="submit" className="bg-[var(--ember)] text-white font-semibold text-base px-5 rounded-xl">
                 Add
               </button>
             </form>
@@ -243,6 +278,12 @@ export default function ExercisePicker({
           </button>
         </div>
       </div>
+
+      <ExerciseGuideSheet
+        exercise={guide.exercise}
+        open={guide.open}
+        onClose={() => setGuide((g) => ({ ...g, open: false }))}
+      />
     </div>
   );
 }

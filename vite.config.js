@@ -1,6 +1,6 @@
-import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
-import { VitePWA } from 'vite-plugin-pwa'
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -42,20 +42,26 @@ export default defineConfig({
         name: 'Jimmy the Goat',
         short_name: 'Jimmy Goat',
         description: 'A fast, no-nonsense strength tracker for the gym.',
-        theme_color: '#0a0a0a',
-        background_color: '#0a0a0a',
+        // The brand gray — the colour the OS paints around the app (status
+        // bar, splash). Twinned with the theme-color meta in index.html,
+        // which the browser reads first.
+        theme_color: '#333333',
+        background_color: '#333333',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
+        // One file for every icon slot — the brand logo, 512x512 and
+        // opaque, the same file index.html uses for the favicon, the
+        // Apple touch icon and the launch screen. Listed twice on purpose:
+        // `any` is the plain launcher/install icon, `maskable` lets
+        // Android crop it to its adaptive shape (the goat sits well inside
+        // the safe zone, and the ground bleeds to every edge, so the same
+        // pixels serve both). Chrome's install criteria want one icon of
+        // at least 192px with purpose `any`; a 512 covers that and the
+        // Android splash.
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          {
-            src: '/icons/icon-maskable-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
+          { src: '/newlogo.zozo.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/newlogo.zozo.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       injectManifest: {
@@ -114,4 +120,4 @@ export default defineConfig({
       },
     },
   },
-})
+});

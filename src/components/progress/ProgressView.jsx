@@ -1,16 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from 'recharts';
+import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { exerciseProgress, exercisesTrainedInHistory, workoutVolume } from '../../utils/workoutStats';
 import JimmyEvolution from '../evolution/JimmyEvolution';
 import StreakHeatmap from './StreakHeatmap';
@@ -29,9 +19,12 @@ const chartTooltipStyle = {
   fontSize: 13,
 };
 
-export default function ProgressView({ workouts, exercises, bodyWeightKg = 0, minStage = 1 }) {
+export default function ProgressView({ workouts, exercises, bodyWeightKg = 0, minStage = 1, progressionScale = 1 }) {
   const { getExercise } = exercises;
-  const finished = workouts.filter((w) => w.finishedAt).slice().reverse();
+  const finished = workouts
+    .filter((w) => w.finishedAt)
+    .slice()
+    .reverse();
   const trainedIds = useMemo(() => exercisesTrainedInHistory(workouts), [workouts]);
   const [selectedExercise, setSelectedExercise] = useState(trainedIds[0] ?? '');
 
@@ -53,6 +46,7 @@ export default function ProgressView({ workouts, exercises, bodyWeightKg = 0, mi
         <h1 className="text-3xl font-bold text-neutral-50">Progress</h1>
         <Link
           to="/profile"
+          state={{ from: '/progress' }}
           aria-label="Profile"
           className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900 text-lg"
         >
@@ -60,9 +54,19 @@ export default function ProgressView({ workouts, exercises, bodyWeightKg = 0, mi
         </Link>
       </header>
 
-      <JimmyEvolution workouts={workouts} bodyWeightKg={bodyWeightKg} minStage={minStage} />
+      <JimmyEvolution
+        workouts={workouts}
+        bodyWeightKg={bodyWeightKg}
+        minStage={minStage}
+        progressionScale={progressionScale}
+      />
       <StreakHeatmap workouts={workouts} />
-      <LifetimeVolumeCard workouts={workouts} bodyWeightKg={bodyWeightKg} minStage={minStage} />
+      <LifetimeVolumeCard
+        workouts={workouts}
+        bodyWeightKg={bodyWeightKg}
+        minStage={minStage}
+        progressionScale={progressionScale}
+      />
       <WeeklyVolumeCard workouts={workouts} />
       <WeeklySummaryCard workouts={workouts} />
       <MuscleGroupGoals workouts={workouts} />
@@ -74,8 +78,8 @@ export default function ProgressView({ workouts, exercises, bodyWeightKg = 0, mi
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={volumeSeries}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2c2c2e" vertical={false} />
-                <XAxis dataKey="date" stroke="#8e8e93" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#8e8e93" fontSize={12} tickLine={false} axisLine={false} width={36} />
+                <XAxis dataKey="date" stroke="var(--color-chrome-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--color-chrome-muted)" fontSize={12} tickLine={false} axisLine={false} width={36} />
                 <Tooltip
                   contentStyle={chartTooltipStyle}
                   labelStyle={{ color: '#f5f5f7' }}
@@ -105,8 +109,8 @@ export default function ProgressView({ workouts, exercises, bodyWeightKg = 0, mi
               <ResponsiveContainer width="100%" height={180}>
                 <LineChart data={weightSeries}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#2c2c2e" vertical={false} />
-                  <XAxis dataKey="date" stroke="#8e8e93" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#8e8e93" fontSize={12} tickLine={false} axisLine={false} width={36} />
+                  <XAxis dataKey="date" stroke="var(--color-chrome-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="var(--color-chrome-muted)" fontSize={12} tickLine={false} axisLine={false} width={36} />
                   <Tooltip contentStyle={chartTooltipStyle} labelStyle={{ color: '#f5f5f7' }} />
                   <Line
                     type="monotone"

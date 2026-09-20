@@ -82,8 +82,7 @@ export function useFriendProfile(friendUid) {
     // Multi-slot loadout, preferring the summary then the newest feed
     // post; readEquippedAccessories at the render site folds in the legacy
     // single field for accounts that predate this.
-    equippedAccessories:
-      summary?.equippedAccessories ?? latestPost?.equippedAccessories ?? null,
+    equippedAccessories: summary?.equippedAccessories ?? latestPost?.equippedAccessories ?? null,
     // The dance emotes they own, for the showcase a visitor can play from
     // their profile (FriendDancesModal.jsx). Server-written only — see
     // economy.js's logWorkout/purchaseItem — so unlike the equipped
@@ -115,6 +114,21 @@ export function useFriendProfile(friendUid) {
     featuredBadges: summary?.featuredBadges ?? null,
     // Coaching accounts start at buff — see TRAINER_MIN_STAGE.
     minStage: summary?.minStage ?? latestPost?.minStage ?? 1,
+    // And the threshold scale their tier was decided with, from the same
+    // two sources; absent before the female-scale deploy, when the
+    // sanitiser falls back to their mascot.
+    progressionScale: summary?.progressionScale ?? latestPost?.progressionScale ?? null,
+    // Which character to draw them as. logWorkout and setSharePRs publish
+    // it on the summary and every post snapshots it, so either source
+    // will do; both are absent for an account that has never trained,
+    // which resolveMascotId (inside sanitizeFriendData) lands on Jimmy.
+    // Before this line neither source reached the sanitiser at all, and
+    // every friend was drawn as Jimmy whatever they had chosen.
+    mascot: summary?.mascot ?? latestPost?.mascot ?? null,
+    // The post itself, for the profile's Activity section. Raw here on
+    // purpose — the allowlist in sanitizeFriendData decides which of its
+    // fields reach the screen.
+    latestPost,
     loading: summaryLoading || postLoading,
     // A profile that truly doesn't exist (bad uid, or they've deleted their
     // account) vs. one that's just never logged a workout yet — the latter

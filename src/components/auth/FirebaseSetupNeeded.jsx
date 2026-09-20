@@ -1,6 +1,6 @@
 export default function FirebaseSetupNeeded() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center gap-4">
+    <div className="flex flex-col items-center justify-center min-h-[100dvh] px-6 text-center gap-4">
       <span className="text-5xl">🔧</span>
       <h1 className="text-2xl font-bold text-neutral-50">Firebase isn't configured yet</h1>
       <p className="text-neutral-400 max-w-sm">

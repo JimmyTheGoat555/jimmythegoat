@@ -1,12 +1,20 @@
-// Shared numeric bounds + helpers for weight/rep entry (the wheel picker,
-// SetRow, SetEntrySheet, and the body-weight log).
+// Shared numeric bounds + helpers for weight/rep entry (SetRow's typed
+// weight/reps fields and the body-weight log).
 //
 // Two different precisions on purpose:
 //   - BODY weigh-ins (ProfileView / logBodyWeight) round to 0.1 kg —
 //     people care about a 0.3 kg swing.
-//   - WORKING weights in a logged set step in 1 kg, plus the half-kg
-//     dumbbell/plate combos that actually exist on a rack
-//     (7.5, 12.5, 17.5, 22.5, 27.5). No 62.4 kg bench sets.
+//   - WORKING weights in a logged set step in 0.5 kg (SetRow's stepper),
+//     the smallest increment that exists on a real rack.
+//
+// The ladders that used to live here — WORKING_WEIGHTS_KG's whole kilos
+// with the half-kg rack combos, and TOTAL_WEIGHTS_KG's every-half-kilo
+// override list — were the old scroll wheels' option lists. The wheel is
+// still here (components/workout/SetEntrySheet.jsx) but it builds its own
+// range from min/max/step now, in 0.5 kg all the way up, so that every
+// value the stepper can produce exists on it. The typed field takes any
+// number in range. Neither reads a ladder, so the one left below is only
+// the enumeration the tests walk.
 //
 // NOTE: the kg/lbs (and cm/in) unit SYSTEM — a stored `unitSystem`
 // preference plus conversion at every display site — is still a separate,
@@ -18,21 +26,21 @@ export const WEIGHT_MAX_KG = 250; // matches MAX_WEIGHT_KG
 export const REPS_MIN = 1;
 export const REPS_MAX = 30;
 
-// Sensible starting points when a set has nothing entered yet and there's
-// no "last time" to copy from.
+// The starting point when a set has nothing entered yet and there's no
+// "last time" to copy from.
 //
-// DEFAULT_WEIGHT_KG is only the last-resort fallback now — for anything in
-// the seed catalog the wheel opens on that exercise's own
+// DEFAULT_WEIGHT_KG is only the last-resort fallback — for anything in the
+// seed catalog the weight field starts from that exercise's own
 // `defaultWeightKg` instead (see data/exercises.js), since one flat number
 // can't be right for both a bench press and a lateral raise. This value
 // still covers a user's own custom exercises, which have no entry there.
 export const DEFAULT_WEIGHT_KG = 20;
-export const DEFAULT_REPS = 10;
 
-// The wheel's weight values: every whole kg from 1 to 250, with the
-// half-kg rack combos (7.5 / 12.5 / 17.5 / 22.5 / 27.5) inserted where
-// they belong. ~255 entries, so the wheel is light and easy to spin to a
-// target (a 0.1-step list would be 2500).
+// Every whole kg from 1 to 250 with the half-kg rack combos (7.5 / 12.5 /
+// 17.5 / 22.5 / 27.5) inserted where they belong — the weights a metric
+// rack actually holds. Nothing in the app renders this any more; it is
+// the enumeration tools/setLoad.test.mjs walks to check that every
+// plausible entry survives the client → server round trip.
 const HALF_KG_WEIGHTS = [7.5, 12.5, 17.5, 22.5, 27.5];
 export const WORKING_WEIGHTS_KG = (() => {
   const out = [];
@@ -48,16 +56,6 @@ export function formatWorkingWeight(n) {
   const num = Number(n);
   if (!Number.isFinite(num)) return '—';
   return Number.isInteger(num) ? String(num) : num.toFixed(1);
-}
-
-// Snaps an arbitrary weight (a "last time" value, a trainer-assigned
-// number) to the nearest value the wheel actually offers.
-export function nearestWorkingWeight(n) {
-  const num = Number(n);
-  if (!Number.isFinite(num)) return DEFAULT_WEIGHT_KG;
-  return WORKING_WEIGHTS_KG.reduce((best, v) =>
-    Math.abs(v - num) < Math.abs(best - num) ? v : best,
-  );
 }
 
 // One decimal place, free of float noise (0.1 * 3 !== 0.3) — for BODY

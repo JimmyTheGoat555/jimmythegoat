@@ -3,7 +3,6 @@ import { getTierByStage } from '../../utils/evolutionTiers';
 import { ACCESSORY_SLOT_ORDER, getStoreItem, readEquippedAccessories } from '../../data/storeItems';
 import { ACCESSORY_ART, artFor } from './accessoryArt';
 import { anchorsFor, placeOnAnchors } from '../../data/avatarAnchors';
-import { FIRE_STREAK_MIN, streakAuraClass } from '../../utils/streak';
 import {
   DEFAULT_MASCOT_ID,
   accessoryArtStageFor,
@@ -220,24 +219,6 @@ export default function JimmyAvatar({
   size = null,
   // 'head' zooms to the head/collarbone for small round avatars.
   crop = null,
-  // A live workout streak sets him alight (.streak-fire in index.css).
-  //
-  // Now the streak LENGTH rather than a boolean, because the aura has
-  // three tiers and the component has to know which one to draw. The
-  // thresholds still are not decided here — streakAuraClass owns them
-  // (utils/streak.js) so the feed, the leaderboard, a friend's profile and
-  // your own goat cannot disagree about what "on fire" looks like.
-  //
-  // Still never read from JimmyLook: every friend's avatar on the
-  // leaderboard, the feed and their profile is somebody ELSE's, and a
-  // context fallback here would quietly set them alight whenever YOU were
-  // on a streak. Same reasoning as equippedAccessories.
-  //
-  // A boolean is still accepted, and means "tier 1" — a handful of call
-  // sites only ever had the pre-derived flag (friendPrivacy.js publishes
-  // one), and silently drawing nothing for them would be a worse failure
-  // than drawing the modest tier.
-  streak = 0,
   // Which character to draw — 'jimmy' (the default) or 'gena'. Same
   // reasoning as equippedAccessories and streak above: NEVER read from
   // JimmyLook, because every avatar on the leaderboard, the feed and a
@@ -318,39 +299,30 @@ export default function JimmyAvatar({
     </div>
   );
 
-  // The aura is drawn by ::before/::after at inset:-18%, so it has to land
-  // on an element that does NOT clip — which is why the cropped branch
-  // below grew an extra wrapper instead of just taking the class.
+  // ── No streak aura ────────────────────────────────────────────────
   //
-  // Worth knowing at the call sites: a PARENT that clips still wins. The
-  // small round avatars are wrapped in GradientBorder's
-  // `rounded-full overflow-hidden`, so there the fire reads as a glow
-  // banked inside the ring rather than a halo spilling out of it. That is
-  // a deliberate accept, not an oversight — punching the aura out through
-  // the ring would mean dropping the circular mask that makes those
-  // avatars avatars.
-  const fireClass = streakAuraClass(streak === true ? FIRE_STREAK_MIN : streak);
-  // Tier 3 gets a third, slowly rotating layer that the two pseudo-
-  // elements have no room for. Rendered as a real child, so it only exists
-  // for the avatars that have earned it rather than sitting invisible
-  // behind every other one in the feed.
-  const halo = fireClass.includes('--t3') ? <span className="streak-halo" aria-hidden="true" /> : null;
-
+  // There used to be a three-tier fire aura here (.streak-fire in
+  // index.css), drawn behind every avatar whose owner was on a run. It is
+  // gone on purpose, everywhere — the lobby goat lost it first, and it
+  // survived on friends in the leaderboard, the feed, search results and
+  // friend profiles, which is exactly the inconsistency that made it read
+  // as a bug rather than a reward. The `streak` prop went with it: an
+  // avatar draws a character, and nothing about how often that person
+  // trains changes the picture.
+  //
+  // The streak itself is untouched — it is still counted server-side,
+  // still published, and still shown as a number wherever a number
+  // belongs. Only the glow is gone.
   if (!cropped) {
     return (
-      <div
-        className={`inline-block ${px == null ? 'h-full' : ''} ${fireClass} ${className}`}
-        style={sizeStyle}
-      >
-        {halo}
+      <div className={`inline-block ${px == null ? 'h-full' : ''} ${className}`} style={sizeStyle}>
         {inner}
       </div>
     );
   }
 
   return (
-    <div className={`${fireClass} ${className}`} style={sizeStyle}>
-      {halo}
+    <div className={className} style={sizeStyle}>
       <div className="relative h-full w-full overflow-hidden">
         <div
           className="flex h-full w-full items-start justify-center"

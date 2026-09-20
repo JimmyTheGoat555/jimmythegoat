@@ -1,72 +1,29 @@
-import { useAdminAnalytics } from '../../hooks/useAdminAnalytics';
+import { BarRow, Empty, Metric, Panel, Stat, fmt } from './consoleUi';
 
-// A big number and what it means. `error` wins over `value`, and both win
-// over the loading dash — a card that shows a confident 0 when the query
-// behind it actually failed is the one failure mode a health dashboard
-// must not have (see adminAnalytics.js's per-metric `errors`).
-function MetricCard({ label, value, hint, error, loading }) {
-  return (
-    <div className="card p-4 flex flex-col justify-between min-h-[92px]">
-      <p className="text-[10px] uppercase tracking-wider text-neutral-500">{label}</p>
-      {error ? (
-        <p className="text-xs text-[var(--danger)] mt-1 leading-snug" title={error}>
-          Unavailable
-        </p>
-      ) : (
-        <p
-          className="text-3xl font-extrabold tabular-nums leading-none mt-1"
-          style={{ color: 'var(--tier-accent)' }}
-        >
-          {loading || value == null ? '—' : value.toLocaleString('en-US')}
-        </p>
-      )}
-      {hint && !error && <p className="text-[10px] text-neutral-500 mt-1.5">{hint}</p>}
-    </div>
-  );
-}
+const TABLE_ROWS = 20;
 
-// A compact label/value pair for the second row of stats. Deliberately not
-// another MetricCard: twenty big-number tiles would flatten the hierarchy
-// and bury the four numbers that actually lead. These are reference
-// figures you look up, not headlines.
-function Stat({ label, value, hint }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 px-3 py-2 border-b border-white/5 last:border-0">
-      <span className="text-xs text-neutral-400">{label}</span>
-      <span className="text-sm font-semibold tabular-nums text-neutral-100">
-        {value == null ? '—' : value.toLocaleString('en-US')}
-        {hint && <span className="ml-1.5 text-[10px] font-normal text-neutral-500">{hint}</span>}
-      </span>
-    </div>
-  );
-}
+// Tab 1 — Analytics & Engagement. The live pulse, virality, retention,
+// the content system, then the reference layer and the Power Users
+// table that were the whole dashboard before the console existed.
+//
+// Presentational: `analytics` is useAdminAnalytics()'s state, handed in
+// by FounderConsole so the harness (dev/admin.jsx) can feed a fixture.
 
-// The evolution ladder as a head-count per stage. The single most useful
-// shape on a progression app's health screen: a base that never leaves
-// stage 1 is a different problem from one that stalls at stage 3, and a
-// total alone cannot tell those apart.
 const STAGE_LABELS = { 1: 'Goat', 2: 'Buff', 3: 'Titan', 4: 'Legend' };
 
 function StageLadder({ byStage, total }) {
-  if (!byStage?.length) return null;
+  if (!byStage?.length) return <Empty>No ladder yet.</Empty>;
   const peak = Math.max(1, ...byStage.map((s) => s.count));
   return (
-    <div className="card p-4 flex flex-col gap-2.5">
-      <p className="text-[10px] uppercase tracking-wider text-neutral-500">Evolution ladder</p>
+    <div className="flex flex-col gap-2.5">
       {byStage.map(({ stage, count }) => (
-        <div key={stage} className="flex items-center gap-3">
-          <span className="w-14 shrink-0 text-xs text-neutral-400">{STAGE_LABELS[stage] ?? `Stage ${stage}`}</span>
-          <div className="h-2 flex-1 rounded-full bg-white/5 overflow-hidden">
-            <div
-              className="h-full rounded-full"
-              style={{ width: `${(count / peak) * 100}%`, background: 'var(--tier-accent)' }}
-            />
-          </div>
-          <span className="w-16 shrink-0 text-right text-xs tabular-nums text-neutral-300">
-            {count.toLocaleString('en-US')}
-            {total ? <span className="text-neutral-600"> · {Math.round((count / total) * 100)}%</span> : null}
-          </span>
-        </div>
+        <BarRow
+          key={stage}
+          label={STAGE_LABELS[stage] ?? `Stage ${stage}`}
+          value={count}
+          max={peak}
+          sub={total ? `${Math.round((count / total) * 100)}%` : undefined}
+        />
       ))}
     </div>
   );
@@ -78,9 +35,7 @@ function SortPill({ active, onClick, children }) {
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-        active ? 'text-neutral-950' : 'text-neutral-400'
-      }`}
+      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${active ? 'text-neutral-950' : 'text-neutral-400'}`}
       style={{ background: active ? 'var(--tier-accent)' : 'rgba(255,255,255,0.08)' }}
     >
       {children}
@@ -88,8 +43,6 @@ function SortPill({ active, onClick, children }) {
   );
 }
 
-// "3d" / "just now" / "—". Deliberately coarse: on this screen the
-// question is "is this person still around", not what time they trained.
 function sinceLabel(iso) {
   if (!iso) return '—';
   const ms = Date.now() - Date.parse(iso);
@@ -105,104 +58,207 @@ function sinceLabel(iso) {
 const TH = 'text-left text-[10px] uppercase tracking-wider text-neutral-500 font-semibold px-3 py-2 whitespace-nowrap';
 const TD = 'px-3 py-2.5 text-sm text-neutral-200 whitespace-nowrap';
 
-export default function AnalyticsPanel() {
-  const { data, loading, error, reload, sortBy, setSortBy } = useAdminAnalytics();
-
+export default function AnalyticsPanel({ analytics, virality, coaching }) {
+  const { data, loading, error, reload, sortBy, setSortBy } = analytics;
   const totals = data?.totals ?? {};
   const errors = data?.errors ?? {};
-  const rows = data?.powerUsers ?? [];
+  const pulse = data?.pulse ?? {};
+  const engagement = data?.engagement ?? {};
+  // The payload carries up to 50 rows (they double as the God-mode search
+  // directory — AdminDashboard.jsx); the table is a top-20.
+  const rows = (data?.powerUsers ?? []).slice(0, TABLE_ROWS);
 
   if (error) {
     return (
-      <div className="card p-5 text-center flex flex-col gap-3">
-        <p className="text-sm text-[var(--danger)]">{error}</p>
-        <button type="button" onClick={reload} className="text-xs text-neutral-400 underline">
+      <Panel>
+        <p className="text-center text-sm text-[var(--danger)]">{error}</p>
+        <button type="button" onClick={reload} className="text-center text-xs text-neutral-400 underline">
           Try again
         </button>
-      </div>
+      </Panel>
     );
   }
 
+  const topTheme = [...(virality?.themes ?? [])].sort((a, b) => b.shares - a.shares)[0] ?? null;
+  const themePeak = Math.max(1, ...(virality?.themes ?? []).map((t) => t.shares));
+  const exercisePeak = Math.max(1, ...(engagement.topExercises ?? []).map((e) => e.sessions));
+
   return (
-    <div className="flex flex-col gap-5">
-      <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <MetricCard
-          label="Live Users"
-          value={totals.users}
-          error={errors.users}
+    <div className="flex flex-col gap-4">
+      {/* ── Live pulse ─────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Metric
+          label="Live pulse"
+          value={pulse.activeLastHour}
+          unit="lifting"
+          error={errors.pulse}
           loading={loading}
-          // The gap between live accounts and user documents is the number
-          // of Firestore records whose Auth account is gone — a console
-          // deletion leaves everything but the login behind. Silent when
-          // there are none, so a clean database says nothing.
-          hint={
-            totals.orphanedDocs
-              ? `+${totals.orphanedDocs.toLocaleString('en-US')} deleted account${totals.orphanedDocs === 1 ? '' : 's'} excluded`
-              : 'Auth accounts, not stale docs'
-          }
+          tone="good"
+          hint="Finished a session in the last 60 min — sessions in progress live on the phone until they end"
         />
-        <MetricCard
-          label="Workouts Logged"
-          value={totals.workouts}
-          error={errors.workouts}
+        <Metric
+          label="Active today"
+          value={pulse.activeLastDay}
+          error={errors.dauMau}
           loading={loading}
-          hint={
-            totals.feedPosts == null ? undefined : `${totals.feedPosts.toLocaleString('en-US')} shared to feed`
-          }
+          hint="Logged a session in the last 24 h"
         />
-        <MetricCard
-          label="Coins in Circulation"
-          value={totals.coins}
-          error={errors.coins}
-          loading={loading}
-          hint="Held by live accounts"
-        />
-        <MetricCard
+        <Metric
           label="Active (7 days)"
           value={totals.activeLast7Days}
           error={errors.activeLast7Days}
           loading={loading}
           hint={
-            totals.users ? `${Math.round(((totals.activeLast7Days ?? 0) / totals.users) * 100)}% of accounts` : undefined
+            totals.users
+              ? `${Math.round(((totals.activeLast7Days ?? 0) / totals.users) * 100)}% of live accounts`
+              : undefined
           }
         />
-      </section>
+        <Metric
+          label="Live users"
+          value={totals.users}
+          error={errors.users}
+          loading={loading}
+          hint={
+            totals.orphanedDocs
+              ? `+${fmt(totals.orphanedDocs)} deleted account${totals.orphanedDocs === 1 ? '' : 's'} excluded`
+              : 'Auth accounts, not stale docs'
+          }
+        />
+      </div>
 
-      {/* The reference layer. Everything here is derived from the same
-          scanned, Auth-verified population as the cards above, so no two
-          numbers on this screen describe different groups of people. */}
-      <section className="grid gap-3 sm:grid-cols-2">
-        <div className="card py-1">
-          <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-neutral-500">Growth &amp; reach</p>
-          <Stat label="New this week" value={totals.newLast7Days} />
-          <Stat label="Signed in this week" value={totals.signedInLast7Days} />
-          <Stat
-            label="Email verified"
-            value={totals.emailVerified}
-            hint={totals.users ? `of ${totals.users}` : undefined}
-          />
-          <Stat label="Never trained" value={totals.neverTrained} />
-          <Stat label="On a streak" value={totals.onStreak} hint="2+ sessions" />
-        </div>
-        <div className="card py-1">
-          <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-neutral-500">Roles &amp; sharing</p>
-          <Stat label="Trainers" value={totals.trainers} />
-          <Stat label="Coached by a trainer" value={totals.withTrainer} />
-          <Stat label="Sharing PRs publicly" value={totals.sharingPRs} />
-          <Stat label="Lifetime volume, all users" value={totals.totalVolume} hint="RSV" />
-          {/* Only ever drawn when it is non-zero: a disabled account is
-              news, and "Disabled 0" is a row that earns nothing. */}
-          {totals.disabled ? <Stat label="Disabled accounts" value={totals.disabled} /> : null}
-        </div>
-      </section>
+      {/* ── Virality & engagement ──────────────────────────────────── */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Panel eyebrow="Virality & sharing" title="Stickers out the door" aside={virality?.mock ? <MockAside /> : null}>
+          <div className="grid grid-cols-2 gap-3">
+            <Metric
+              label="Total sticker shares"
+              value={virality?.totalStickerShares}
+              mock={virality?.mock}
+              loading={loading && !virality}
+              hint={virality ? `${fmt(virality.last7Days)} this week` : undefined}
+            />
+            <Metric
+              label="Most popular theme"
+              value={topTheme?.name ?? '—'}
+              mock={virality?.mock}
+              loading={loading && !virality}
+              hint={
+                topTheme && virality
+                  ? `${Math.round((topTheme.shares / Math.max(1, virality.totalStickerShares)) * 100)}% of all shares`
+                  : undefined
+              }
+              tone="plain"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            {(virality?.themes ?? []).slice(0, 5).map((t) => (
+              <BarRow key={t.id} label={t.name} value={t.shares} max={themePeak} />
+            ))}
+          </div>
+        </Panel>
 
-      <StageLadder byStage={totals.byStage} total={totals.users} />
+        <Panel eyebrow="Engagement" title="Are they coming back?">
+          <div className="grid grid-cols-2 gap-3">
+            <Metric
+              label="Workouts / week"
+              value={engagement.avgWorkoutsPerWeek}
+              digits={1}
+              unit="avg"
+              error={errors.powerUsers}
+              loading={loading}
+              hint="Per account that has trained, since signup"
+            />
+            <Metric
+              label="Workout duration"
+              value={engagement.avgWorkoutDurationMin}
+              unit="min avg"
+              error={errors.engagement}
+              loading={loading}
+              hint={engagement.sampleSize ? `From a sample of ${fmt(engagement.sampleSize)} sessions` : undefined}
+            />
+          </div>
+          <div className="px-1">
+            <Stat label="Workouts logged" value={totals.workouts} />
+            <Stat
+              label="Shared to the feed"
+              value={totals.feedPosts}
+              hint={totals.workouts ? `${Math.round(((totals.feedPosts ?? 0) / totals.workouts) * 100)}%` : undefined}
+            />
+            <Stat label="On a streak" value={totals.onStreak} hint="2+ sessions" />
+            <Stat label="Never trained" value={totals.neverTrained} />
+          </div>
+        </Panel>
+      </div>
 
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h3 className="text-base font-bold text-neutral-50">Power Users</h3>
+      {/* ── Content system ─────────────────────────────────────────── */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Panel eyebrow="Content system" title="Top 5 most logged exercises">
+          {errors.engagement ? (
+            <Empty>Unavailable — {errors.engagement}</Empty>
+          ) : (engagement.topExercises ?? []).length === 0 ? (
+            <Empty>{loading ? 'Loading…' : 'No sessions sampled yet.'}</Empty>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {engagement.topExercises.map((e, i) => (
+                <BarRow key={e.id} label={`${i + 1}. ${e.name}`} value={e.sessions} max={exercisePeak} sub="sessions" />
+              ))}
+            </div>
+          )}
+        </Panel>
+        <Panel eyebrow="Content system" title="Overload coaching" aside={coaching?.mock ? <MockAside /> : null}>
+          <div className="grid grid-cols-2 gap-3">
+            <Metric
+              label="Coaching triggers"
+              value={coaching?.overloadTriggers}
+              mock={coaching?.mock}
+              loading={loading && !coaching}
+              hint="Times the “past 12 reps” toast was shown"
+            />
+            <Metric
+              label="This week"
+              value={coaching?.last7Days}
+              mock={coaching?.mock}
+              loading={loading && !coaching}
+              hint={coaching ? `≈ ${fmt(coaching.perHundredSessions)} per 100 sessions` : undefined}
+            />
+          </div>
+        </Panel>
+      </div>
+
+      {/* ── Reference layer ────────────────────────────────────────── */}
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Panel eyebrow="Growth & reach">
+          <div>
+            <Stat label="New this week" value={totals.newLast7Days} />
+            <Stat label="Signed in this week" value={totals.signedInLast7Days} />
+            <Stat
+              label="Email verified"
+              value={totals.emailVerified}
+              hint={totals.users ? `of ${totals.users}` : undefined}
+            />
+            {totals.disabled ? <Stat label="Disabled accounts" value={totals.disabled} /> : null}
+          </div>
+        </Panel>
+        <Panel eyebrow="Roles & sharing">
+          <div>
+            <Stat label="Trainers" value={totals.trainers} />
+            <Stat label="Coached by a trainer" value={totals.withTrainer} />
+            <Stat label="Sharing PRs publicly" value={totals.sharingPRs} />
+            <Stat label="Lifetime volume, all users" value={totals.totalVolume} hint="RSV" />
+          </div>
+        </Panel>
+        <Panel eyebrow="Evolution ladder" title="Head-count per stage">
+          <StageLadder byStage={totals.byStage} total={totals.users} />
+        </Panel>
+      </div>
+
+      {/* ── Power users ────────────────────────────────────────────── */}
+      <Panel
+        eyebrow="Power users"
+        title="Who is carrying the app"
+        aside={
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-neutral-500 mr-1">Rank by</span>
             <SortPill active={sortBy === 'workouts'} onClick={() => setSortBy('workouts')}>
               Workouts
             </SortPill>
@@ -210,149 +266,115 @@ export default function AnalyticsPanel() {
               Volume
             </SortPill>
           </div>
-        </div>
-
+        }
+      >
         {errors.powerUsers ? (
-          <div className="card p-5 text-center">
-            <p className="text-sm text-[var(--danger)]">Leaderboard unavailable</p>
-            <p className="text-xs text-neutral-500 mt-1">{errors.powerUsers}</p>
-          </div>
+          <Empty>Leaderboard unavailable — {errors.powerUsers}</Empty>
         ) : (
-          <div className="card overflow-hidden">
-            {/* The only element on this screen allowed to be wider than the
-                viewport, and only inside its own scroller — seven columns
-                do not fit a phone, and squeezing them would cost the email
-                address, which is the column the whole table exists for. */}
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="border-b border-white/10">
-                    <th className={TH} scope="col">
-                      #
+          <div className="-mx-4 overflow-x-auto sm:-mx-5">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-white/10">
+                  {[
+                    '#',
+                    'Lifter',
+                    'Goat',
+                    'Tier',
+                    'Workouts',
+                    'Volume',
+                    'Streak',
+                    'Coins',
+                    'Friends',
+                    'Last workout',
+                    'Joined',
+                    'Last seen',
+                  ].map((h) => (
+                    <th key={h} className={TH} scope="col">
+                      {h}
                     </th>
-                    <th className={TH} scope="col">
-                      Lifter
-                    </th>
-                    <th className={TH} scope="col">
-                      Tier
-                    </th>
-                    <th className={TH} scope="col">
-                      Workouts
-                    </th>
-                    <th className={TH} scope="col">
-                      Volume
-                    </th>
-                    <th className={TH} scope="col">
-                      Streak
-                    </th>
-                    <th className={TH} scope="col">
-                      Coins
-                    </th>
-                    <th className={TH} scope="col">
-                      Friends
-                    </th>
-                    <th className={TH} scope="col">
-                      Last Workout
-                    </th>
-                    <th className={TH} scope="col">
-                      Joined
-                    </th>
-                    <th className={TH} scope="col">
-                      Last Seen
-                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading && rows.length === 0 && (
+                  <tr>
+                    <td className={`${TD} text-neutral-500`} colSpan={12}>
+                      Loading…
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {loading && rows.length === 0 && (
-                    <tr>
-                      <td className={`${TD} text-neutral-500`} colSpan={11}>
-                        Loading…
-                      </td>
-                    </tr>
-                  )}
-                  {!loading && rows.length === 0 && (
-                    <tr>
-                      <td className={`${TD} text-neutral-500`} colSpan={11}>
-                        No accounts yet.
-                      </td>
-                    </tr>
-                  )}
-                  {rows.map((u, i) => (
-                    <tr key={u.uid} className="border-b border-white/5 last:border-0">
-                      <td className={`${TD} text-neutral-500 tabular-nums`}>{i + 1}</td>
-                      <td className="px-3 py-2.5">
-                        <p className="text-sm text-neutral-100 font-semibold leading-tight">
-                          {u.displayName}
-                          {u.role === 'trainer' && (
-                            <span className="ml-1.5 text-[9px] uppercase tracking-wider text-neutral-500 align-middle">
-                              Trainer
+                )}
+                {!loading && rows.length === 0 && (
+                  <tr>
+                    <td className={`${TD} text-neutral-500`} colSpan={12}>
+                      No accounts yet.
+                    </td>
+                  </tr>
+                )}
+                {rows.map((u, i) => (
+                  <tr key={u.uid} className="border-b border-white/5 last:border-0">
+                    <td className={`${TD} tabular-nums text-neutral-500`}>{i + 1}</td>
+                    <td className="px-3 py-2.5">
+                      <p className="text-sm font-semibold leading-tight text-neutral-100">
+                        {u.displayName}
+                        {u.role === 'trainer' && (
+                          <span className="ml-1.5 align-middle text-[9px] uppercase tracking-wider text-neutral-500">
+                            Trainer
+                          </span>
+                        )}
+                      </p>
+                      {u.email ? (
+                        <span className="flex items-center gap-1.5">
+                          <a
+                            href={`mailto:${u.email}`}
+                            className="text-xs text-neutral-500 underline decoration-dotted underline-offset-2"
+                          >
+                            {u.email}
+                          </a>
+                          {!u.emailVerified && (
+                            <span
+                              title="Email never confirmed — mail may not reach them"
+                              className="text-[9px] uppercase tracking-wider text-amber-500/80"
+                            >
+                              unverified
                             </span>
                           )}
-                        </p>
-                        {/* A mailto rather than plain text: the stated
-                            reason this column exists is reaching people for
-                            feedback, and a tap should start that. */}
-                        {u.email ? (
-                          <span className="flex items-center gap-1.5">
-                            <a
-                              href={`mailto:${u.email}`}
-                              className="text-xs text-neutral-500 underline decoration-dotted underline-offset-2"
-                            >
-                              {u.email}
-                            </a>
-                            {/* Straight from the Auth record, not the user
-                                doc. Most accounts in this app are
-                                unverified by design (the verification gate
-                                was removed — see functions/guards.js), so
-                                this is a fact about deliverability, not a
-                                problem to fix. */}
-                            {!u.emailVerified && (
-                              <span
-                                title="Email never confirmed — mail may not reach them"
-                                className="text-[9px] uppercase tracking-wider text-amber-500/80"
-                              >
-                                unverified
-                              </span>
-                            )}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-neutral-600">no email on file</span>
-                        )}
-                      </td>
-                      <td className={`${TD} text-neutral-400`}>{u.tier ?? '—'}</td>
-                      <td className={`${TD} tabular-nums font-semibold`}>{u.workouts.toLocaleString('en-US')}</td>
-                      <td className={`${TD} tabular-nums`}>{u.volume.toLocaleString('en-US')}</td>
-                      <td className={`${TD} tabular-nums`}>{u.currentStreak > 0 ? `🔥 ${u.currentStreak}` : '—'}</td>
-                      <td className={`${TD} tabular-nums`}>{u.coins.toLocaleString('en-US')}</td>
-                      <td className={`${TD} tabular-nums text-neutral-400`}>{u.friends ?? 0}</td>
-                      <td className={`${TD} text-neutral-400`}>{sinceLabel(u.lastWorkoutAt)}</td>
-                      <td className={`${TD} text-neutral-400`}>{sinceLabel(u.createdAt)}</td>
-                      <td className={`${TD} text-neutral-400`}>{sinceLabel(u.lastSignInAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-neutral-600">no email on file</span>
+                      )}
+                    </td>
+                    <td className={`${TD} capitalize text-neutral-400`}>{u.mascot ?? '—'}</td>
+                    <td className={`${TD} text-neutral-400`}>{u.tier ?? '—'}</td>
+                    <td className={`${TD} font-semibold tabular-nums`}>{fmt(u.workouts)}</td>
+                    <td className={`${TD} tabular-nums`}>{fmt(u.volume)}</td>
+                    <td className={`${TD} tabular-nums`}>{u.currentStreak > 0 ? `🔥 ${u.currentStreak}` : '—'}</td>
+                    <td className={`${TD} tabular-nums`}>{fmt(u.coins)}</td>
+                    <td className={`${TD} tabular-nums text-neutral-400`}>{u.friends ?? 0}</td>
+                    <td className={`${TD} text-neutral-400`}>{sinceLabel(u.lastWorkoutAt)}</td>
+                    <td className={`${TD} text-neutral-400`}>{sinceLabel(u.createdAt)}</td>
+                    <td className={`${TD} text-neutral-400`}>{sinceLabel(u.lastSignInAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-
-        <div className="flex items-center justify-between gap-3 flex-wrap text-[11px] text-neutral-500">
-          {/* Volume is the app's Relative Strength Volume, not kilograms
-              (functions/records.js). Saying so costs one line and stops
-              these numbers reading as absurd tonnage. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-neutral-500">
           <p>Volume = lifetime Relative Strength Volume, not kg.</p>
           <button type="button" onClick={reload} disabled={loading} className="underline disabled:opacity-50">
             {loading ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
-
         {data?.truncated && (
           <p className="text-[11px] text-[var(--danger)]">
-            Ranked from the first {data.scanned.toLocaleString('en-US')} accounts only — the counters above are
-            still exact.
+            Ranked from the first {fmt(data.scanned)} accounts only — the counters above are still exact.
           </p>
         )}
-      </section>
+      </Panel>
     </div>
   );
+}
+
+function MockAside() {
+  return <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-300/80">placeholder data</span>;
 }

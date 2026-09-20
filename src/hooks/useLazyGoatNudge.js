@@ -2,9 +2,19 @@ import { useCallback, useEffect } from 'react';
 import {
   clearLazyNudge,
   setLazyNudge,
+  LAZY_NUDGE_BODY,
+  LAZY_NUDGE_DELAY_MS,
   LAZY_NUDGE_SYNC_TAG,
   LAZY_NUDGE_TAG,
+  LAZY_NUDGE_TITLE,
 } from '../lib/lazyNudge';
+import {
+  NOTIFICATION_IDS,
+  cancelLocalNotification,
+  ensureLocalNotificationPermission,
+  isNative,
+  scheduleLocalNotification,
+} from '../lib/localNotifications';
 
 // Client-only "lazy goat" nudge. See src/lib/lazyNudge.js for the platform
 // constraint spelled out — short version: this fires best-effort via
@@ -30,6 +40,12 @@ async function getRegistration() {
 }
 
 async function disarm() {
+  if (isNative()) {
+    // The OS is holding the only copy, so pulling it is the whole job —
+    // no IndexedDB record and no periodic sync exist on this path.
+    await cancelLocalNotification(NOTIFICATION_IDS.lazyNudge);
+    return;
+  }
   await clearLazyNudge();
   const reg = await getRegistration();
   if (!reg) return;
@@ -50,6 +66,25 @@ async function disarm() {
 }
 
 async function arm() {
+  if (isNative()) {
+    // The one place the native shell beats every browser: this is an
+    // exact 71-hour appointment the OS keeps with the app closed, rather
+    // than the "whenever Chrome next feels like waking the worker, if it
+    // is Android, if the PWA is installed" the web path settles for. No
+    // IndexedDB record either — nothing reads it here, since there is no
+    // service worker to re-check a due time. Scheduling on the same id
+    // replaces any nudge from an earlier workout, which is exactly the
+    // fresh-clock behaviour the web branch spends two steps on below.
+    const granted = await ensureLocalNotificationPermission();
+    if (!granted) return;
+    await scheduleLocalNotification({
+      id: NOTIFICATION_IDS.lazyNudge,
+      title: LAZY_NUDGE_TITLE,
+      body: LAZY_NUDGE_BODY,
+      at: new Date(Date.now() + LAZY_NUDGE_DELAY_MS),
+    });
+    return;
+  }
   if (typeof Notification === 'undefined') return;
 
   if (Notification.permission === 'default') {

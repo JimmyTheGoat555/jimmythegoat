@@ -16,9 +16,12 @@ import BadgeMedallion from './BadgeMedallion';
 //
 // Only earned badges appear. Nothing in this app shows a locked badge any
 // more — the catalog is a surprise, not a checklist on display.
-export default function BadgePickerModal({ badges, featured, onSave, onClose }) {
+//
+// `mascot` orders the list: the wearer's own tree first, anything held
+// from the other tree after it (data/badges.js's earnedCategoryBests).
+export default function BadgePickerModal({ badges, featured, mascot = null, onSave, onClose }) {
   const earned = earnedBadgeMap(badges);
-  const options = earnedCategoryBests(earned);
+  const options = earnedCategoryBests(earned, mascot);
   // Seeded from what is currently ON the profile — including the
   // automatic gold-first default — so opening this and saving without
   // touching anything is a no-op rather than a wipe.
@@ -49,9 +52,7 @@ export default function BadgePickerModal({ badges, featured, onSave, onClose }) 
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-neutral-950 px-5 pb-3 pt-5">
           <div>
             <h2 className="text-xl font-bold text-neutral-50">Your badges</h2>
-            <p className="mt-0.5 text-xs text-neutral-500">
-              Pick up to {MAX_FEATURED_BADGES} to show on your profile.
-            </p>
+            <p className="mt-0.5 text-xs text-neutral-500">Pick up to {MAX_FEATURED_BADGES} to show on your profile.</p>
           </div>
           <button type="button" onClick={onClose} className="px-1 text-2xl leading-none text-neutral-500">
             ✕
@@ -60,9 +61,7 @@ export default function BadgePickerModal({ badges, featured, onSave, onClose }) 
 
         <div className="flex flex-col gap-2 px-5 py-4">
           {options.length === 0 ? (
-            <p className="py-2 text-center text-sm text-neutral-500">
-              No badges yet. Go and earn one.
-            </p>
+            <p className="py-2 text-center text-sm text-neutral-500">No badges yet. Go and earn one.</p>
           ) : (
             options.map((badge) => {
               const style = TIER_STYLE[badge.tier] ?? TIER_STYLE.gold;

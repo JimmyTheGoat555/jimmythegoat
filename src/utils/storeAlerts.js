@@ -1,4 +1,5 @@
 import { readEquippedAccessories } from '../data/storeItems';
+import { ENABLE_EMOTES } from '../config/features';
 
 // "You own something you have never put on."
 //
@@ -31,8 +32,10 @@ export function unequippedRewardCount(account) {
   if (!account) return 0;
   let count = 0;
 
+  // Not while the emotes are hidden (ENABLE_EMOTES, config/features.js):
+  // the badge would send someone to a Dances shelf that is not rendered.
   const dances = Array.isArray(account.unlockedDances) ? account.unlockedDances : [];
-  if (dances.length > 0 && !account.equippedDance) count += 1;
+  if (ENABLE_EMOTES && dances.length > 0 && !account.equippedDance) count += 1;
 
   const accessories = Array.isArray(account.unlockedAccessories) ? account.unlockedAccessories : [];
   // readEquippedAccessories folds in the pre-multi-slot `equippedAccessory`

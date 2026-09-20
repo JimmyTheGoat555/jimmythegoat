@@ -40,11 +40,21 @@ service cloud.firestore {
         .hasOnly(['trainerId',
                   'equippedDance', 'equippedAccessory', 'equippedAccessories',
                   'hasUnreadNudgePush', 'friendCode', 'featuredBadges',
-                  'askForLocker', 'defaultRestTimer', 'mascot']) &&
+                  'askForLocker', 'defaultRestTimer', 'mascot',
+                  'legalAcceptedVersion', 'legalAcceptedAt']) &&
+        // Consent to the Terms and Privacy Policy, stamped at sign-up and
+        // re-stamped by the app's gate when the documents change
+        // (src/content/legalContent.js's LEGAL_VERSION). Owner-writable:
+        // the only thing it gates is that owner's own screen, and the
+        // value is a record of something they did, not a privilege.
         // Which character the account is drawn as. Owner-writable for the
-        // same reason as the two below it: it changes a sprite and nothing
-        // else — no coins move, no visibility flips, and it is derived
-        // from a field (`gender`) the owner chose in the first place.
+        // same reason as the two below it: no coins move, no visibility
+        // flips, and it is derived from a field (`gender`) the owner chose
+        // in the first place. It does pick the ladder — Gena's thresholds
+        // sit at 0.65 of Jimmy's and her coins pay the inverse
+        // (functions/evolution.js) — but both characters are open to
+        // everyone, so nothing is gained by choosing that could not be
+        // chosen at onboarding.
         //
         // Pinned to the two known ids rather than accepted as any string,
         // which is the one thing that actually needs a rule here: this
@@ -255,6 +265,14 @@ service cloud.firestore {
     // these rules. There is deliberately no `allow create: if !exists()`
     // owner path — it would let a client hoard names it never puts on a
     // profile, and give it no way to release the old one.
+    // Global app configuration: written only by the server (functions/
+    // adminOps.js), read by every signed-in client — today the
+    // announcement banner (hooks/useAnnouncement.js).
+    match /config/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     match /usernames/{key} {
       allow read: if signedIn();
       allow write: if false;
@@ -501,6 +519,19 @@ service cloud.firestore {
         // gated, rate-limited.
         allow read, update, delete: if isOwner(uid);
         allow create: if isOwner(uid);
+      }
+
+      match /messages/{messageId} {
+        // A direct message from the founder (functions/adminUserActions.js's
+        // adminMessageUser), shown as a sheet the next time this person
+        // opens the app (hooks/useFounderMessage.js). Admin SDK writes it;
+        // the owner reads it and may mark it read — that one field and
+        // nothing else, so the text on a message attributed to the app's
+        // owner can never be edited by its recipient.
+        allow read: if isOwner(uid);
+        allow update: if isOwner(uid) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+        allow create, delete: if false;
       }
 
       match /inbox/{itemId} {

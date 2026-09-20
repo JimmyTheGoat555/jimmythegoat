@@ -52,6 +52,25 @@ export const REST_TIPS = [
   { kind: 'roast', text: 'Your excuses don’t lift. Neither do your intentions.' },
   { kind: 'roast', text: 'Everyone wants the physique. Almost nobody wants the Tuesday.' },
   { kind: 'roast', text: 'The only workout you’ll regret is the one you talked yourself out of.' },
+
+  // — Added in the pre-launch content pass. Same rule as everything
+  // above: every number here is a standard, checkable figure from the
+  // training literature, because people repeat these in the gym.
+  { kind: 'science', text: 'Stopping 1–3 reps short of failure grows about as much muscle as grinding to failure — with far less fatigue to recover from.' },
+  { kind: 'science', text: 'Roughly 10–20 hard sets per muscle per week is where most people grow. Past that, the returns shrink fast.' },
+  { kind: 'science', text: 'Your first few weeks of “newbie gains” are mostly your nervous system learning the movement. The muscle comes after.' },
+  { kind: 'science', text: 'Static stretching right before a heavy set temporarily lowers force output. Warm up by moving; stretch afterwards.' },
+  { kind: 'science', text: 'A muscle loaded in its stretched position — the bottom of a curl, the deep part of a squat — tends to grow more than the same work cut short.' },
+  { kind: 'science', text: 'Sleeping under 6 hours measurably lowers strength, power and recovery. The gains are built while you’re unconscious.' },
+  { kind: 'science', text: 'Muscle protein synthesis stays elevated for 24–48 hours after a session. Leg day is really leg two days.' },
+  { kind: 'science', text: 'A lighter deload week every 4–8 weeks isn’t weakness — it clears accumulated fatigue so the next block actually works.' },
+  { kind: 'science', text: 'You can’t “confuse” a muscle. It responds to tension and progression, not novelty.' },
+  { kind: 'science', text: 'On rows and pulldowns your grip usually fails before your back does. Straps aren’t cheating — they’re aiming.' },
+  { kind: 'fuel', text: 'Spreading protein over 3–4 meals of ~0.4 g per kg beats one enormous hit at dinner.' },
+  { kind: 'fuel', text: 'Caffeine at 3–6 mg per kg of body weight, about an hour out, is one of the few pre-workout ingredients that reliably works.' },
+  { kind: 'fuel', text: 'Alcohol blunts muscle protein synthesis for hours after training. That pint costs more than its calories.' },
+  { kind: 'fuel', text: 'Losing much more than 1% of your body weight a week starts costing you muscle along with the fat.' },
+  { kind: 'roast', text: 'Ego lifting is just negotiating with physics. Physics has never once blinked.' },
 ];
 
 // Never returns the tip that's already on screen, so the card visibly

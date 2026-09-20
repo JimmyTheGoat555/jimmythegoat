@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { friendlyAuthError } from '../../utils/authErrors';
 import { fullEvolutionGradient } from '../../utils/tierTheme';
-import { PRIVACY_POLICY_SECTIONS, TERMS_OF_SERVICE_SECTIONS, LAST_UPDATED } from '../../content/legalContent';
+import {
+  PRIVACY_POLICY_SECTIONS,
+  TERMS_OF_SERVICE_SECTIONS,
+  LAST_UPDATED,
+  TERMS_LAST_UPDATED,
+} from '../../content/legalContent';
 import LegalDocument from '../legal/LegalDocument';
 import OnboardingFlow from './OnboardingFlow';
 
@@ -82,7 +87,7 @@ export default function AuthScreen({ onSignUp, onSignIn, onResetPassword }) {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden" style={{ background: EVOLUTION_GRADIENT }}>
+    <div className="relative min-h-[100dvh] overflow-hidden" style={{ background: EVOLUTION_GRADIENT }}>
       {/* Four-column evolution showcase, pinned to the bottom band so heads
           stay clear of the centered form on any screen height. */}
       <div className="absolute inset-x-0 bottom-0 h-[32%] grid grid-cols-4">
@@ -102,7 +107,7 @@ export default function AuthScreen({ onSignUp, onSignIn, onResetPassword }) {
       </div>
       <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/25 to-black/70" />
 
-      <div className="relative flex flex-col items-center min-h-screen px-4 py-10 gap-6">
+      <div className="relative flex flex-col items-center min-h-[100dvh] px-4 py-10 gap-6">
         <h1
           className="text-center text-3xl leading-tight font-extrabold text-white uppercase tracking-tight max-w-xs mt-4"
           style={{ textShadow: '0 2px 24px rgba(0,0,0,0.85), 0 0 40px rgba(124,58,237,0.5)' }}
@@ -177,9 +182,16 @@ export default function AuthScreen({ onSignUp, onSignIn, onResetPassword }) {
           Don't have an account? <span className="font-bold text-white">Sign up</span>
         </button>
 
-        <p className="text-center text-xs text-white/60 max-w-xs -mt-3" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.7)' }}>
+        <p
+          className="text-center text-xs text-white/60 max-w-xs -mt-3"
+          style={{ textShadow: '0 1px 8px rgba(0,0,0,0.7)' }}
+        >
           By continuing, you agree to our{' '}
-          <button type="button" onClick={() => setLegalDoc('privacy')} className="underline font-semibold text-white/80">
+          <button
+            type="button"
+            onClick={() => setLegalDoc('privacy')}
+            className="underline font-semibold text-white/80"
+          >
             Privacy Policy
           </button>{' '}
           and{' '}
@@ -202,7 +214,7 @@ export default function AuthScreen({ onSignUp, onSignIn, onResetPassword }) {
         <LegalDocument
           title="Terms of Service"
           sections={TERMS_OF_SERVICE_SECTIONS}
-          lastUpdated={LAST_UPDATED}
+          lastUpdated={TERMS_LAST_UPDATED}
           onClose={() => setLegalDoc(null)}
         />
       )}
