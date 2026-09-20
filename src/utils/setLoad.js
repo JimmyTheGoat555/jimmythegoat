@@ -42,6 +42,7 @@
 // functions/economy.js normalizes the stored bests once per account.
 
 import { getExercise } from '../data/exercises.js';
+import { WEIGHT_MIN_KG } from './units.js';
 
 export const EQUIPMENT = {
   BARBELL: 'barbell',
@@ -224,6 +225,57 @@ export function totalPatchFor(exerciseId, total) {
     return { weight, perHandWeight: Math.round((weight / 2) * 100) / 100, isPerHand: true, ...NO_BAR };
   }
   return { weight, ...NO_BAR, ...NOT_PER_HAND };
+}
+
+// The patch that empties a set's load, context and all. Clearing a field
+// has to clear what was written beside it, for exactly the reason NO_BAR
+// exists above — an emptied `weight` sitting next to a bar and a plate
+// count is not an empty set, it is a set the server will score off the
+// plates.
+export function blankLoadPatch() {
+  return { weight: '', ...NO_BAR, ...NOT_PER_HAND };
+}
+
+// ── A drop set's opening load ──────────────────────────────────────────
+//
+// A drop set is the same movement, again, immediately, at a lower load.
+// The row this fills is inserted already holding a 20% drop, because that
+// is the middle of the range every protocol prescribes (10-30%) and
+// because the alternative — an empty row — is arithmetic asked of somebody
+// standing at the rack with a dumbbell in each hand. It is a starting
+// point and nothing more: the field and the wheel are right there.
+//
+// It goes through the same two patch builders the inputs use rather than
+// scaling `weight` by hand, because every rule at the top of this file
+// still applies:
+//
+//   * a per-hand set drops the number in each HAND — that is what the
+//     lifter actually reaches for — and `weight`, the pair, follows;
+//   * a bodyweight set drops the BELT. You cannot drop your body.
+//   * the plate-calculator context is blanked. A drop set carrying the
+//     previous set's `weightPerSide` is a set whose reduced weight the
+//     server throws away in favour of a bar that is no longer loaded.
+export const DROP_SET_FACTOR = 0.8;
+
+// Down to the half kilo the steppers and the wheel both work in, so the
+// seeded number is one the lifter can reach from either.
+const toHalfKg = (n) => Math.round(n * 2) / 2;
+
+export function droppedLoadFrom(parent, exerciseId, { isBodyweight = false } = {}) {
+  if (isBodyweight) {
+    const belt = Number(parent?.addedWeight);
+    // No belt to drop: the row opens empty rather than inventing one.
+    if (!Number.isFinite(belt) || belt <= 0) return { addedWeight: '' };
+    return { addedWeight: Math.max(0, toHalfKg(belt * DROP_SET_FACTOR)) };
+  }
+  if (isPerHandExercise(exerciseId)) {
+    const perHand = perHandFromSet(parent);
+    if (!(perHand > 0)) return blankLoadPatch();
+    return perHandPatchFor(Math.max(WEIGHT_MIN_KG / 2, toHalfKg(perHand * DROP_SET_FACTOR)));
+  }
+  const weight = Number(parent?.weight);
+  if (!Number.isFinite(weight) || weight <= 0) return blankLoadPatch();
+  return totalPatchFor(exerciseId, Math.max(WEIGHT_MIN_KG, toHalfKg(weight * DROP_SET_FACTOR)));
 }
 
 // The whole load a set represents, for the number under every weight

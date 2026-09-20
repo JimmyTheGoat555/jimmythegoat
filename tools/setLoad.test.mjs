@@ -41,7 +41,12 @@ const {
   isBarbellExercise,
   isDumbbellExercise,
   isPerHandExercise,
+  droppedLoadFrom,
+  blankLoadPatch,
+  DROP_SET_FACTOR,
 } = client;
+
+const { numberSets, applySetPatch } = await import('../src/utils/setCascade.js');
 
 const round1 = (n) => Math.round(n * 10) / 10;
 
@@ -73,6 +78,7 @@ const barbellIds = EXERCISES.filter((e) => e.equipment === 'barbell').map((e) =>
 // doubling is keyed to. See src/data/exercises.js.
 const perHandIds = EXERCISES.filter((e) => e.equipment === 'dumbbell' || e.perHand === true).map((e) => e.id);
 const plainIds = EXERCISES.filter((e) => !e.isBodyweight && !perHandIds.includes(e.id)).map((e) => e.id);
+const bodyweightIds = EXERCISES.filter((e) => e.isBodyweight === true).map((e) => e.id);
 
 test('the catalog and the server agree on which exercises are scored per hand', () => {
   assert.deepEqual(new Set(barbellIds), server.BARBELL_EXERCISE_IDS);
@@ -208,4 +214,114 @@ test('every value the half-kilo stepper can land on survives a round trip', () =
     const patch = totalPatchFor(plainIds[0], total);
     assert.equal(patch.weight, round1(total), `${total} kg survived rounding`);
   }
+});
+
+// ── Drop sets ──────────────────────────────────────────────────────────
+//
+// A drop set is a real set inserted below the one it hangs off, with a
+// reduced load pre-filled. It scores like any other completed set, so
+// everything the contract above guarantees has to hold for it too — which
+// is the whole reason droppedLoadFrom goes through the same two patch
+// builders instead of scaling `weight` by hand.
+
+test('a drop set off a per-hand set drops the number in each hand, and the pair follows', () => {
+  const id = perHandIds[0];
+  const parent = perHandPatchFor(45); // 45 per hand, 90 on the books
+  const drop = droppedLoadFrom(parent, id);
+  assert.equal(drop.perHandWeight, 36, '45 per hand dropped 20% is 36');
+  assert.equal(drop.weight, 72, 'and the stored load is still the pair');
+  assert.equal(drop.isPerHand, true, 'the format marker survives, or the server doubles it again');
+  // The number that actually gets scored.
+  assert.equal(round1(serverDeriveWeight(asSubmitted(drop), id)), 72);
+});
+
+test('a drop set off a legacy per-hand set reads the old format correctly', () => {
+  const id = perHandIds[0];
+  // No marker: `weight` IS one dumbbell, the pre-per-hand convention.
+  const drop = droppedLoadFrom({ weight: 30 }, id);
+  assert.equal(drop.perHandWeight, 24, '30 in each hand dropped 20% is 24');
+  assert.equal(drop.weight, 48);
+});
+
+test('a drop set never inherits the plate context of the set above it', () => {
+  // The set it hangs off carries a bar and a plate count, as a set logged
+  // by the old calculator (or an un-reloaded client) still can. Carried
+  // forward, the server's deriveWeight would prefer 20 + 40x2 = 100 over
+  // the 64 that was actually lifted — silently, because the pair still
+  // adds up. Every builder in setLoad.js blanks them; this one included.
+  const id = plainIds[0];
+  const drop = droppedLoadFrom({ weight: 80, barWeight: 20, weightPerSide: 30 }, id);
+  assert.equal(drop.weight, 64);
+  assert.equal(asSubmitted(drop).barWeight, undefined);
+  assert.equal(asSubmitted(drop).weightPerSide, undefined);
+  assert.equal(round1(serverDeriveWeight(asSubmitted(drop), id)), 64, 'the reduced weight is what scores');
+});
+
+test('a drop set off a bodyweight set drops the belt, not the body', () => {
+  const drop = droppedLoadFrom({ addedWeight: 20 }, bodyweightIds[0], { isBodyweight: true });
+  assert.equal(drop.addedWeight, 16);
+  assert.equal('weight' in drop, false, "body weight is the server's to add, as it is for every bodyweight set");
+  // Nothing on the belt is a real state, and it opens empty rather than
+  // inventing a number to take 20% off.
+  assert.deepEqual(droppedLoadFrom({ addedWeight: 0 }, bodyweightIds[0], { isBodyweight: true }), {
+    addedWeight: '',
+  });
+});
+
+test('a drop set off a set with no weight yet opens empty', () => {
+  assert.deepEqual(droppedLoadFrom({ weight: '' }, plainIds[0]), blankLoadPatch());
+  assert.deepEqual(droppedLoadFrom(undefined, plainIds[0]), blankLoadPatch());
+});
+
+test('every drop lands on the half kilo the stepper and the wheel share', () => {
+  for (const id of [plainIds[0], perHandIds[0]]) {
+    for (let weight = 1; weight <= WEIGHT_MAX_KG; weight += 0.5) {
+      const drop = droppedLoadFrom({ weight }, id);
+      const shown = id === perHandIds[0] ? drop.perHandWeight : drop.weight;
+      assert.equal(shown * 2, Math.round(shown * 2), `${weight} kg dropped to ${shown}, off the ladder`);
+      assert.ok(shown > 0, `${weight} kg dropped to nothing`);
+      assert.ok(shown <= weight, `${weight} kg "dropped" up to ${shown}`);
+    }
+  }
+  assert.ok(DROP_SET_FACTOR > 0 && DROP_SET_FACTOR < 1, 'a drop goes down');
+});
+
+test('only working sets are numbered, and the drops number within them', () => {
+  const drop = { isDropSet: true };
+  const work = {};
+  const shape = (sets) => numberSets(sets).map(({ setNo, dropNo }) => `${setNo}.${dropNo}`);
+
+  assert.deepEqual(shape([work, work, work]), ['1.0', '2.0', '3.0']);
+  // A double drop off set 2, then a third working set — which is still 3,
+  // not 5. That is the whole point of counting them separately.
+  assert.deepEqual(shape([work, work, drop, drop, work]), ['1.0', '2.0', '2.1', '2.2', '3.0']);
+  // A drop whose working set was deleted out from under it.
+  assert.deepEqual(shape([drop, work]), ['0.1', '1.0']);
+  assert.deepEqual(shape([]), []);
+  assert.deepEqual(shape(null), []);
+});
+
+test('the cascade neither enters a drop set nor leaves one', () => {
+  const sets = [
+    { id: 'a', weight: 80, reps: 7, completed: true },
+    { id: 'b', weight: 80, reps: 5 },
+    { id: 'c', weight: 64, reps: '', isDropSet: true },
+    { id: 'd', weight: 80, reps: 7 },
+  ];
+
+  // Editing a working set fills the open working sets below it and steps
+  // over the drop, which keeps the weight it was dropped to.
+  const down = applySetPatch(sets, 'b', { weight: 85 });
+  assert.equal(down.find((s) => s.id === 'c').weight, 64, 'the drop kept its own load');
+  assert.equal(down.find((s) => s.id === 'd').weight, 85, 'the working set below followed');
+  assert.equal(down.find((s) => s.id === 'a').weight, 80, 'and nothing above moved');
+
+  // Editing the DROP changes only the drop. This is the half that was
+  // missing: with drop sets sitting mid-list, typing the finisher's
+  // numbers used to load the next straight set with them.
+  const up = applySetPatch(sets, 'c', { weight: 51, reps: 9 });
+  assert.equal(up.find((s) => s.id === 'c').weight, 51);
+  assert.equal(up.find((s) => s.id === 'c').reps, 9);
+  assert.equal(up.find((s) => s.id === 'd').weight, 80, 'set 3 was not dropped to the finisher weight');
+  assert.equal(up.find((s) => s.id === 'd').reps, 7, 'nor to the reps failure happened to give');
 });

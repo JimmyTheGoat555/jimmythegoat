@@ -325,6 +325,7 @@ export default function ActiveWorkoutLogger({
   onAddExercise,
   onRemoveExercise,
   onAddSet,
+  onAddDropSet,
   onUpdateSet,
   onRemoveSet,
   onFinish,
@@ -702,7 +703,18 @@ export default function ActiveWorkoutLogger({
   // because it starts an alarm the lifter then has to stop while holding
   // a dumbbell:
   //
-  //   * a drop set IS the absence of rest — strip weight, go again;
+  //   * a drop set IS the absence of rest — strip the weight and go
+  //     again — so the countdown is skipped for the set it hangs off,
+  //     and for every drop but the last one in the chain. The LAST drop
+  //     does rest: the cluster is over, and that is the moment the timer
+  //     was always meant to cover.
+  //
+  //     Which is why this asks about the NEXT set rather than this one.
+  //     When a drop set was a flag on the row you had just ticked, "is
+  //     this a drop set" was the only question available and it skipped
+  //     the rest at the wrong end — after the finisher, when the lifter
+  //     is most in need of one, while the set they went straight from
+  //     started a countdown they had to cancel with a dumbbell in hand.
   //   * inside a superset you move to the next exercise, so only the LAST
   //     member's set ends the round. Adjacency is what defines the group
   //     (see useWorkouts' cohereSupersets, which keeps it true), so "last"
@@ -711,7 +723,8 @@ export default function ActiveWorkoutLogger({
     const i = workout.exercises.findIndex((e) => e.exerciseId === exerciseId);
     const exercise = workout.exercises[i];
     if (!exercise) return true;
-    if (exercise.sets.find((s) => s.id === setId)?.isDropSet === true) return false;
+    const at = exercise.sets.findIndex((s) => s.id === setId);
+    if (at !== -1 && exercise.sets[at + 1]?.isDropSet === true) return false;
     if (!exercise.supersetId) return true;
     return workout.exercises[i + 1]?.supersetId !== exercise.supersetId;
   };
@@ -990,6 +1003,7 @@ export default function ActiveWorkoutLogger({
                   boosted={isBoosted(exercise)}
                   guide={exercises.getExercise(exercise.exerciseId) ?? null}
                   onAddSet={() => onAddSet(exercise.exerciseId)}
+                  onAddDropSet={(afterSetId) => onAddDropSet(exercise.exerciseId, afterSetId)}
                   onUpdateSet={(setId, patch) => handleUpdateSet(exercise.exerciseId, setId, patch)}
                   onRemoveSet={(setId) => onRemoveSet(exercise.exerciseId, setId)}
                   onRemoveExercise={() => onRemoveExercise(exercise.exerciseId)}

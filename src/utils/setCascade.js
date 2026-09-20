@@ -12,9 +12,18 @@
 //     what happened, not a plan; the cascade skips it and carries on to
 //     the open sets beneath.
 //
-// One extension of the second rule: a drop set is skipped too. Its load
-// is a deliberate step down from the set above, so filling it with that
-// set's weight would undo the one thing that makes it a drop set.
+// One extension of the second rule, and it runs BOTH ways: a drop set
+// neither receives the cascade nor starts one.
+//
+//   * It does not receive: its load is a deliberate step down from the set
+//     above, so filling it with that set's weight would undo the one thing
+//     that makes it a drop set.
+//   * It does not send: its load is a step DOWN and its reps are whatever
+//     failure gave at that weight. Cascading either into the working sets
+//     underneath would load the next straight set at the finisher's
+//     weight — and a drop set now sits in the middle of the list with
+//     working sets beneath it, so this is not hypothetical. Type 51 x 7
+//     into a drop off set 2 and set 3 would quietly become 51 x 7.
 //
 // The cascade only happens in the ACTIVE workout (useWorkouts.updateSet).
 // Editing a finished workout in History changes one set at a time, as it
@@ -50,11 +59,41 @@ export function acceptsCascade(set) {
 export function applySetPatch(sets, setId, patch) {
   const index = sets.findIndex((s) => s.id === setId);
   if (index === -1) return sets;
-  const flow = cascadePatch(patch);
+  // Nothing flows out of a drop set — see the header. `acceptsCascade`
+  // below is the other half of the same rule.
+  const flow = sets[index]?.isDropSet === true ? {} : cascadePatch(patch);
   const fields = Object.keys(flow);
   return sets.map((set, i) => {
     if (i === index) return { ...set, ...patch };
     if (i < index || fields.length === 0 || !acceptsCascade(set)) return set;
     return fields.every((field) => set[field] === flow[field]) ? set : { ...set, ...flow };
+  });
+}
+
+// ── Numbering a list that has drop sets in it ───────────────────────────
+//
+// The other place a drop set changes an answer, and the reason it lives
+// here beside acceptsCascade: both are the same statement — a drop set
+// belongs to the set above it, not beside it.
+//
+// So only WORKING sets take a number. Numbering the drops would tell a
+// lifter who did three sets and two drops that they did five, and every
+// row below one would renumber the moment it was added. `dropNo` is the
+// row's place in the chain hanging off `setNo`, counting from 1, and it
+// resets on every working set — which is all a double or a triple drop
+// needs to read correctly.
+//
+// A drop whose working set was deleted out from under it numbers from
+// zero; SetRow renders that as a bare "Drop 1" rather than "Set 0".
+export function numberSets(sets) {
+  let setNo = 0;
+  let dropNo = 0;
+  return (sets ?? []).map((set) => {
+    if (set?.isDropSet === true) dropNo += 1;
+    else {
+      setNo += 1;
+      dropNo = 0;
+    }
+    return { set, setNo, dropNo };
   });
 }

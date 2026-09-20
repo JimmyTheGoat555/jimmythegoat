@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useReturnTo } from '../../hooks/useReturnTo';
 import { useWeightEntryModes } from '../../hooks/useWeightEntryModes';
 import ExerciseLogCard from '../workout/ExerciseLogCard';
+import { droppedLoadFrom } from '../../utils/setLoad';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import { workoutVolume, workoutSetCount } from '../../utils/workoutStats';
 
@@ -49,22 +50,42 @@ export default function WorkoutDetail({ workouts, updateWorkout, deleteWorkout }
 
   const handleAddSet = (exerciseId) => {
     mutateExercises((exercises) =>
-      exercises.map((e) =>
-        e.exerciseId === exerciseId
-          ? {
-              ...e,
-              sets: [
-                ...e.sets,
-                {
-                  id: crypto.randomUUID(),
-                  weight: e.sets.at(-1)?.weight ?? '',
-                  reps: e.sets.at(-1)?.reps ?? '',
-                  completed: true,
-                },
-              ],
-            }
-          : e,
-      ),
+      exercises.map((e) => {
+        if (e.exerciseId !== exerciseId) return e;
+        // From the last WORKING set: a drop set's reduced load is not the
+        // number to open another straight set at. Same rule as the
+        // logger's addSet (hooks/useWorkouts.js).
+        const last = e.sets.filter((s) => s.isDropSet !== true).at(-1) ?? e.sets.at(-1);
+        return {
+          ...e,
+          sets: [
+            ...e.sets,
+            { id: crypto.randomUUID(), weight: last?.weight ?? '', reps: last?.reps ?? '', completed: true },
+          ],
+        };
+      }),
+    );
+  };
+
+  // The same insert the logger does, for a drop set somebody forgot to
+  // record at the time. `completed: true` like every set added here: this
+  // screen corrects a record of work that happened, it does not plan work.
+  const handleAddDropSet = (exerciseId, afterSetId) => {
+    mutateExercises((exercises) =>
+      exercises.map((e) => {
+        if (e.exerciseId !== exerciseId) return e;
+        const at = e.sets.findIndex((s) => s.id === afterSetId);
+        if (at === -1) return e;
+        const sets = [...e.sets];
+        sets.splice(at + 1, 0, {
+          id: crypto.randomUUID(),
+          ...droppedLoadFrom(e.sets[at], e.exerciseId, { isBodyweight: e.isBodyweight === true }),
+          reps: '',
+          completed: true,
+          isDropSet: true,
+        });
+        return { ...e, sets };
+      }),
     );
   };
 
@@ -145,6 +166,7 @@ export default function WorkoutDetail({ workouts, updateWorkout, deleteWorkout }
             key={exercise.exerciseId}
             exercise={exercise}
             onAddSet={() => handleAddSet(exercise.exerciseId)}
+            onAddDropSet={(afterSetId) => handleAddDropSet(exercise.exerciseId, afterSetId)}
             onUpdateSet={(setId, patch) => handleUpdateSet(exercise.exerciseId, setId, patch)}
             onRemoveSet={(setId) => handleRemoveSet(exercise.exerciseId, setId)}
             onRemoveExercise={() => handleRemoveExercise(exercise.exerciseId)}

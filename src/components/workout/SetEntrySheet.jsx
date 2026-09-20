@@ -62,7 +62,9 @@ function Stepper({ onDown, onUp, children, downLabel, upLabel }) {
 }
 
 export default function SetEntrySheet({
-  index,
+  // What the row calls itself — "Set 2", or "Set 2 · drop 1" for a drop
+  // set. Built by SetRow, which is where the numbering rules live.
+  title,
   // What the weight dial is asking for, in the row's own words: "Per
   // hand", "Weight", "Added". Comes from WeightEntryKind's ENTRY_COPY.
   label,
@@ -110,10 +112,10 @@ export default function SetEntrySheet({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={`Set ${index + 1}`}
+        aria-label={title}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-5 pb-3 pt-5">
-          <h2 className="text-lg font-bold text-neutral-50">Set {index + 1}</h2>
+          <h2 className="text-lg font-bold text-neutral-50">{title}</h2>
           <button
             type="button"
             onClick={onClose}

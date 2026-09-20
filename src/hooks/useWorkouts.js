@@ -3,6 +3,7 @@ import { useLocalStorage } from './useLocalStorage';
 import { useWakeLock } from './useWakeLock';
 import { isBodyweightExercise } from '../data/exercises';
 import { applySetPatch } from '../utils/setCascade';
+import { droppedLoadFrom } from '../utils/setLoad';
 
 // Finished workout history — the source of truth for Dashboard/Progress.
 export function useWorkoutHistory() {
@@ -295,6 +296,32 @@ export function useActiveWorkout(uid) {
     return set;
   };
 
+  // A drop set: the same movement again, immediately, at a lower load.
+  //
+  // It is a SET, not a property of one. The first cut of this was a flag
+  // toggled on the row you were already looking at, which could describe a
+  // drop set but never record one — the weight you actually dropped to and
+  // the reps you actually got had nowhere to live, because the set they
+  // belonged to did not exist. So the button inserts a row.
+  //
+  // Everything that reads a set reads this one: it is a normal set object
+  // with `isDropSet: true` on it. Volume, PRs, the relative score and the
+  // leaderboard all count it, because it IS work that was done. The flag
+  // only steers the four places where "no rest, deliberately lighter"
+  // changes an answer — the rest timer (ActiveWorkoutLogger's
+  // shouldRestAfter), the overload coach, the cascade
+  // (utils/setCascade.js) and the numbering on the card.
+  const newDropSetAfter = (parent, exerciseId, isBodyweight) => ({
+    id: crypto.randomUUID(),
+    ...droppedLoadFrom(parent, exerciseId, { isBodyweight }),
+    // Reps are NOT carried down. A drop set is taken to failure at the new
+    // weight, so last set's rep count is not a guess, it is a wrong
+    // answer pre-filled — and one the auto-tick would happily accept.
+    reps: '',
+    completed: false,
+    isDropSet: true,
+  });
+
   const addSet = useCallback(
     (exerciseId) => {
       setActiveWorkout((prev) => ({
@@ -303,10 +330,35 @@ export function useActiveWorkout(uid) {
           e.exerciseId === exerciseId
             ? {
                 ...e,
-                sets: [...e.sets, newSetAfter(e.sets.at(-1))],
+                // From the last WORKING set, never a drop set hanging off
+                // it: "+ Add Set" adds another set of the exercise, and
+                // opening it at the reduced weight of somebody's finisher
+                // is a number nobody asked for.
+                sets: [...e.sets, newSetAfter(e.sets.filter((set) => set.isDropSet !== true).at(-1) ?? e.sets.at(-1))],
               }
             : e,
         ),
+      }));
+    },
+    [setActiveWorkout],
+  );
+
+  // Inserted directly beneath `afterSetId`, which is what makes a double
+  // or triple drop work: the new row is itself a set like any other, so
+  // its own button inserts the next one below it, and the chain grows
+  // downward in the order it was performed.
+  const addDropSet = useCallback(
+    (exerciseId, afterSetId) => {
+      setActiveWorkout((prev) => ({
+        ...prev,
+        exercises: prev.exercises.map((e) => {
+          if (e.exerciseId !== exerciseId) return e;
+          const at = e.sets.findIndex((set) => set.id === afterSetId);
+          if (at === -1) return e;
+          const sets = [...e.sets];
+          sets.splice(at + 1, 0, newDropSetAfter(e.sets[at], e.exerciseId, e.isBodyweight === true));
+          return { ...e, sets };
+        }),
       }));
     },
     [setActiveWorkout],
@@ -390,6 +442,7 @@ export function useActiveWorkout(uid) {
     removeExercise,
     reorderExercises,
     addSet,
+    addDropSet,
     updateSet,
     removeSet,
     linkSuperset,

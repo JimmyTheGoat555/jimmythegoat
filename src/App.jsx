@@ -494,6 +494,7 @@ export default function App() {
     removeExercise,
     reorderExercises,
     addSet,
+    addDropSet,
     updateSet,
     removeSet,
     linkSuperset,
@@ -1433,6 +1434,7 @@ export default function App() {
                         isAdmin={isAdmin}
                         onBindRestBoost={bindRestBoost}
                         onAddSet={addSet}
+                        onAddDropSet={addDropSet}
                         onUpdateSet={updateSet}
                         onRemoveSet={removeSet}
                         onFinish={() => handleFinishWorkout({}, { optimistic: true })}

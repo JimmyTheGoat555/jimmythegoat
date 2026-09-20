@@ -87,8 +87,16 @@ export function formatSets(sets) {
 // heavy.
 export function seedSetsFromHistory(last, { count, isBodyweight = false, exerciseId = null, reps = null } = {}) {
   const target = Number.isInteger(reps) && reps > 0 ? reps : null;
+  // Working sets only. A drop set is a finisher hung off the set above it
+  // at a deliberately reduced load, not part of the straight-set plan — so
+  // seeding positionally from a session that went [set, drop, set] would
+  // open the new workout's second set at last week's drop weight and its
+  // third at what should have been its second. The drops are recorded and
+  // shown in the "last time" line (formatSets marks them); they just do
+  // not get a vote on what to load the bar with today.
+  const working = (last?.sets ?? []).filter((s) => s.isDropSet !== true);
   return Array.from({ length: count }, (_, i) => {
-    const historical = last?.sets?.[i];
+    const historical = working[i];
     const base = { id: crypto.randomUUID(), weight: '', reps: target ?? '', completed: false };
     if (!historical) return base;
     // A dumbbell set from before the per-hand marker stores ONE dumbbell

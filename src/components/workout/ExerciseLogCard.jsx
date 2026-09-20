@@ -5,6 +5,7 @@ import SetRow from './SetRow';
 import DragHandle from './DragHandle';
 import ExerciseTipsSheet from './ExerciseTipsSheet';
 import { ENTRY_MODE_SMART, entryKindFor, hasSmartCalculator, smartEntryKind } from '../../utils/setLoad';
+import { numberSets } from '../../utils/setCascade';
 import { ENTRY_COPY, EntryModeToggle, EquipmentIcon } from './WeightEntryKind';
 
 // Chain link. Inline SVG rather than an emoji so it inherits currentColor
@@ -104,6 +105,7 @@ export default function ExerciseLogCard({
   exercise,
   lastTime,
   onAddSet,
+  onAddDropSet,
   onUpdateSet,
   onRemoveSet,
   onRemoveExercise,
@@ -164,6 +166,10 @@ export default function ExerciseLogCard({
   // at all is not finished, it is empty — which is why the length check
   // is there and not just `every`, whose answer for an empty list is yes.
   const isFinished = exercise.sets.length > 0 && completedCount === exercise.sets.length;
+
+  // Only working sets take a number; the drops hanging off each one are
+  // numbered within it. The rules, and why, are in utils/setCascade.js.
+  const numberedSets = numberSets(exercise.sets);
   // The shared shell, so a collapsed row and an open card are the same
   // object in the same place rather than two designs that happen to sit
   // in one list.
@@ -319,7 +325,7 @@ export default function ExerciseLogCard({
 
       <div className="px-4 pb-1 flex flex-col gap-1">
         <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-1.5 px-1 text-xs text-neutral-600">
-          <span className="w-5" />
+          <span className="w-8" />
           {/* The weight column is headed by its entry mode — the override
               toggle where there is a calculator to switch off, a named
               icon where there is not — so what the chips below are asking
@@ -342,14 +348,15 @@ export default function ExerciseLogCard({
               </span>
             )}
           </span>
-          <span className="flex w-[3.25rem] items-center justify-center">Reps</span>
-          <span className="w-11" />
-          <span className="w-8" />
+          <span className="flex w-12 items-center justify-center">Reps</span>
+          <span className="w-10" />
+          <span className="w-7" />
         </div>
-        {exercise.sets.map((set, i) => (
+        {numberedSets.map(({ set, setNo, dropNo }) => (
           <SetRow
             key={set.id}
-            index={i}
+            setNumber={setNo}
+            dropNumber={dropNo}
             set={set}
             exerciseId={exercise.exerciseId}
             isBodyweight={isBodyweight}
@@ -362,7 +369,11 @@ export default function ExerciseLogCard({
             // a second path into "this set is done" would have to
             // re-implement every one of them. See SetRow's onAutoComplete.
             onAutoComplete={() => onUpdateSet(set.id, { completed: true })}
-            onToggleDropSet={() => onUpdateSet(set.id, { isDropSet: !set.isDropSet })}
+            // Inserts a row below this one rather than re-labelling this
+            // one — a drop set has its own weight and its own reps, and a
+            // flag has nowhere to put them. Works the same on a drop set,
+            // which is what makes doubles and triples fall out for free.
+            onAddDropSet={() => onAddDropSet(set.id)}
             onRemove={() => onRemoveSet(set.id)}
             entryMode={entryMode}
             bodyWeightKg={bodyWeightKg}

@@ -151,14 +151,23 @@ function WheelGlyph() {
 // the delete. Bounds live in utils/units.js and are enforced again in
 // functions/economy.js — the clamps here are a courtesy, not a boundary.
 export default function SetRow({
-  index,
+  // Its place in the exercise, from the card (which owns the numbering —
+  // see numberedSets there). `setNumber` counts WORKING sets only, and
+  // `dropNumber` is this row's place in the chain hanging off that set: 0
+  // for a working set, 1 for its first drop, 2 for the second.
+  setNumber = 1,
+  dropNumber = 0,
   set,
   exerciseId,
   isBodyweight = false,
   onChange,
   onToggleComplete,
   onRemove,
-  onToggleDropSet,
+  // Inserts a NEW drop set directly beneath this row. Not a toggle on this
+  // one: a drop set is a set — its own lighter weight, its own reps to
+  // failure — and the row it hangs off keeps the numbers it was performed
+  // with. See useWorkouts' addDropSet.
+  onAddDropSet,
   // 'smart' or 'total' for this exercise — from the screen's
   // useWeightEntryModes, via ExerciseLogCard. The switch itself is the
   // card's column header; this row only reads the answer.
@@ -325,6 +334,13 @@ export default function SetRow({
   const anchorText = shownKind === ENTRY_KIND.TOTAL && !isBodyKind ? 'kg' : totalText;
 
   const isDrop = set.isDropSet === true;
+  // What this row is called, everywhere it has to be named: the wheel's
+  // header, every aria-label, the tooltip on the drop button.
+  const label = !isDrop
+    ? `Set ${setNumber}`
+    : setNumber > 0
+      ? `Set ${setNumber} · drop ${dropNumber}`
+      : `Drop ${dropNumber}`;
 
   // Focus leaving the row is what completes the set — see onAutoComplete.
   // `relatedTarget` is where focus is GOING: null when it goes nowhere (a
@@ -380,57 +396,61 @@ export default function SetRow({
     if (!set.completed && ready) onAutoComplete?.();
   };
 
-  const wheelLabel = `Set ${index + 1} — open the weight and reps wheel`;
+  const wheelLabel = `${label} — open the weight and reps wheel`;
 
   return (
     <div
       ref={rowRef}
       onBlur={handleRowBlur}
-      // A drop set is indented and rail-marked rather than recoloured: the
+      // A drop set is INDENTED and rail-marked rather than recoloured: the
       // green fill already means "completed", and a second background
       // colour on the same row would put two unrelated meanings in one
-      // channel. The rail reads as "hangs off the set above", which is
-      // exactly what a drop set is.
-      className={`grid grid-cols-[auto_1fr_auto_auto_auto] items-center gap-1.5 rounded-2xl py-1.5 transition ${
-        set.completed ? 'bg-[var(--success)]/15' : ''
-      } ${isDrop ? 'ml-3 border-l-2 border-[var(--ember)] pl-1' : ''}`}
+      // channel. The indent plus the rail is the parent/child read — the
+      // row is narrower than the set it hangs off and physically tucked
+      // under it — and the arrow in the number cell says the same thing a
+      // second way, for anyone who cannot see twelve pixels of offset.
+      className={`grid grid-cols-[auto_1fr_auto_auto_auto] items-center gap-1.5 rounded-2xl transition ${
+        set.completed ? 'bg-[var(--success)]/15' : isDrop ? 'bg-[var(--ember)]/[0.06]' : ''
+      } ${isDrop ? 'ml-3 border-l-2 border-[var(--ember)]/70 py-1 pl-1' : 'py-1.5'}`}
     >
-      {/* The set number and the drop-set toggle, stacked in one column.
-          DS is SPELLED OUT, always, in both states — this used to be the
-          set number quietly doing double duty, which meant the feature
-          existed and nobody could see it. A toggle nobody can find is a
-          toggle nobody has. */}
+      {/* The row's place in the exercise, and the button that hangs a new
+          drop set off it — one control, because a 375px row has no space
+          for a sixth and these two are about the same thing.
+          `+DS` rather than `DS`: it ADDS a row now, it does not re-label
+          this one, and a button whose label is a noun reads as a state. */}
       <button
         type="button"
-        onClick={onToggleDropSet}
-        aria-pressed={isDrop}
-        aria-label={`Set ${index + 1} — ${
-          isDrop ? 'drop set, tap to make it a normal set' : 'tap to mark it as a drop set'
-        }`}
-        title={isDrop ? 'Drop set — tap to make it a normal set' : 'Mark as a drop set'}
+        onClick={onAddDropSet}
+        aria-label={`${label} — add a drop set below it`}
+        title="Add a drop set below"
         tabIndex={-1}
         className={`flex h-11 w-8 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border transition active:scale-90 ${
           isDrop
-            ? 'border-[var(--ember)] bg-[var(--ember)]/15 text-[var(--ember)]'
+            ? 'border-[var(--ember)]/40 bg-[var(--ember)]/10 text-[var(--ember)]'
             : 'border-neutral-800 bg-neutral-900/40 text-neutral-500'
         }`}
       >
-        <span className="text-[9px] leading-none tabular-nums opacity-60">{index + 1}</span>
-        <span className="text-[10px] font-black leading-none tracking-tight">DS</span>
+        <span
+          aria-hidden="true"
+          className={`leading-none ${isDrop ? 'text-[11px]' : 'text-[9px] tabular-nums opacity-60'}`}
+        >
+          {isDrop ? '\u21B3' : setNumber}
+        </span>
+        <span className="text-[9px] font-black leading-none tracking-tight">+DS</span>
       </button>
 
       <div className="flex min-w-0 flex-col items-stretch">
         <div className="flex min-w-0 items-center gap-1">
-          <StepButton dir={-1} onClick={() => stepWeight(-1)} label={`Decrease set ${index + 1} weight by 0.5 kg`} />
+          <StepButton dir={-1} onClick={() => stepWeight(-1)} label={`${label} — decrease weight by 0.5 kg`} />
           <NumberField
             value={weightValue}
             placeholder={isBodyKind ? '0' : String(defaultWeightForExercise(exerciseId))}
             onCommit={commitWeight}
             onNormalize={normalizeWeight}
-            ariaLabel={`Set ${index + 1} weight, ${copy.chip}`}
+            ariaLabel={`${label} weight, ${copy.chip}`}
             editedRef={editedRef}
           />
-          <StepButton dir={1} onClick={() => stepWeight(1)} label={`Increase set ${index + 1} weight by 0.5 kg`} />
+          <StepButton dir={1} onClick={() => stepWeight(1)} label={`${label} — increase weight by 0.5 kg`} />
         </div>
         {/* The anchor line doubles as the way into the wheel. It was
             already sitting under the field saying what the number adds up
@@ -457,7 +477,7 @@ export default function SetRow({
           placeholder="—"
           onCommit={commitReps}
           onNormalize={normalizeReps}
-          ariaLabel={`Set ${index + 1} reps`}
+          ariaLabel={`${label} reps`}
           editedRef={editedRef}
         />
         <button
@@ -481,7 +501,7 @@ export default function SetRow({
           onToggleComplete();
         }}
         disabled={!set.completed && !ready}
-        aria-label="Mark set complete"
+        aria-label={`${label} — mark complete`}
         className={`flex h-11 w-10 items-center justify-center rounded-full text-lg font-bold transition active:scale-95 disabled:opacity-40 disabled:active:scale-100 ${
           set.completed ? 'bg-[var(--success)] text-white' : 'bg-neutral-800 text-neutral-500'
         }`}
@@ -492,7 +512,7 @@ export default function SetRow({
       <button
         type="button"
         onClick={onRemove}
-        aria-label="Delete set"
+        aria-label={`${label} — delete`}
         tabIndex={-1}
         // Narrower than the tick (still a 44px-tall target): the one
         // control on the row nobody needs to hit quickly.
@@ -510,7 +530,7 @@ export default function SetRow({
       {sheetOpen &&
         createPortal(
           <SetEntrySheet
-            index={index}
+            title={label}
             label={ENTRY_COPY[shownKind].header}
             weight={weightValue}
             seedWeight={seedWeight()}

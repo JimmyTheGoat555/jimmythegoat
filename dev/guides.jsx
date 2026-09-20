@@ -65,6 +65,21 @@ function Harness() {
           guide={exercises.getExercise(exercise.exerciseId) ?? null}
           lastTime={null}
           onAddSet={() => setSets((s) => [...s, { id: `s${s.length + 1}`, weight: 80, reps: 5, completed: false }])}
+          onAddDropSet={(afterSetId) =>
+            setSets((s) => {
+              const at = s.findIndex((set) => set.id === afterSetId);
+              if (at === -1) return s;
+              const next = [...s];
+              next.splice(at + 1, 0, {
+                id: `d${s.length + 1}`,
+                weight: Math.round(Number(s[at].weight) * 0.8 * 2) / 2,
+                reps: '',
+                completed: false,
+                isDropSet: true,
+              });
+              return next;
+            })
+          }
           onUpdateSet={patchSet}
           onRemoveSet={(id) => setSets((s) => s.filter((set) => set.id !== id))}
           onRemoveExercise={() => {}}
