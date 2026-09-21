@@ -9,6 +9,7 @@ import {
   REWARD_AD_EVENTS,
   SIMULATED_AD_MS,
   adUnitIdFor,
+  AD_PLACEMENTS,
   currentPlatform,
   isNativePlatform,
 } from '../config/ads';
@@ -62,6 +63,9 @@ import {
 //
 //   `callable`          which Cloud Function the Rewarded event claims
 //                       through ('claimRestBoost' — functions/restBoost.js)
+//   `placement`         which AdMob unit to request — the two are
+//                       reported separately (see config/ads.js). It does
+//                       NOT decide the reward; `customData` does.
 //   `customData`        what AdMob echoes back in its signed callback so
 //                       the server knows which reward a verified view was
 //                       for (see functions/admobSsv.js)
@@ -78,7 +82,14 @@ import {
 // copy of the SDK plumbing.
 export function useRewardedAd(
   lastAdRewardAt = null,
-  { bypass = false, callable = 'rewardAdView', customData = '', unavailableReason = null, onClaimed } = {},
+  {
+    bypass = false,
+    callable = 'rewardAdView',
+    placement = AD_PLACEMENTS.coins,
+    customData = '',
+    unavailableReason = null,
+    onClaimed,
+  } = {},
 ) {
   // A ref so claimReward (and the native listeners that call it) stay
   // stable across renders — the caller's callback can change identity
@@ -179,7 +190,7 @@ export function useRewardedAd(
         if (customData) ssv.customData = customData;
       }
       await AdMob.prepareRewardVideoAd({
-        adId: adUnitIdFor(currentPlatform()),
+        adId: adUnitIdFor(placement, currentPlatform()),
         isTesting: IS_TESTING,
         ...(ssv.userId ? { ssv } : {}),
       });
@@ -189,7 +200,7 @@ export function useRewardedAd(
       setError(friendlyAuthError(err, 'No ad available right now — try again in a minute.'));
       setStatus('idle');
     }
-  }, [customData]);
+  }, [customData, placement]);
 
   useEffect(() => {
     if (!native) {

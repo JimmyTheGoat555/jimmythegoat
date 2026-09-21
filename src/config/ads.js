@@ -5,6 +5,10 @@
 // Flip USE_TEST_ADS to false once the app has real AdMob ad units. Nothing
 // else in the codebase names an ad id.
 //
+// It is NOT one flag on the server. functions/storeCatalog.js carries
+// AD_REWARD_REQUIRES_SSV, which has to move in the same change — see the
+// note on SSV_ENABLED below.
+//
 // ── WHY THERE IS A WEB PATH AT ALL ───────────────────────────────────────
 // AdMob is a NATIVE SDK. There is no AdMob for browsers — Google's web
 // product is a different one (AdSense/H5), with different policies and a
@@ -19,24 +23,68 @@
 // Until then the button still works, still pays out through the same
 // server call, and the ad is a three-second placeholder.
 
+// ── THE TWO PLACEMENTS ───────────────────────────────────────────────────
+//
+// Both are REWARDED ads, and both must stay rewarded: each pays out only
+// when AdMob posts its signed server-side callback, and SSV is a
+// rewarded-format feature. A plain interstitial unit dropped in here
+// would not fill prepareRewardVideoAd, and even shown it would never send
+// the callback that grants the reward — the ad would play and pay
+// nothing, which is the worst of both.
+//
+//   coins      the Store's "watch for 50 coins" card
+//              (components/shop/AdRewardCard.jsx → rewardAdView)
+//   restBoost  the 2× offer during a rest
+//              (components/workout/ActiveWorkoutLogger.jsx → claimRestBoost)
+//
+// Separate units rather than one shared id so AdMob reports them apart —
+// fill rate and eCPM on a mid-workout ad are not the same numbers as on a
+// store card, and with one id there is no way to see the difference. The
+// reward a view buys is still decided by `custom_data`, never by which
+// unit served it (see REST_BOOST_SSV_CUSTOM_DATA below).
+
 // Google's official test units. SAFE to ship in beta — they are designed
 // to be called from any app and always fill. Never point a build at a real
 // unit id before the app is on a store, and never click your own live ads:
 // both are how accounts get suspended.
-export const TEST_REWARDED_AD_UNITS = {
-  android: 'ca-app-pub-3940256099942544/5224354917',
-  ios: 'ca-app-pub-3940256099942544/1712497310',
+//
+// Both placements share Google's one test id on purpose: it is not a real
+// unit and reports nothing worth telling apart.
+export const TEST_AD_UNITS = {
+  coins: {
+    android: 'ca-app-pub-3940256099942544/5224354917',
+    ios: 'ca-app-pub-3940256099942544/1712497310',
+  },
+  restBoost: {
+    android: 'ca-app-pub-3940256099942544/5224354917',
+    ios: 'ca-app-pub-3940256099942544/1712497310',
+  },
 };
 
-// Your real units, from the AdMob console, once the app is listed.
-export const LIVE_REWARDED_AD_UNITS = {
-  android: 'REPLACE_WITH_REAL_ANDROID_REWARDED_UNIT_ID',
-  ios: 'REPLACE_WITH_REAL_IOS_REWARDED_UNIT_ID',
+// The real units, from the AdMob console.
+//
+// iOS only for now, which is the whole app: there is no android/ platform
+// and no @capacitor/android dependency. The Android ids stay placeholders
+// that adUnitIdFor() throws on, so adding the platform without first
+// creating its units fails at the call instead of quietly not filling.
+export const LIVE_AD_UNITS = {
+  coins: {
+    android: 'REPLACE_WITH_REAL_ANDROID_COINS_REWARDED_UNIT_ID',
+    ios: 'ca-app-pub-4131887583920972/4905952057',
+  },
+  restBoost: {
+    android: 'REPLACE_WITH_REAL_ANDROID_REST_BOOST_REWARDED_UNIT_ID',
+    ios: 'ca-app-pub-4131887583920972/9723053095',
+  },
 };
 
-// THE flag. One line to go live — assuming LIVE_REWARDED_AD_UNITS above is
-// filled in, which the guard in adUnitIdFor() will not let you forget.
-export const USE_TEST_ADS = true;
+// The placement names, so a typo is a thrown error rather than an
+// undefined id that reaches the SDK as "no fill".
+export const AD_PLACEMENTS = Object.freeze({ coins: 'coins', restBoost: 'restBoost' });
+
+// THE flag. One line to go live — assuming LIVE_AD_UNITS above is filled
+// in, which the guard in adUnitIdFor() will not let you forget.
+export const USE_TEST_ADS = false;
 
 // AdMob wants test mode declared to the SDK as well as through the unit
 // id, so a test build never counts as an impression on a real account.
@@ -49,7 +97,9 @@ export const IS_TESTING = USE_TEST_ADS;
 // build where they disagree either pays twice or never pays.
 //
 // The server has a matching AD_REWARD_REQUIRES_SSV in
-// functions/storeCatalog.js — flip that in the same change.
+// functions/storeCatalog.js — flip that in the same change. It went true
+// alongside USE_TEST_ADS = false above: the server now refuses a
+// client-claimed reward and waits for the signed callback.
 export const SSV_ENABLED = !USE_TEST_ADS;
 
 export function currentPlatform() {
@@ -64,15 +114,21 @@ export function isNativePlatform() {
   return globalThis.Capacitor?.isNativePlatform?.() === true;
 }
 
-export function adUnitIdFor(platform = currentPlatform()) {
+export function adUnitIdFor(placement, platform = currentPlatform()) {
+  const table = (USE_TEST_ADS ? TEST_AD_UNITS : LIVE_AD_UNITS)[placement];
+  // An unknown placement is a caller bug, and it is worth throwing on
+  // every platform — including web, which returns null below — or it only
+  // ever surfaces on a device.
+  if (!table) {
+    throw new Error(`Unknown ad placement "${placement}" — expected one of ${Object.keys(AD_PLACEMENTS).join(', ')}.`);
+  }
   if (platform !== 'android' && platform !== 'ios') return null;
-  const units = USE_TEST_ADS ? TEST_REWARDED_AD_UNITS : LIVE_REWARDED_AD_UNITS;
-  const id = units[platform];
+  const id = table[platform];
   // A live build still carrying the placeholder is worth failing loudly
   // for: AdMob's own error for a malformed unit id is "no fill", which
   // looks exactly like an ad that simply did not arrive.
   if (!USE_TEST_ADS && id.startsWith('REPLACE_WITH')) {
-    throw new Error(`No live AdMob rewarded unit id set for ${platform} — see src/config/ads.js`);
+    throw new Error(`No live AdMob ${placement} unit id set for ${platform} — see src/config/ads.js`);
   }
   return id;
 }

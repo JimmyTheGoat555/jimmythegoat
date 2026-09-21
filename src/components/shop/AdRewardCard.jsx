@@ -1,5 +1,6 @@
 import { AD_REWARD_COINS } from '../../data/storeItems';
 import { useRewardedAd } from '../../hooks/useRewardedAd';
+import { AD_PLACEMENTS } from '../../config/ads';
 import AdPlayingOverlay from '../shared/AdPlayingOverlay';
 
 // "Need more Coins?" — the one place in this app where currency comes from
@@ -15,7 +16,7 @@ import AdPlayingOverlay from '../shared/AdPlayingOverlay';
 // matching server-side exemption, and that is what actually pays out.
 export default function AdRewardCard({ lastAdRewardAt = null, isAdmin = false }) {
   const { status, busy, isAdLoaded, isNative, awaitsServerReward, error, limitReached, lastReward, watchAd } =
-    useRewardedAd(lastAdRewardAt, { bypass: isAdmin });
+    useRewardedAd(lastAdRewardAt, { bypass: isAdmin, placement: AD_PLACEMENTS.coins });
   // Fetching an ad is a real state on native and a non-state on web (where
   // there is nothing to fetch and isAdLoaded is always true), so the
   // button only ever shows "Loading ad…" where it means something.

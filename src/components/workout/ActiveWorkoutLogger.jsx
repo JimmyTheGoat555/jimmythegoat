@@ -12,7 +12,7 @@ import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useWeightEntryModes } from '../../hooks/useWeightEntryModes';
 import { useRestBoost } from '../../hooks/useRestBoost';
 import { useRewardedAd } from '../../hooks/useRewardedAd';
-import { REST_BOOST_SSV_CUSTOM_DATA } from '../../config/ads';
+import { AD_PLACEMENTS, REST_BOOST_SSV_CUSTOM_DATA } from '../../config/ads';
 import AdPlayingOverlay from '../shared/AdPlayingOverlay';
 import { lastPerformance, seedSetsFromHistory } from '../../utils/lastPerformance';
 import { sortExercisesByPriority, isPrioritySorted } from '../../utils/exerciseSorting';
@@ -537,6 +537,7 @@ export default function ActiveWorkoutLogger({
   const boostAd = useRewardedAd(null, {
     bypass: isAdmin,
     callable: 'claimRestBoost',
+    placement: AD_PLACEMENTS.restBoost,
     customData: REST_BOOST_SSV_CUSTOM_DATA,
     unavailableReason: restBoost.remainingToday <= 0 ? "Today's 2× boosts are used up." : null,
     // Pinned to the rest's exercise in the same breath as it is folded

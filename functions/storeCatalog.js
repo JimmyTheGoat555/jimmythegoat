@@ -148,7 +148,7 @@ const AD_REWARD_COINS = 50;
 // Flip this to true in the SAME change that sets USE_TEST_ADS = false in
 // src/config/ads.js. They are the two halves of going live and a build
 // with one without the other is either paying twice or not at all.
-const AD_REWARD_REQUIRES_SSV = false;
+const AD_REWARD_REQUIRES_SSV = true;
 
 // ---- Rest-timer coin boost ----
 // The second thing an ad can buy, and it is deliberately NOT coins: a
