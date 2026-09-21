@@ -56,6 +56,8 @@ Trainers get a separate coach code. A trainee enters it once to connect, and can
     heading: 'Coins, the store, and ads',
     body: `Coins are earned by training, and by watching an optional rewarded ad once a day. They only buy cosmetics — outfits and accessories for your goat. Nothing in the app affects your training data or unlocks features you would otherwise pay for.
 
+Ads are never shown to you unasked: you tap to watch one, and you get the reward. The first time you do, iOS asks whether the app may track you. Say no if you like — you still get the ad and still get the coins, the ad is just less targeted. Privacy Policy → "Ads" has the detail.
+
 If a purchase did not appear, force-close and reopen the app first: your balance and inventory are stored on our server, so they follow your account onto any device.`,
   },
   {
