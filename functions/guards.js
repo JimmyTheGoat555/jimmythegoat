@@ -253,4 +253,40 @@ async function enforceRateLimit(uid, action, targetUid) {
   });
 }
 
-module.exports = { enforceRateLimit };
+// Blocking, enforced on the way OUT — the server half of the ⋯ menu (see
+// src/utils/moderation.js for the client half and the data model).
+//
+// The client already hides everything a blocked account produces, which is
+// enough for the in-app surfaces. It is NOT enough for a push: the
+// notification document is written by the Admin SDK and
+// sendPushOnNotificationCreate (index.js) turns any new one into an OS
+// push, so without this check a blocked person could still light up the
+// recipient's lock screen with their name on it. The row would be filtered
+// out by the time the app opened, which is arguably worse — the push is
+// the part that actually reaches somebody.
+//
+// Takes the target's ALREADY-FETCHED snapshot rather than a uid, because
+// every caller has one in hand by the time it gets here: sendFriendNudge,
+// recommendWorkout and sendFriendRequest all read the target's user doc to
+// check existence first. So this costs zero extra reads.
+//
+// The message says "cannot reach", NOT "you have been blocked". Telling
+// somebody they were blocked, and by whom, is a harassment vector — it is
+// the signal that sends a determined person to a second account. It reads
+// the same as an account that has gone away.
+function assertNotBlockedBy(targetSnap, callerUid) {
+  const blocked = targetSnap.data()?.blockedUsers;
+  if (Array.isArray(blocked) && blocked.includes(callerUid)) {
+    throw new HttpsError('permission-denied', "You can't reach that account right now.");
+  }
+}
+
+// Same question, no throw and no snapshot in hand — for the Firestore
+// triggers, which have nobody to return an error to and must simply not
+// write the notification.
+function hasBlocked(targetSnap, callerUid) {
+  const blocked = targetSnap?.data()?.blockedUsers;
+  return Array.isArray(blocked) && blocked.includes(callerUid);
+}
+
+module.exports = { enforceRateLimit, assertNotBlockedBy, hasBlocked };

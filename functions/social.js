@@ -8,7 +8,7 @@
 // (rules only ever authorize a write against the CALLER's own uid).
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
-const { enforceRateLimit } = require('./guards');
+const { assertNotBlockedBy, enforceRateLimit } = require('./guards');
 
 // Called by the sender. A plain client write into someone else's
 // friendRequests subcollection isn't possible (see firestore.rules), so
@@ -72,6 +72,7 @@ exports.sendFriendRequest = onCall(async (request) => {
   if (!callerSnap.exists || !targetSnap.exists) {
     throw new HttpsError('failed-precondition', "Couldn't find that profile — try again in a moment.");
   }
+  assertNotBlockedBy(targetSnap, uid);
   if ((callerSnap.data().friends ?? []).includes(targetUid)) {
     throw new HttpsError('already-exists', "You're already friends.");
   }

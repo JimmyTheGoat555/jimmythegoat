@@ -13,7 +13,7 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore } = require('firebase-admin/firestore');
 const { NUDGE_MESSAGES_BY_ID } = require('./nudgeMessages');
-const { enforceRateLimit } = require('./guards');
+const { assertNotBlockedBy, enforceRateLimit } = require('./guards');
 
 exports.sendFriendNudge = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -48,6 +48,9 @@ exports.sendFriendNudge = onCall(async (request) => {
   const targetRef = db.collection('users').doc(targetUid);
   const targetSnap = await targetRef.get();
   if (!targetSnap.exists) throw new HttpsError('not-found', "That friend's account doesn't exist anymore.");
+  // Before the rate limit is spent: a blocked sender should not burn the
+  // recipient's cooldown slot either.
+  assertNotBlockedBy(targetSnap, uid);
 
   // Consumed only now that everything cheap has passed — a rejected
   // non-friend call shouldn't burn the caller's hourly budget. Throws

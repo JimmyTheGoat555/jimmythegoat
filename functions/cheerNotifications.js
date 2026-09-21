@@ -14,6 +14,7 @@
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { getFirestore } = require('firebase-admin/firestore');
 const logger = require('firebase-functions/logger');
+const { hasBlocked } = require('./guards');
 
 // Both like surfaces store the liker's uid AS the document id, so the
 // wildcard IS the liker.
@@ -24,7 +25,19 @@ async function notifyOwner(db, { ownerUid, likerUid, title, body, data }) {
     return;
   }
 
-  const likerSnap = await db.collection('users').doc(likerUid).get();
+  // Both in one round trip: the liker for their name, the owner because a
+  // cheer from somebody they blocked must not become a push with that
+  // person's name on it. This is the one place the check costs an extra
+  // read — the callables all have the target's doc already — and it is
+  // worth it, since a trigger is not on anybody's latency path.
+  const [likerSnap, ownerSnap] = await Promise.all([
+    db.collection('users').doc(likerUid).get(),
+    db.collection('users').doc(ownerUid).get(),
+  ]);
+  if (hasBlocked(ownerSnap, likerUid)) {
+    logger.info('cheer notification skipped', { ownerUid, likerUid, reason: 'blocked' });
+    return;
+  }
   const fromName = likerSnap.data()?.displayName ?? 'Someone';
 
   logger.info('cheer notification written', { ownerUid, likerUid, ...data });

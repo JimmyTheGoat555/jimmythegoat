@@ -27,7 +27,7 @@
 // (nudgeMessages.js) instead of a text box.
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore } = require('firebase-admin/firestore');
-const { enforceRateLimit } = require('./guards');
+const { assertNotBlockedBy, enforceRateLimit } = require('./guards');
 
 // Matches friendPrivacy.js's MAX_PUBLISHED_EXERCISES. A routine longer
 // than this is a malformed payload, not a workout.
@@ -114,6 +114,7 @@ exports.recommendWorkout = onCall(async (request) => {
   const friendRef = db.collection('users').doc(friendUid);
   const friendSnap = await friendRef.get();
   if (!friendSnap.exists) throw new HttpsError('not-found', "That friend's account doesn't exist anymore.");
+  assertNotBlockedBy(friendSnap, uid);
 
   // Consumed only once everything cheap has passed, matching nudges: a
   // rejected non-friend call should not burn the caller's budget. Throws
