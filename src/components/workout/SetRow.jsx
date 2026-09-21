@@ -18,20 +18,26 @@ import SetEntrySheet from './SetEntrySheet';
 
 const isSet = (v) => v !== '' && v !== null && v !== undefined && Number.isFinite(Number(v));
 
-// ── Two ways to reach a number, and why the step is half a kilo ────────
+// ── No keyboard in a set row, and why the step is half a kilo ──────────
 //
-// The weight can be TYPED — a field, with a minus and a plus either side
-// — or SPUN, on the wheel that opens from the line underneath it
-// (SetEntrySheet.jsx). Both write the same set; neither is the "real" one.
+// There is no text field on this row. The weight and the reps are BUTTONS
+// showing the number they hold, and tapping either one opens the wheel
+// (SetEntrySheet.jsx); the − and + beside the weight move it half a kilo
+// without opening anything at all. So a whole session — five exercises,
+// twenty sets — can be logged without the soft keyboard ever appearing,
+// which is the point: it covers half the screen, it shoves the layout
+// around as it opens and closes, and it is a lot of machinery to ask for
+// when the answer is two notches from where the dial already sits.
 //
-// They are both here because they answer different questions. Typing wins
-// when the number is already in your head and the jump is large (60 → 100).
-// The wheel wins with a thumb, mid-set, when the keyboard would cover half
-// the screen and the move is one or two notches. The pass that removed the
-// wheel kept only the field, which was the wrong half of the change: what
-// had to go was the plate CALCULATOR — plates per side on a bar picked
-// from a rack of six, arithmetic the lifter had to learn before logging a
-// single set — and that is gone and stays gone.
+// Typing is still there for the case the dial is bad at — a large jump
+// with the number already in your head, 20 → 100 — but it is now a
+// DOUBLE-TAP on the dial inside the sheet, which swaps the wheel for a
+// field. The keyboard is the exception and has to be asked for; see
+// SetEntrySheet.jsx.
+//
+// What had to go, and stays gone, was the plate CALCULATOR — plates per
+// side on a bar picked from a rack of six, arithmetic the lifter had to
+// learn before logging a single set.
 //
 // Half a kilo is the step, on the buttons and on the wheel alike, because
 // it is the smallest increment that exists on a real rack (the 0.25 kg
@@ -59,54 +65,28 @@ const SEED_REPS = 10;
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const round1 = (n) => Math.round(n * 10) / 10;
 
-// A number the lifter types. `type="text"` with `inputMode="decimal"`
-// rather than `type="number"`: the number input's spinners, its silent
-// rejection of a partial value like "1." mid-type, and its locale-
-// dependent decimal separator are all problems this field does not need.
+// What a text field used to be: the number, in the same slot, at the same
+// size — but a button, so tapping it opens the wheel instead of the
+// keyboard. Nothing about the row reads as editable-by-typing any more,
+// which is honest: it isn't.
 //
-// The draft is local while focused so a half-typed value is never fought
-// over, and committed on every keystroke that parses — the set's stored
-// value tracks what is on screen, so nothing is lost if the app is closed
-// mid-row. Normalisation (clamping, rounding) waits for blur, because
-// clamping while someone is typing "0" on the way to "05" is how a field
-// starts refusing input.
-function NumberField({ value, placeholder, onCommit, onNormalize, ariaLabel, className = '', editedRef }) {
-  const [draft, setDraft] = useState(null);
-  const shown = draft ?? (isSet(value) ? String(value) : '');
-
-  const handleChange = (e) => {
-    const next = e.target.value;
-    // One leading number, optional single decimal point. Anything else —
-    // a letter, a second dot, a minus — is simply not accepted, rather
-    // than accepted and then silently dropped on blur.
-    if (next !== '' && !/^\d*\.?\d*$/.test(next)) return;
-    setDraft(next);
-    if (editedRef) editedRef.current = true;
-    if (next === '') onCommit(null);
-    else if (Number.isFinite(Number(next))) onCommit(Number(next));
-  };
-
+// Empty is a real state (a freshly added set), and it shows the unit's own
+// word — "Per hand", "Total", "Belt" — greyed, exactly as the placeholder
+// did.
+function ValueButton({ value, placeholder, onOpen, ariaLabel, className = '' }) {
+  const filled = isSet(value);
   return (
-    <input
-      type="text"
-      inputMode="decimal"
-      enterKeyHint="done"
-      value={shown}
-      placeholder={placeholder}
+    <button
+      type="button"
+      onClick={onOpen}
       aria-label={ariaLabel}
-      onChange={handleChange}
-      // Select-all on focus: the field almost always arrives pre-filled
-      // from last time, and the first thing anyone does is replace it.
-      onFocus={(e) => e.target.select()}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur();
-      }}
-      onBlur={() => {
-        setDraft(null);
-        onNormalize();
-      }}
-      className={`h-10 w-full min-w-0 rounded-xl bg-neutral-800 text-center text-base font-semibold tabular-nums text-neutral-100 outline-none transition focus:bg-neutral-700 focus:ring-2 focus:ring-[var(--tier-accent)] ${className}`}
-    />
+      title="Open the wheel"
+      className={`h-10 w-full min-w-0 truncate rounded-xl bg-neutral-800 px-1 text-center text-base font-semibold tabular-nums transition active:scale-95 ${
+        filled ? 'text-neutral-100' : 'text-neutral-500'
+      } ${className}`}
+    >
+      {filled ? String(value) : placeholder}
+    </button>
   );
 }
 
@@ -178,17 +158,20 @@ export default function SetRow({
   // ── Auto-complete ──────────────────────────────────────────────────
   //
   // Finishing a value is the same statement as ticking the box, so the
-  // tick is done for you: when focus LEAVES this row and something in it
-  // was actually edited, a set with both numbers on it marks itself
-  // complete. `onAutoComplete` is separate from onToggleComplete because
-  // the logger treats it the same as a manual tick (it starts the rest
-  // timer) and this is the one place that distinction is made.
+  // tick is done for you: when the lifter is DONE with this row and
+  // something in it was actually edited, a set with both numbers on it
+  // marks itself complete. `onAutoComplete` is separate from
+  // onToggleComplete because the logger treats it the same as a manual
+  // tick (it starts the rest timer) and this is the one place that
+  // distinction is made.
   //
-  // Leaving the ROW, not the field, is the load-bearing part: weight and
-  // reps sit side by side, and completing on a field blur would fire the
-  // full-screen rest timer the instant somebody tabbed from weight to
-  // reps — with the reps still wrong, because they were on their way to
-  // fix them.
+  // "Done with the row" is now almost always closing the wheel, since that
+  // is where both numbers are entered — see closeSheet. Focus leaving the
+  // row still counts, for the keyboard, and it is the ROW it watches
+  // rather than any one control: weight and reps sit side by side, and
+  // completing on a single control's blur would fire the full-screen rest
+  // timer the instant somebody moved from the weight to the reps — with
+  // the reps still wrong, because they were on their way to fix them.
   onAutoComplete,
 }) {
   const kind = entryKindFor(exerciseId, { isBodyweight, mode: entryMode });
@@ -283,12 +266,6 @@ export default function SetRow({
     else onChange(totalPatchFor(exerciseId, v));
   };
 
-  const normalizeWeight = () => {
-    if (weightValue === null) return;
-    const clamped = round1(clamp(weightValue, weightBounds[0], weightBounds[1]));
-    if (clamped !== round1(weightValue)) commitWeight(clamped);
-  };
-
   const stepWeight = (dir) => {
     editedRef.current = true;
     const from = weightValue === null ? seedWeight() : weightValue;
@@ -300,12 +277,9 @@ export default function SetRow({
       onChange({ reps: '' });
       return;
     }
-    onChange({ reps: Math.round(n) });
-  };
-  const normalizeReps = () => {
-    if (!isSet(set.reps)) return;
-    const clamped = clamp(Math.round(Number(set.reps)), REPS_MIN, REPS_MAX);
-    if (clamped !== Number(set.reps)) onChange({ reps: clamped });
+    // The sheet clamps too. Both, because this is the last place a rep
+    // count can be checked against the bounds the server will enforce.
+    onChange({ reps: clamp(Math.round(n), REPS_MIN, REPS_MAX) });
   };
 
   // ── The anchor line ────────────────────────────────────────────────
@@ -442,20 +416,19 @@ export default function SetRow({
       <div className="flex min-w-0 flex-col items-stretch">
         <div className="flex min-w-0 items-center gap-1">
           <StepButton dir={-1} onClick={() => stepWeight(-1)} label={`${label} — decrease weight by 0.5 kg`} />
-          <NumberField
+          <ValueButton
             value={weightValue}
-            placeholder={isBodyKind ? '0' : String(defaultWeightForExercise(exerciseId))}
-            onCommit={commitWeight}
-            onNormalize={normalizeWeight}
-            ariaLabel={`${label} weight, ${copy.chip}`}
-            editedRef={editedRef}
+            placeholder={copy.placeholder}
+            onOpen={() => setSheetOpen(true)}
+            ariaLabel={`${label} weight, ${copy.chip}${
+              weightValue === null ? ', not set' : `, ${formatWorkingWeight(weightValue)} kilograms`
+            } — open the wheel`}
           />
           <StepButton dir={1} onClick={() => stepWeight(1)} label={`${label} — increase weight by 0.5 kg`} />
         </div>
-        {/* The anchor line doubles as the way into the wheel. It was
-            already sitting under the field saying what the number adds up
-            to; giving it a border and a dial glyph costs no height and is
-            the only place on a 375px row with room for the affordance. */}
+        {/* The anchor line opens the same wheel as the number above it —
+            one target of nearly 60px for the whole weight cell — and says
+            what the number adds up to while it is there. */}
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
@@ -472,13 +445,11 @@ export default function SetRow({
       </div>
 
       <div className="flex w-12 flex-col items-stretch">
-        <NumberField
+        <ValueButton
           value={isSet(set.reps) ? Math.round(Number(set.reps)) : null}
           placeholder="—"
-          onCommit={commitReps}
-          onNormalize={normalizeReps}
-          ariaLabel={`${label} reps`}
-          editedRef={editedRef}
+          onOpen={() => setSheetOpen(true)}
+          ariaLabel={`${label} reps${isSet(set.reps) ? `, ${Math.round(Number(set.reps))}` : ', not set'} — open the wheel`}
         />
         <button
           type="button"

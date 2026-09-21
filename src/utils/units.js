@@ -1,5 +1,5 @@
-// Shared numeric bounds + helpers for weight/rep entry (SetRow's typed
-// weight/reps fields and the body-weight log).
+// Shared numeric bounds + helpers for weight/rep entry (the set row's
+// weight and reps, the wheel they open, and the body-weight log).
 //
 // Two different precisions on purpose:
 //   - BODY weigh-ins (ProfileView / logBodyWeight) round to 0.1 kg —
@@ -12,9 +12,11 @@
 // override list — were the old scroll wheels' option lists. The wheel is
 // still here (components/workout/SetEntrySheet.jsx) but it builds its own
 // range from min/max/step now, in 0.5 kg all the way up, so that every
-// value the stepper can produce exists on it. The typed field takes any
-// number in range. Neither reads a ladder, so the one left below is only
-// the enumeration the tests walk.
+// value the stepper can produce exists on it. A number TYPED into that
+// sheet (double-tap a dial) is snapped onto the same 0.5 kg ladder, so
+// the wheel cannot move it on the way back. Nothing reads a ladder from
+// here any more, so the one left below is only the enumeration the tests
+// walk.
 //
 // NOTE: the kg/lbs (and cm/in) unit SYSTEM — a stored `unitSystem`
 // preference plus conversion at every display site — is still a separate,

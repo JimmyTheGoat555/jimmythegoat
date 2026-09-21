@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import WheelPicker from '../shared/WheelPicker';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import WheelPicker, { WHEEL_HEIGHT } from '../shared/WheelPicker';
 import { REPS_MAX, REPS_MIN, formatWorkingWeight } from '../../utils/units';
 
 // ── The wheel, back, without the calculator it used to be wrapped in ────
@@ -26,6 +26,25 @@ import { REPS_MAX, REPS_MIN, formatWorkingWeight } from '../../utils/units';
 // wheel or the two fight each other (the old version stepped 1.25 on a
 // whole-kilo ladder and quietly did nothing on alternate presses).
 //
+// ── Double-tap a dial to type ───────────────────────────────────────────
+//
+// The keyboard is now the EXCEPTION, not the default. Nothing in a set row
+// is a text field any more (see SetRow.jsx), so working through a session
+// never raises the keyboard: every number is a tap or a spin. But a dial
+// is the wrong tool for a large jump — 20 kg to 100 kg is a long spin, and
+// someone who already knows the number should be able to just say it. So:
+//
+//   double-tap a dial  →  the wheel is replaced, in place, by a numeric
+//                         field, focused, with its current value selected
+//   Enter, or focus leaves  →  the number is saved and the wheel is back
+//
+// The swap happens inside the dial's own footprint (WHEEL_HEIGHT) so the
+// sheet does not resize under the thumb, and a typed number is snapped to
+// the dial's own ladder before it is saved — see typedValue(). An
+// off-ladder value would sit between two wheel rows, and the wheel would
+// pull it to the nearer one the moment it came back, silently changing the
+// number that was just typed.
+//
 // Presentational on purpose. Every number that goes in or out of here is
 // in the units the ROW is already showing, and SetRow owns the translation
 // to a stored set — the `weight`/`perHandWeight`/`isPerHand` contract in
@@ -34,6 +53,34 @@ import { REPS_MAX, REPS_MIN, formatWorkingWeight } from '../../utils/units';
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const round1 = (n) => Math.round(n * 10) / 10;
+
+// ── What counts as a double-tap ────────────────────────────────────────
+//
+// Hand-rolled rather than left to `dblclick`, which on a touch screen is a
+// synthesised event with its own delay and is not fired at all by every
+// mobile browser. `dblclick` is still listened for, because it is what a
+// real mouse sends.
+//
+// A tap is a pointer that goes down and comes up in the same place. Two of
+// them, close together in time AND position, is the gesture.
+const TAP_SLOP = 12; // a press that slides further than this was a drag
+const DOUBLE_TAP_MS = 350;
+const DOUBLE_TAP_SLOP = 28; // two thumb taps never land on the same pixel
+// A tap that lands while the wheel is still moving is someone ARRESTING a
+// fling, not asking for a keyboard — and stopping a spin often takes two.
+// Scroll events are still arriving through the momentum, so "did this
+// wheel scroll a moment ago" is the test.
+const SCROLL_QUIET_MS = 250;
+
+// The value a typed string becomes: snapped to the dial's ladder, then
+// clamped. `min` is the ladder's first rung, not zero — a per-hand dial
+// starts at 0.5 kg — so the snap counts steps from there.
+function typedValue(text, { min, max, step }) {
+  const n = Number(text);
+  if (text.trim() === '' || !Number.isFinite(n)) return null;
+  const rung = step > 0 ? min + Math.round((n - min) / step) * step : n;
+  return round1(clamp(rung, min, max));
+}
 
 function Stepper({ onDown, onUp, children, downLabel, upLabel }) {
   return (
@@ -60,6 +107,158 @@ function Stepper({ onDown, onUp, children, downLabel, upLabel }) {
     </div>
   );
 }
+
+// One dial: its caption, the wheel, and the keyboard hiding behind a
+// double-tap. `children` is the stepper, which stays put through the swap.
+function Dial({ caption, value, min, max, step, formatValue, onChange, ariaLabel, typeLabel, allowDecimal, children }) {
+  // The draft doubles as the mode: a string means the field is up, null
+  // means the wheel is. One piece of state, so the two can never disagree.
+  const [draft, setDraft] = useState(null);
+  const typing = draft !== null;
+
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+  const lastScrollAt = useRef(0);
+  const downAt = useRef(null);
+  const lastTap = useRef(null);
+
+  // A scroll event does not bubble — but it DOES capture, so a capture
+  // listener on the wrapper hears the wheel's own scroller without
+  // WheelPicker having to know anything about this.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const onScroll = () => {
+      lastScrollAt.current = Date.now();
+    };
+    el.addEventListener('scroll', onScroll, true);
+    return () => el.removeEventListener('scroll', onScroll, true);
+  }, []);
+
+  // Focus in a LAYOUT effect, not a passive one: iOS only raises the
+  // keyboard for a focus() that happens inside the gesture that asked for
+  // it, and a passive effect is scheduled after that gesture has ended.
+  useLayoutEffect(() => {
+    if (!typing) return;
+    const el = inputRef.current;
+    el?.focus();
+    el?.select();
+  }, [typing]);
+
+  const startTyping = () => {
+    lastTap.current = null;
+    setDraft(formatValue ? formatValue(value) : String(value));
+  };
+
+  // Blur is the save — including the blur that Enter causes. An empty or
+  // unparseable draft changes nothing rather than clearing the set: the
+  // dial always holds a number, and this is the way back to the dial.
+  const commit = () => {
+    const next = draft === null ? null : typedValue(draft, { min, max, step });
+    setDraft(null);
+    if (next !== null && next !== value) onChange(next);
+  };
+
+  const onPointerDown = (e) => {
+    downAt.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const onPointerUp = (e) => {
+    const down = downAt.current;
+    downAt.current = null;
+    // A mouse has a real dblclick; re-deriving it here as well would make
+    // every second click on the wheel open the keyboard.
+    if (e.pointerType === 'mouse' || !down) return;
+    const moved = Math.abs(e.clientX - down.x) > TAP_SLOP || Math.abs(e.clientY - down.y) > TAP_SLOP;
+    if (moved || Date.now() - lastScrollAt.current < SCROLL_QUIET_MS) {
+      lastTap.current = null;
+      return;
+    }
+    const now = Date.now();
+    const prev = lastTap.current;
+    const near =
+      prev && Math.abs(e.clientX - prev.x) < DOUBLE_TAP_SLOP && Math.abs(e.clientY - prev.y) < DOUBLE_TAP_SLOP;
+    if (near && now - prev.t < DOUBLE_TAP_MS) {
+      startTyping();
+      return;
+    }
+    lastTap.current = { t: now, x: e.clientX, y: e.clientY };
+  };
+
+  return (
+    <div className="flex flex-col items-center">
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">{caption}</p>
+      <div
+        ref={wrapRef}
+        className="w-full"
+        onPointerDown={typing ? undefined : onPointerDown}
+        onPointerUp={typing ? undefined : onPointerUp}
+        onDoubleClick={typing ? undefined : startTyping}
+        // The dial is a focusable spinbutton, so the gesture needs a
+        // keyboard twin: Enter on the wheel opens the field, Enter in the
+        // field closes it again.
+        onKeyDown={(e) => {
+          if (typing || e.key !== 'Enter') return;
+          e.preventDefault();
+          startTyping();
+        }}
+      >
+        {typing ? (
+          <div
+            className="flex flex-col items-center justify-center rounded-2xl border border-[var(--tier-accent)]/60 bg-neutral-900"
+            style={{ height: WHEEL_HEIGHT }}
+          >
+            <input
+              ref={inputRef}
+              type="text"
+              // Not type="number": its spinners, its refusal of a partial
+              // value like "1." mid-type and its locale-dependent decimal
+              // separator are all problems this field does not need.
+              inputMode={allowDecimal ? 'decimal' : 'numeric'}
+              enterKeyHint="done"
+              value={draft}
+              aria-label={typeLabel}
+              onChange={(e) => {
+                const next = e.target.value;
+                // One number, one optional decimal point. Anything else is
+                // not accepted, rather than accepted and silently dropped.
+                const ok = allowDecimal ? /^\d*\.?\d*$/ : /^\d*$/;
+                if (next !== '' && !ok.test(next)) return;
+                setDraft(next);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              onBlur={commit}
+              className="w-full bg-transparent text-center text-3xl font-extrabold tabular-nums text-neutral-50 outline-none"
+            />
+            <span className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+              Enter to save
+            </span>
+          </div>
+        ) : (
+          <WheelPicker
+            className="w-full"
+            value={value}
+            min={min}
+            max={max}
+            step={step}
+            formatValue={formatValue}
+            onChange={onChange}
+            ariaLabel={ariaLabel}
+          />
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// A tap that lands on the backdrop this soon after the sheet opened is the
+// second half of a double-tap on the row that opened it — the sheet slid
+// up under a thumb that was already on its way back down. Closing on it
+// would read as the app having ignored the lifter entirely.
+const BACKDROP_GRACE_MS = 400;
 
 export default function SetEntrySheet({
   // What the row calls itself — "Set 2", or "Set 2 · drop 1" for a drop
@@ -92,6 +291,7 @@ export default function SetEntrySheet({
 }) {
   const w = weight ?? seedWeight;
   const r = reps ?? seedReps;
+  const openedAt = useRef(Date.now());
 
   useEffect(() => {
     onSeed?.();
@@ -104,7 +304,10 @@ export default function SetEntrySheet({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center"
-      onClick={onClose}
+      onClick={() => {
+        if (Date.now() - openedAt.current < BACKDROP_GRACE_MS) return;
+        onClose();
+      }}
       role="presentation"
     >
       <div
@@ -126,19 +329,19 @@ export default function SetEntrySheet({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 px-5 py-5">
-          <div className="flex flex-col items-center">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">{label} · kg</p>
-            <WheelPicker
-              className="w-full"
-              value={w}
-              min={min}
-              max={max}
-              step={step}
-              formatValue={formatWorkingWeight}
-              onChange={setWeight}
-              ariaLabel={`${label} in kilograms`}
-            />
+        <div className="grid grid-cols-2 gap-3 px-5 pt-5">
+          <Dial
+            caption={`${label} · kg`}
+            value={w}
+            min={min}
+            max={max}
+            step={step}
+            formatValue={formatWorkingWeight}
+            onChange={setWeight}
+            ariaLabel={`${label} in kilograms`}
+            typeLabel={`${label} in kilograms, type a number`}
+            allowDecimal
+          >
             <Stepper
               onDown={() => setWeight(w - step)}
               onUp={() => setWeight(w + step)}
@@ -147,19 +350,18 @@ export default function SetEntrySheet({
             >
               {step} kg
             </Stepper>
-          </div>
+          </Dial>
 
-          <div className="flex flex-col items-center">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Reps</p>
-            <WheelPicker
-              className="w-full"
-              value={r}
-              min={REPS_MIN}
-              max={REPS_MAX}
-              step={1}
-              onChange={setReps}
-              ariaLabel="Reps"
-            />
+          <Dial
+            caption="Reps"
+            value={r}
+            min={REPS_MIN}
+            max={REPS_MAX}
+            step={1}
+            onChange={setReps}
+            ariaLabel="Reps"
+            typeLabel="Reps, type a number"
+          >
             <Stepper
               onDown={() => setReps(r - 1)}
               onUp={() => setReps(r + 1)}
@@ -168,8 +370,14 @@ export default function SetEntrySheet({
             >
               1 rep
             </Stepper>
-          </div>
+          </Dial>
         </div>
+
+        {/* The gesture is worth nothing if nobody knows it is there, and
+            there is no way to draw a double-tap. So it is simply said. */}
+        <p className="px-5 pb-4 pt-3 text-center text-[11px] font-medium text-neutral-500">
+          Double-tap a dial to type the number
+        </p>
 
         {totalText && (
           <div className="px-5 pb-4">

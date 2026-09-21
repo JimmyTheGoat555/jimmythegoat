@@ -19,6 +19,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 const ITEM_HEIGHT = 40;
 const VISIBLE = 5; // odd → one item dead-centre under the band
 const PAD = Math.floor(VISIBLE / 2) * ITEM_HEIGHT;
+// How tall a wheel stands. Exported because anything that REPLACES a
+// wheel in place has to be exactly as tall or the panel around it jumps —
+// see the typing box in components/workout/SetEntrySheet.jsx.
+export const WHEEL_HEIGHT = VISIBLE * ITEM_HEIGHT;
 
 function buildRange(min, max, step) {
   const out = [];
@@ -182,7 +186,7 @@ export default function WheelPicker({
   return (
     <div
       className={`relative select-none ${className}`}
-      style={{ height: VISIBLE * ITEM_HEIGHT }}
+      style={{ height: WHEEL_HEIGHT }}
       role="spinbutton"
       tabIndex={0}
       aria-label={ariaLabel}
