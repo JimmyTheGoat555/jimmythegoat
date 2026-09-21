@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useReturnTo } from '../../hooks/useReturnTo';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
+import { useModerationActions } from '../../context/Moderation';
+import { isBlocked } from '../../utils/moderation';
+import UserActionsMenu from './UserActionsMenu';
 import { sanitizeFriendData } from '../../utils/friendPrivacy';
 import { getStoreItem } from '../../data/storeItems';
 import { formatRecordLoad, recordSortKey } from '../../utils/personalRecords';
@@ -356,6 +359,13 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
   const goBack = useReturnTo('/social');
   const knownFriend = (friends ?? []).find((f) => f.uid === friendUid);
 
+  // Every name in the app links here, so this is the one screen that has
+  // to cope with being opened for someone you have blocked — from a stale
+  // link, a browser back, or a pasted URL. The lists elsewhere filter them
+  // out; a route cannot.
+  const { blockedUids } = useModerationActions();
+  const blocked = isBlocked(blockedUids, friendUid);
+
   const raw = useFriendProfile(friendUid);
   const friend = sanitizeFriendData(raw);
 
@@ -384,6 +394,7 @@ export default function PublicFriendProfile({ friends, onSendNudge, onSaveTempla
       name={name}
       friendUid={friendUid}
       myUid={myUid}
+      blocked={blocked}
       onBack={goBack}
       onSendNudge={(messageId) => onSendNudge(friendUid, messageId)}
       onSaveTemplate={onSaveTemplate}
@@ -403,6 +414,7 @@ export function FriendProfileScreen({
   name = 'This friend',
   friendUid = null,
   myUid = null,
+  blocked = false,
   onBack,
   onSendNudge,
   onSaveTemplate,
@@ -496,11 +508,42 @@ export function FriendProfileScreen({
     </span>
   );
 
+  // The one early return in this component, and it is the point of it:
+  // everything below draws content this account authored — their name,
+  // their records, their routines — and a blocked account's content is
+  // exactly what must not be on screen. The ⋯ stays, because it is now
+  // the way back out.
+  if (blocked) {
+    return (
+      <div className="flex flex-col gap-5 pt-6 pb-nav">
+        <div className="flex items-center justify-between">
+          <button type="button" onClick={onBack} className="text-sm font-medium text-neutral-500">
+            ← Back
+          </button>
+          <UserActionsMenu targetUid={friendUid} targetName={name} myUid={myUid} surface="profile" />
+        </div>
+        <div className="card flex flex-col gap-2 p-5 text-center">
+          <p className="text-lg font-bold text-neutral-50">You blocked this account</p>
+          <p className="text-sm text-neutral-500">
+            Nothing they post or send reaches you. To undo it, use the ⋯ above or open Settings → Blocked accounts.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5 pt-6 pb-nav">
-      <button type="button" onClick={onBack} className="text-sm font-medium text-neutral-500 self-start">
-        ← Back
-      </button>
+      {/* Back and the ⋯ share the top row. This screen is where every
+          name in the app leads, which makes it the block/report control
+          that matters most — a reviewer who taps a username anywhere
+          lands on it. */}
+      <div className="flex items-center justify-between">
+        <button type="button" onClick={onBack} className="text-sm font-medium text-neutral-500">
+          ← Back
+        </button>
+        <UserActionsMenu targetUid={friendUid} targetName={name} myUid={myUid} surface="profile" />
+      </div>
 
       {/* The header. Always drawn, whatever the data — a brand-new account
           gets the base goat, its name and the bar at zero, which is a

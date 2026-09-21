@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { getMuscleGroup } from '../../data/exercises';
+import UserActionsMenu from './UserActionsMenu';
 
 // The two things that arrive here and need a hand: a workout a friend sent
 // (accept or dismiss) and the receipt for a bounty one of yours just
@@ -22,7 +23,7 @@ function exercisePreview(exercises = []) {
   return names.length > 3 ? `${shown} +${names.length - 3} more` : shown;
 }
 
-export default function WorkoutInbox({ items = [], onAccept, onDecline }) {
+export default function WorkoutInbox({ items = [], onAccept, onDecline, myUid }) {
   // Which routine is opened out in full. "Accept & Save" was previously a
   // decision made on three exercise names and an ellipsis — fine for a
   // three-lift push day, useless for anything longer, and the only way to
@@ -106,13 +107,28 @@ export default function WorkoutInbox({ items = [], onAccept, onDecline }) {
           const busy = busyHere;
           return (
             <li key={item.id} className="rounded-xl border border-white/10 bg-white/5 px-3.5 py-3">
-              <p className="text-sm text-neutral-100">
-                <span className="font-semibold">{item.senderName ?? 'A friend'}</span> recommended{' '}
-                <span className="font-semibold" style={{ color: 'var(--tier-accent)' }}>
-                  {routine.title ?? 'a workout'}
-                </span>{' '}
-                to you!
-              </p>
+              {/* The ⋯ rides on THIS row above every other surface's,
+                  because this is the only place in the app where another
+                  person's free text lands on your screen — the 140
+                  characters below. A report sent from here says
+                  `surface: 'inbox'`, which is how a moderator knows the
+                  complaint is about the note and not about the name. */}
+              <div className="flex items-start gap-1">
+                <p className="min-w-0 flex-1 text-sm text-neutral-100">
+                  <span className="font-semibold">{item.senderName ?? 'A friend'}</span> recommended{' '}
+                  <span className="font-semibold" style={{ color: 'var(--tier-accent)' }}>
+                    {routine.title ?? 'a workout'}
+                  </span>{' '}
+                  to you!
+                </p>
+                <UserActionsMenu
+                  targetUid={item.senderUid}
+                  targetName={item.senderName ?? 'this account'}
+                  myUid={myUid}
+                  surface="inbox"
+                  className="-mr-1 -mt-1"
+                />
+              </div>
 
               {/* Their words, marked as theirs. Quoted and italic so a
                   message can never be mistaken for the app talking. */}

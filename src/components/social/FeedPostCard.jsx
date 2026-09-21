@@ -8,6 +8,7 @@ import { ENABLE_EMOTES } from '../../config/features';
 import GradientBorder from '../shared/GradientBorder';
 import { formatRecordLoad } from '../../utils/personalRecords';
 import { relativeTime } from '../../utils/relativeTime';
+import UserActionsMenu from './UserActionsMenu';
 
 const ITEMS_BY_ID = new Map(STORE_ITEMS.map((item) => [item.id, item]));
 
@@ -141,6 +142,10 @@ export default function FeedPostCard({ post, myUid }) {
             {dance.emoji}
           </span>
         )}
+        {/* Outside the <Link>, not inside it: a button nested in an anchor
+            is invalid markup and, on a phone, an ambiguous tap. Renders
+            nothing on your own posts — see UserActionsMenu. */}
+        <UserActionsMenu targetUid={post.userId} targetName={post.userName} myUid={myUid} surface="feed" />
       </div>
 
       <p className="text-base text-neutral-200">

@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "test:progression": "node --test tools/progression.test.mjs",
     "test:badges": "node --test tools/badges.test.mjs",
-    "test": "node --test tools/progression.test.mjs tools/badges.test.mjs tools/setLoad.test.mjs tools/leaderboard.test.mjs tools/jimmyWorkouts.test.mjs",
+    "test": "node --test tools/progression.test.mjs tools/badges.test.mjs tools/setLoad.test.mjs tools/leaderboard.test.mjs tools/jimmyWorkouts.test.mjs tools/moderation.test.mjs",
     "preview": "vite preview",
     "deploy:functions": "firebase deploy --only functions,firestore:rules --project jimmy-the-goat",
     "build:ios": "vite build && npx cap sync ios",

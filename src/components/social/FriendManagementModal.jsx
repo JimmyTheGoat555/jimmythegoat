@@ -14,6 +14,7 @@ import FriendSuggestions from './FriendSuggestions';
 // second disclosure inside a sheet you already chose to open.
 export default function FriendManagementModal({
   myFriendCode,
+  myUid,
   friends,
   incomingRequests,
   onSendRequest,
@@ -36,6 +37,7 @@ export default function FriendManagementModal({
       <FriendsManager
         embedded
         myFriendCode={myFriendCode}
+        myUid={myUid}
         friends={friends}
         incomingRequests={incomingRequests}
         onSendRequest={onSendRequest}

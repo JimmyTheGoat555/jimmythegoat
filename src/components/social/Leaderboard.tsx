@@ -4,6 +4,7 @@ import { getEvolutionProgress } from '../../utils/evolutionTiers';
 import { buildBoard } from '../../utils/leaderboard';
 import GradientBorder from '../shared/GradientBorder';
 import JimmyAvatar from '../evolution/JimmyAvatar';
+import UserActionsMenu from './UserActionsMenu';
 import { DEFAULT_MASCOT_ID } from '../../data/mascots';
 
 interface FeedPost {
@@ -65,6 +66,8 @@ interface LeaderboardProps {
   progressionScale?: number;
   // And again the same reason — 'jimmy' | 'gena', see data/mascots.js.
   mascot?: string;
+  // Only so a row's ⋯ menu can tell your own row from everybody else's.
+  myUid?: string;
 }
 
 interface Rankable {
@@ -124,14 +127,14 @@ function Avatar({
   );
 }
 
-function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
+function AvatarRow({ entry, rank, myUid }: { entry: Rankable; rank: number; myUid?: string }) {
   const { current } = getEvolutionProgress(entry.lifetimeVolume, {
     minStage: entry.minStage ?? 1,
     scale: entry.progressionScale ?? 1,
   });
 
   const row = (
-    <div className="card flex items-center gap-3.5 p-5">
+    <div className={`card flex items-center gap-3.5 p-5${entry.isYou ? '' : ' pr-12'}`}>
       <span className="w-7 text-center text-xl font-bold text-neutral-500">{MEDALS[rank] ?? `#${rank + 1}`}</span>
       <Avatar
         tierId={current.id}
@@ -175,15 +178,34 @@ function AvatarRow({ entry, rank }: { entry: Rankable; rank: number }) {
   // no border-radius, so any ring would trace a plain rectangle floating
   // around its cut corners. Keyboard focus still lands on the link itself,
   // which the browser outlines.
+  // The ⋯ is a SIBLING of the link, laid over it, not a child of it: a
+  // <button> inside an <a> is invalid markup, and on a phone it is an
+  // ambiguous tap that sometimes navigates instead. Absolutely positioned
+  // because the row is one big link by design (see the note above), and
+  // the row reserves `pr-12` for it so it never lands on the score.
+  //
+  // Never on your own row — `entry.id` there is the literal string 'me'
+  // (see the `you` fixture below), not a uid, so the menu's own
+  // same-person guard cannot catch this one.
   return (
-    <Link
-      to={entry.isYou ? '/profile' : `/friends/${entry.id}`}
-      aria-label={entry.isYou ? 'Open your profile' : `Open ${entry.username}'s profile`}
-      className="block transition-transform duration-150 active:scale-[0.99]"
-      role="listitem"
-    >
-      {bordered}
-    </Link>
+    <div className="relative" role="listitem">
+      <Link
+        to={entry.isYou ? '/profile' : `/friends/${entry.id}`}
+        aria-label={entry.isYou ? 'Open your profile' : `Open ${entry.username}'s profile`}
+        className="block transition-transform duration-150 active:scale-[0.99]"
+      >
+        {bordered}
+      </Link>
+      {!entry.isYou && (
+        <UserActionsMenu
+          targetUid={entry.id}
+          targetName={entry.username}
+          myUid={myUid}
+          surface="leaderboard"
+          className="absolute right-2 top-1/2 -translate-y-1/2"
+        />
+      )}
+    </div>
   );
 }
 
@@ -208,6 +230,7 @@ export default function Leaderboard({
   // else, and a component that could reach for "the current user" would
   // turn a forgotten prop into everyone wearing your goat.
   mascot = DEFAULT_MASCOT_ID,
+  myUid,
 }: LeaderboardProps) {
   const you: Rankable = {
     id: 'me',
@@ -245,7 +268,7 @@ export default function Leaderboard({
       >
         <div className="flex flex-col gap-2.5">
           {rows.map((entry, rank) => (
-            <AvatarRow key={entry.id} entry={entry} rank={rank} />
+            <AvatarRow key={entry.id} entry={entry} rank={rank} myUid={myUid} />
           ))}
         </div>
       </div>

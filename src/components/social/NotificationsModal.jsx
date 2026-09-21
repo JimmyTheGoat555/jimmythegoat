@@ -13,6 +13,8 @@ import NotificationsList from './NotificationsList';
 // The inbox goes first: it is the only part of this sheet that is waiting
 // on a decision rather than telling you something.
 export default function NotificationsModal({
+  // Passed through to the inbox rows' ⋯ menu — see WorkoutInbox.
+  myUid,
   inboxItems,
   onAcceptInboxItem,
   onDeclineInboxItem,
@@ -36,7 +38,7 @@ export default function NotificationsModal({
       }
       onClose={onClose}
     >
-      <WorkoutInbox items={inboxItems} onAccept={onAcceptInboxItem} onDecline={onDeclineInboxItem} />
+      <WorkoutInbox myUid={myUid} items={inboxItems} onAccept={onAcceptInboxItem} onDecline={onDeclineInboxItem} />
       <NotificationsList
         notifications={notifications}
         onMarkRead={onMarkNotificationRead}

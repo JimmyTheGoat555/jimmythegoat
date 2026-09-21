@@ -41,7 +41,7 @@ service cloud.firestore {
                   'equippedDance', 'equippedAccessory', 'equippedAccessories',
                   'hasUnreadNudgePush', 'friendCode', 'featuredBadges',
                   'askForLocker', 'defaultRestTimer', 'mascot',
-                  'legalAcceptedVersion', 'legalAcceptedAt']) &&
+                  'legalAcceptedVersion', 'legalAcceptedAt', 'blockedUsers']) &&
         // Consent to the Terms and Privacy Policy, stamped at sign-up and
         // re-stamped by the app's gate when the documents change
         // (src/content/legalContent.js's LEGAL_VERSION). Owner-writable:
@@ -113,6 +113,29 @@ service cloud.firestore {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['trainerId']) ||
         request.resource.data.trainerId == null ||
         get(/databases/$(database)/documents/users/$(request.resource.data.trainerId)).data.role == 'trainer';
+    }
+
+    // `blockedUsers` — the accounts this person has blocked (see
+    // src/utils/moderation.js). Owner-writable, unlike `friends` right
+    // below it, and the difference is the whole point: a friendship is a
+    // claim about somebody ELSE that needs their consent, while a block is
+    // a statement about what YOU are willing to see. Nothing on anyone
+    // else's document changes, so there is nothing here for a server round
+    // trip to verify.
+    //
+    // Two things are still worth pinning:
+    //   * a size cap, because this doc is also read by the account's
+    //     connected trainer — an unbounded array is an unbounded blob
+    //     served to a second person;
+    //   * no self-blocks, which would hide your own posts from your own
+    //     feed and your own row from the leaderboard.
+    // What rules CANNOT do is check each element is a real uid; the client
+    // filters junk on the way in and on the way out (readBlockedUids).
+    function blockedUsersValid() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['blockedUsers']) ||
+        (request.resource.data.blockedUsers is list &&
+         request.resource.data.blockedUsers.size() <= 500 &&
+         !(request.auth.uid in request.resource.data.blockedUsers));
     }
 
     // The mirror of isTrainerOf — true if the caller is a trainee currently
@@ -389,6 +412,51 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Abuse reports — the other half of App Store Guideline 1.2 (blocking
+    // is `blockedUsers` on users/{uid}; see src/utils/moderation.js).
+    //
+    // WRITE-ONLY FROM A CLIENT, AND THAT IS THE DESIGN. Nobody can read
+    // this collection through the SDK — not the reporter, not the
+    // reported, not a trainer. A reporter who could read their own report
+    // back is a reporter whose device can be checked for one, and the
+    // person most likely to go looking is the one being reported.
+    //
+    // The document id IS `{reporterUid}__{reportedUid}`, pinned below
+    // against the payload, and that is the entire rate limit: one row per
+    // account you can see, so no client can flood this collection however
+    // many times it presses the button. Re-reporting overwrites that row
+    // with the newer reason. Same keying idea as cheers/{ownerUid}__{itemId}.
+    //
+    // `reportedAt == request.time` rather than a client clock: this is the
+    // one document in the app whose author has a motive to lie about when
+    // something happened.
+    //
+    // hasOnly() is what keeps this from becoming a free write surface —
+    // without it, a create that satisfies the checks below could carry an
+    // arbitrary extra megabyte along with it.
+    match /reports/{reportId} {
+      allow read, delete: if false;
+      allow create, update: if isOwner(request.resource.data.reporterUid) &&
+        reportId == request.resource.data.reporterUid + '__' + request.resource.data.reportedUid &&
+        request.resource.data.reportedUid is string &&
+        request.resource.data.reportedUid.size() > 0 &&
+        // Reporting yourself is not a thing, and a rule that allowed it
+        // would let an account manufacture a row about a uid of its choice
+        // by naming itself as both halves.
+        request.resource.data.reportedUid != request.auth.uid &&
+        request.resource.data.reason is string &&
+        request.resource.data.reason.size() <= 40 &&
+        request.resource.data.details is string &&
+        request.resource.data.details.size() <= 300 &&
+        request.resource.data.reportedName is string &&
+        request.resource.data.reportedName.size() <= 60 &&
+        request.resource.data.surface is string &&
+        request.resource.data.surface.size() <= 40 &&
+        request.resource.data.reportedAt == request.time &&
+        request.resource.data.keys().hasOnly(
+          ['reporterUid', 'reportedUid', 'reason', 'details', 'reportedName', 'surface', 'reportedAt']);
+    }
+
     match /users/{uid} {
       // A trainee's own doc is also readable by their connected trainer
       // (Trainer Dashboard roster query relies on this). The `signedIn()`
@@ -409,7 +477,8 @@ service cloud.firestore {
       // what serverManagedFieldsUnchanged() blocks.
       allow create: if isOwner(uid) && serverManagedFieldsAtDefault() && equippedFieldsValid();
       allow update: if isOwner(uid) && serverManagedFieldsUnchanged() && equippedFieldsValid()
-        && usernameChangeValid() && userUpdateFieldsAllowed() && trainerIdChangeValid();
+        && usernameChangeValid() && userUpdateFieldsAllowed() && trainerIdChangeValid()
+        && blockedUsersValid();
       allow delete: if false;
 
       match /friendRequests/{fromUid} {

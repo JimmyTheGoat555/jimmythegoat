@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import { sanitizeFriendData } from '../../utils/friendPrivacy';
+import { useModerationActions } from '../../context/Moderation';
+import { withoutBlocked } from '../../utils/moderation';
 import GradientBorder from '../shared/GradientBorder';
 import JimmyAvatar from '../evolution/JimmyAvatar';
 
@@ -104,7 +106,12 @@ function SuggestionCard({ suggestion, onAdd }) {
   );
 }
 
-export default function FriendSuggestions({ suggestions, loading, onAdd }) {
+export default function FriendSuggestions({ suggestions: allSuggestions, loading, onAdd }) {
+  // "People you might know" must never include someone you blocked. Same
+  // reasoning as FriendSearch: the suggestFriends callable walks the
+  // friend graph and knows nothing about your block list.
+  const { blockedUids } = useModerationActions();
+  const suggestions = withoutBlocked(allSuggestions ?? [], blockedUids, (s) => s.uid);
   // No empty state and no spinner row. This card sits in the middle of the
   // Social tab, and an account with no friends yet (the case that returns
   // nothing) is exactly the one that should not be shown a permanently

@@ -198,7 +198,49 @@ users/{uid}/recommendedBy/{templateId}  // who sent that routine
 users/{uid}/friendRequests/{fromUid}    // ⚠ fully server-managed, read-only to client
 users/{uid}/fcmTokens/{token}           // owner only, both directions
 users/{uid}/assignedWorkouts/{id}       // trainer → trainee
+reports/{reporterUid}__{reportedUid}    // ⚠ WRITE-ONLY from a client — abuse reports
 ```
+
+### Blocking and reporting (App Store Guideline 1.2)
+
+Two pieces, both client-written and enforced entirely by `firestore.rules` — no Cloud
+Function is involved, deliberately, because the **functions deploy is held until the
+App Store release** and the one feature whose job is to *get through* review must not
+be stuck behind it. `firebase deploy --only firestore:rules` is all it needs.
+
+**`users/{uid}.blockedUsers: string[]`** — owner-writable, capped at 500, self-blocks
+refused. This is the one social field a client may write directly, and the contrast
+with `friends` right beside it is the reason: a friendship is a claim about somebody
+else that needs their consent, a block is a statement about what *you* are willing to
+see. Absent on every account that predates the feature, and absent reads as "blocks
+nobody" — **no backfill was needed**.
+
+**`reports/{reporterUid}__{reportedUid}`** — `{ reporterUid, reportedUid, reason,
+details, reportedName, surface, reportedAt }`. Two properties do the security work:
+
+- **The id is deterministic**, which *is* the rate limit — one row per account you can
+  see, so no client can flood the collection however many times it presses the button.
+  Re-reporting overwrites that row. Same trick as `cheers/{ownerUid}__{itemId}`.
+- **No client can read it.** Not the reporter, not the reported, not a trainer. A
+  reporter who could read their report back is a reporter whose phone can be checked
+  for one. Read it in the Firebase console.
+
+`reportedAt == request.time` rather than a client clock — this is the only document in
+the app whose author has a motive to lie about when something happened. `reportedName`
+snapshots the username, because a name is the most-reported thing here and the account
+can rename itself the moment it is reported.
+
+**Filtering happens in one place.** `App.jsx` strips blocked uids out of
+`account.friends` *before* `useFeed`/`useFriendsGraph`/`useFriendSummaries` see it, so a
+blocked friend's posts are never fetched — and the feed, the friends directory, the
+leaderboard and the public summaries all go quiet from that single line. Notifications
+(`data.fromUid`), inbox items (`senderUid`) and friend requests (`fromUid`) are filtered
+beside it; search and suggestions filter in their own components, because the callables
+behind them know nothing about your block list.
+
+**Settings → Blocked accounts is not optional.** Every other surface hides blocked
+people by design, so once you have blocked someone there is nowhere left to tap a ⋯
+beside them. That list is the only way back.
 
 ### There is no `prs` collection
 
@@ -301,7 +343,7 @@ Firebase onSnapshot  →  custom hook  →  App.jsx  →  props
 reward/celebration cascade, and prop-drills everything. This is deliberate at the
 current size and is also the main thing to revisit before the tree gets deeper.
 
-### The one React Context: `JimmyLook`
+### The two React Contexts: `JimmyLook` and `Moderation`
 
 `src/context/JimmyLook.jsx` publishes **only the signed-in user's** look:
 `{ evolutionStage, equippedAccessories, mascot }`, consumed as
@@ -312,6 +354,19 @@ leaderboard row, a feed post and a friend's profile all draw *somebody else's* g
 data that arrives with that row. If the avatar silently fell back to "the current user",
 a forgotten prop would render wrong data that looks entirely plausible (everyone quietly
 wearing your hat) instead of an obvious blank.
+
+`src/context/Moderation.jsx` is the exact mirror image, and the pair is worth reading
+together: **`JimmyLook` is about you and must never be read where somebody else is
+drawn; `Moderation` is about everybody else and is only ever read there.** It publishes
+`{ blockedUids, blockUser, unblockUser, reportUser, openUserActions }` from
+`hooks/useModeration.js`, so the ⋯ beside any name reaches them without six components
+in between knowing what blocking is.
+
+The provider also **owns the one Block/Report sheet** (`UserActionsSheet`). That is a
+bug fix, not tidiness: blocking somebody from a list removes their row on the next
+render, and a sheet rendered *by* that row unmounts with it — the block landed, but the
+confirmation vanished, and "Report sent" (the one message a reporter needs, since
+reporting alone changes nothing visible) was never readable.
 
 ### Where each piece of state lives
 
@@ -520,7 +575,7 @@ form cues) · `jimmyWorkouts` (349, pre-built programs) · `badges` (479) · `ma
 
 ---
 
-## 9. Tests — 46, in Node's own runner
+## 9. Tests — 55, in Node's own runner
 
 ```
 tools/setLoad.test.mjs        19   the weight contract, drop-set arithmetic, cascade, numbering
@@ -528,10 +583,11 @@ tools/progression.test.mjs    10   evolution tiers, neglect penalty, scaled ladd
 tools/badges.test.mjs          6   award logic
 tools/leaderboard.test.mjs     6   weekly ranking
 tools/jimmyWorkouts.test.mjs   5   the pre-built programs
+tools/moderation.test.mjs      9   block filtering, report ids, array identity
 ```
 
 They import the real client modules directly (`await import('../src/utils/...')`) — no
-DOM, no test framework, no mocking library. `npm test` runs all five.
+DOM, no test framework, no mocking library. `npm test` runs all six.
 
 ## 10. Dev harnesses — `dev/*.html`
 
@@ -544,6 +600,7 @@ rest.html      the rest timer                        celebration.html  the finis
 admin.html     the Founder Console on a fixture      settings.html  SettingsPanel
 lobby.html     WorkoutHome                           recent.html    RecentWorkoutsList
 leaderboard.html · friend-profile.html · consent.html · message.html · chill.html
+moderation.html  every ⋯ surface at once, on an in-memory block list
 avatar-gallery.html  every sprite × accessory combination
 ```
 
@@ -614,15 +671,30 @@ and a deploy would otherwise never be picked up.
 - **`App.jsx` prop-drilling** is at the edge of comfortable at 1685 lines.
 - **Buff's hoodie asset** (`hoodie-2.png`) has a pale bar across the muzzle — a known
   artifact in the source image, kept at the owner's request.
-- **iOS release checklist not finished**: signing team (`DEVELOPMENT_TEAM` is unset),
-  Push Notifications capability (no `.entitlements` file, so `aps-environment` is
-  missing), APNs key upload to Firebase, `SKAdNetworkItems`, `PrivacyInfo.xcprivacy`,
-  privacy nutrition labels. `GoogleService-Info.plist` is DONE — in the bundle and in
-  the target's Copy Bundle Resources phase.
-- **No block or report anywhere** (App Store Guideline 1.2). The app carries a feed,
-  public profiles, friend search and free-text messages (`FriendPickerModal`, 140
-  chars) with no way to report content or block a user, and no moderation path. This is
-  a likely rejection for a social app and is the largest piece of the release still
-  outstanding.
+- **iOS release checklist — what is left is now only what needs an Apple account**:
+  the signing team (`DEVELOPMENT_TEAM` is still unset), the APNs key uploaded to
+  Firebase, the App ID given the Push Notifications capability, and the privacy
+  nutrition labels filled in on App Store Connect.
+
+  DONE in the repo: `GoogleService-Info.plist`, `PrivacyInfo.xcprivacy` (both in Copy
+  Bundle Resources), `App/App.entitlements` carrying `aps-environment` and wired to
+  `CODE_SIGN_ENTITLEMENTS` on both configurations, `SKAdNetworkItems` (Google's
+  published list, 50 entries — re-copy it at each release, Google adds buyers),
+  `ITSAppUsesNonExemptEncryption = false`, and `UIRequiredDeviceCapabilities` moved
+  off the Capacitor template's `armv7` to `arm64`.
+
+  ⚠️ Adding the entitlement means the build will fail to sign until the App ID has
+  the Push capability and the profile is regenerated. `aps-environment` is
+  `development` in the file on purpose — Xcode rewrites it to `production` on an App
+  Store export, and hand-editing it breaks development builds.
+- **Block & report: client LIVE, server enforcement waiting on the functions deploy.**
+  The rules are deployed (2026-09-22), so blocking, unblocking and reporting all work
+  against production today. What is not live is the outbound half —
+  `assertNotBlockedBy` in `functions/guards.js` and its four call sites (nudges,
+  workout recommendations, friend requests, the cheer trigger). Until functions ship,
+  a blocked account can still cause a PUSH on the recipient's lock screen; the in-app
+  row is filtered either way. It rides along with the release-time functions deploy.
 - **"Force Next Evolve" is still in Settings** (`SettingsPanel.jsx`), marked
-  TEMPORARY/TESTING ONLY by its own comment. Ships to users as-is.
+  TEMPORARY/TESTING ONLY by its own comment. It sits INSIDE the `{isAdmin && …}`
+  block, so it never renders for a normal account — cruft to delete when the testing
+  is done, not a thing users or reviewers can reach.

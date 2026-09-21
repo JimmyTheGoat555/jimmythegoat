@@ -204,6 +204,7 @@ export default function SocialPage({
           friends={friends}
           friendSummaries={friendSummaries}
           summariesLoading={summariesLoading}
+          myUid={myUid}
         />
       ) : (
         <SocialFeed
@@ -217,6 +218,7 @@ export default function SocialPage({
 
       {sheet === 'notifications' && (
         <NotificationsModal
+          myUid={myUid}
           inboxItems={inboxItems}
           onAcceptInboxItem={onAcceptInboxItem}
           onDeclineInboxItem={onDeclineInboxItem}
@@ -230,6 +232,7 @@ export default function SocialPage({
       {sheet === 'friends' && (
         <FriendManagementModal
           myFriendCode={myFriendCode}
+          myUid={myUid}
           friends={friends}
           incomingRequests={incomingRequests}
           onSendRequest={onSendRequest}

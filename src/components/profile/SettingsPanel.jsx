@@ -18,6 +18,7 @@ import {
 } from '../../content/legalContent';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import LegalDocument from '../legal/LegalDocument';
+import BlockedAccountsSection from './BlockedAccountsSection';
 
 // A plain on/off switch — same visual language FriendsManager-adjacent
 // toggles elsewhere in the app use (a pill track + sliding knob), just
@@ -702,6 +703,13 @@ export default function SettingsPanel({
               </p>
             )}
           </section>
+
+          {/* ── Blocked accounts ─────────────────────────────────────────
+              The one place a block can be undone — every other surface in
+              the app filters blocked people out, so there is nowhere else
+              left to tap a ⋯ next to them. See
+              components/profile/BlockedAccountsSection.jsx. */}
+          <BlockedAccountsSection />
 
           {isAdmin && (
             <section className="py-4 flex flex-col gap-1">

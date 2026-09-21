@@ -40,6 +40,7 @@ import { useLazyGoatNudge } from './hooks/useLazyGoatNudge';
 import { useAssignedWorkouts } from './hooks/useAssignedWorkouts';
 import { useWorkoutTemplates } from './hooks/useWorkoutTemplates';
 import { useWorkoutInbox } from './hooks/useWorkoutInbox';
+import { useModeration } from './hooks/useModeration';
 import { useWorkoutCooldown } from './hooks/useWorkoutCooldown';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useTabSwipe } from './hooks/useTabSwipe';
@@ -50,6 +51,7 @@ import { findNewPersonalRecords } from './utils/personalRecords';
 import { EVOLUTION_TIERS, getEvolutionProgress, progressionScale, TRAINER_MIN_STAGE } from './utils/evolutionTiers';
 import { lastPerformance, seedSetsFromHistory } from './utils/lastPerformance';
 import { isBodyweightExercise } from './data/exercises';
+import { withoutBlocked, withoutBlockedUids } from './utils/moderation';
 // NOT lazy, unlike the other post-workout overlays. Measured: a lazy
 // boundary costs ~300ms of blank home screen between cascade steps even
 // with the chunk already prefetched — React throttles revealing content
@@ -69,6 +71,7 @@ import { whenIdle } from './utils/idle';
 import LockerReminderModal from './components/workout/LockerReminderModal';
 import ConfirmDialog from './components/shared/ConfirmDialog';
 import { JimmyLookProvider } from './context/JimmyLook';
+import { ModerationProvider } from './context/Moderation';
 import { DEFAULT_SETS_PER_EXERCISE } from './hooks/useWorkouts';
 import { tierCssVars, tierIsAnimated } from './utils/tierTheme';
 import { unequippedRewardCount } from './utils/storeAlerts';
@@ -467,11 +470,32 @@ export default function App() {
   // purchaseItem() update them server-side.
   const { logWorkout, publishWorkoutRecords, purchaseItem, equipItem, setEquippedAccessories, setFeaturedBadges } =
     useEconomy(uid);
+  // Blocking and reporting — see hooks/useModeration.js. Reads
+  // `account.blockedUsers` off the profile listener that is already open,
+  // so this costs no extra reads.
+  const moderation = useModeration(uid, account);
   // Social graph + feed — see hooks/useFriendsGraph.js and useFeed.js.
   // `account.friends` (bare uids) is the source of truth; both hooks derive
   // from it rather than holding their own copy.
-  const friendUids = account?.friends ?? [];
+  //
+  // Blocked accounts come out HERE, once, rather than in each of the four
+  // things downstream of this array — the feed query, the friends
+  // directory, the leaderboard and the public summaries all read it, and
+  // filtering at the source means a blocked friend's posts are never
+  // FETCHED rather than fetched and then hidden. withoutBlockedUids hands
+  // back the same array when nothing is blocked, which matters: useFeed
+  // keys a live Firestore listener on this list.
+  const friendUids = withoutBlockedUids(account?.friends ?? [], moderation.blockedUids);
   const friendsGraph = useFriendsGraph(uid, friendUids);
+  // Blocking somebody who has a request pending withdraws the question:
+  // their row goes, and so does the badge that was pointing at it. The
+  // request document itself stays put, unanswered, which is the honest
+  // outcome — declining is a thing you choose, and a block should not
+  // quietly send a "no" on your behalf.
+  const incomingRequests = useMemo(
+    () => withoutBlocked(friendsGraph.incomingRequests, moderation.blockedUids, (req) => req.fromUid),
+    [friendsGraph.incomingRequests, moderation.blockedUids],
+  );
   const feed = useFeed(friendUids);
   // In-app notification inbox (weigh-in reminders, trainer weigh-in
   // updates, friend nudges). Lifted here from ProfileView so the unread
@@ -479,11 +503,24 @@ export default function App() {
   // itself renders on the Social tab now, not Profile (which is
   // stats-only). See hooks/useNotifications.js.
   const {
-    notifications,
-    unreadCount: unreadNotifications,
+    notifications: allNotifications,
     markRead: markNotificationRead,
     dismiss: dismissNotification,
   } = useNotifications(uid);
+  // A blocked account gets no row in the bell and no unread dot for one.
+  // The sender rides at `data.fromUid` — stamped by every function that
+  // writes here (nudges.js, cheerNotifications.js, recommendWorkout.js) —
+  // and a notification with nobody behind it (a weigh-in reminder from the
+  // scheduled job) has no fromUid and is therefore never filtered.
+  //
+  // The unread count is recomputed from the FILTERED list rather than
+  // taken from the hook: a badge that counts rows you cannot see sends you
+  // to a screen with nothing new on it.
+  const notifications = useMemo(
+    () => withoutBlocked(allNotifications, moderation.blockedUids, (n) => n.data?.fromUid),
+    [allNotifications, moderation.blockedUids],
+  );
+  const unreadNotifications = notifications.filter((n) => !n.read).length;
   const {
     activeWorkout,
     startWorkout,
@@ -572,6 +609,14 @@ export default function App() {
   // the two ends of this loop are on different tabs: you send from the
   // template carousel on the landing screen and receive on Social.
   const workoutInbox = useWorkoutInbox(uid);
+  // The inbox is the one surface carrying free text somebody else typed
+  // (the 140-character note on a recommended workout — see
+  // functions/recommendWorkout.js), so it is the one a block most needs to
+  // clear. The item keeps pointing at its sender as `senderUid`.
+  const inboxItems = useMemo(
+    () => withoutBlocked(workoutInbox.items, moderation.blockedUids, (item) => item.senderUid),
+    [workoutInbox.items, moderation.blockedUids],
+  );
 
   // Whether a workout can be STARTED right now. The server has always
   // refused one logged inside the cooldown window; this is what moves that
@@ -1191,6 +1236,10 @@ export default function App() {
   const currentTier = evolution.current;
 
   return (
+    // Two providers over the same tree, stacked flat rather than nested a
+    // level deeper: one is about YOU (the goat being drawn everywhere),
+    // the other is about everybody else (the ⋯ beside their names).
+    <ModerationProvider value={moderation}>
     <JimmyLookProvider evolutionStage={currentTier.stage} account={account}>
       <div
         // `tier-max` unlocks the animated gold backdrop for the top of
@@ -1303,14 +1352,14 @@ export default function App() {
                       friendUids={friendUids}
                       officialFriendUid={officialFriendUid}
                       friends={friendsGraph.friends}
-                      incomingRequests={friendsGraph.incomingRequests}
+                      incomingRequests={incomingRequests}
                       onSendRequest={friendsGraph.sendFriendRequest}
                       onSendRequestByUid={friendsGraph.sendFriendRequestByUid}
                       onRespond={friendsGraph.respondToFriendRequest}
                       notifications={notifications}
                       onMarkNotificationRead={markNotificationRead}
                       onDismissNotification={dismissNotification}
-                      inboxItems={workoutInbox.items}
+                      inboxItems={inboxItems}
                       onAcceptInboxItem={workoutInbox.accept}
                       onDeclineInboxItem={workoutInbox.decline}
                     />
@@ -1681,5 +1730,6 @@ export default function App() {
         <Toast notice={appNotice} onDismiss={dismissNotice} />
       </div>
     </JimmyLookProvider>
+    </ModerationProvider>
   );
 }

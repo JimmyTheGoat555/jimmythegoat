@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import FriendSearch from './FriendSearch';
+import UserActionsMenu from './UserActionsMenu';
 
 // `friends` is useFriendsGraph(...).friends — [{uid, displayName}],
 // resolved from the caller's own users/{uid}.friends array of bare uids
@@ -12,6 +13,11 @@ import FriendSearch from './FriendSearch';
 // actually adds to `friends` (see social.js's respondToFriendRequest()).
 export default function FriendsManager({
   myFriendCode,
+  // Only so the ⋯ can refuse to draw itself next to your own name. It
+  // never can here — a friend and a requester are both somebody else by
+  // construction — but the menu takes it everywhere else and a call site
+  // that quietly relies on undefined is a trap.
+  myUid,
   friends,
   incomingRequests,
   onSendRequest,
@@ -117,8 +123,16 @@ export default function FriendsManager({
                   key={req.id}
                   className="flex items-center justify-between text-base bg-[var(--ember)]/10 border border-[var(--ember)]/30 rounded-xl px-3.5 py-2.5"
                 >
-                  <span className="text-neutral-200">{req.fromName}</span>
-                  <div className="flex gap-2">
+                  <div className="flex min-w-0 items-center gap-0.5">
+                    <span className="truncate text-neutral-200">{req.fromName}</span>
+                    <UserActionsMenu
+                      targetUid={req.fromUid}
+                      targetName={req.fromName}
+                      myUid={myUid}
+                      surface="friend-request"
+                    />
+                  </div>
+                  <div className="flex shrink-0 gap-2">
                     <button
                       type="button"
                       onClick={() => handleRespond(req.fromUid, true)}
@@ -162,6 +176,12 @@ export default function FriendsManager({
                     >
                       {friend.displayName}
                     </Link>
+                    <UserActionsMenu
+                      targetUid={friend.uid}
+                      targetName={friend.displayName}
+                      myUid={myUid}
+                      surface="friends"
+                    />
                   </li>
                 ))}
               </ul>

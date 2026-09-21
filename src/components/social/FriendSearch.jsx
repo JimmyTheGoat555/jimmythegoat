@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { sanitizeFriendData } from '../../utils/friendPrivacy';
+import { useModerationActions } from '../../context/Moderation';
+import { withoutBlocked } from '../../utils/moderation';
 import { useFriendSearch, MIN_SEARCH_LENGTH } from '../../hooks/useFriendSearch';
 import GradientBorder from '../shared/GradientBorder';
 import JimmyAvatar from '../evolution/JimmyAvatar';
@@ -131,7 +133,14 @@ function ResultRow({ result, onAdd }) {
 }
 
 export default function FriendSearch({ onAddByUid }) {
-  const { term, setTerm, results, loading, error } = useFriendSearch();
+  const { term, setTerm, results: allResults, loading, error } = useFriendSearch();
+  // Somebody you blocked must not come back as a search result with an
+  // Add button under them. Filtered here rather than in the hook: the
+  // server-side search (functions/userSearch.js) has no idea who you have
+  // blocked, and teaching it would mean reading your doc on every
+  // keystroke.
+  const { blockedUids } = useModerationActions();
+  const results = withoutBlocked(allResults, blockedUids, (r) => r.uid);
   const trimmed = term.trim();
   const searching = trimmed.length >= MIN_SEARCH_LENGTH;
 
