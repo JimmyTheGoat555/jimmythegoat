@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Push notifications. Without this entitlement the app registers for
+	     remote notifications, gets no token, and every push the server
+	     sends is simply dropped — silently, which is why this was easy to
+	     miss (UIBackgroundModes was already set, and the JS side has no
+	     way to tell the difference).
+
+	     "development" is correct HERE. Xcode rewrites it to "production"
+	     when you export an App Store / TestFlight build, so this value is
+	     what a debug build on a device uses. Do not hand-edit it to
+	     production — a development build would then get no pushes at all.
+
+	     Turning this on means the App ID needs the Push Notifications
+	     capability and the provisioning profile has to be regenerated. -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>
