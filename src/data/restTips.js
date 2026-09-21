@@ -71,6 +71,40 @@ export const REST_TIPS = [
   { kind: 'fuel', text: 'Alcohol blunts muscle protein synthesis for hours after training. That pint costs more than its calories.' },
   { kind: 'fuel', text: 'Losing much more than 1% of your body weight a week starts costing you muscle along with the fat.' },
   { kind: 'roast', text: 'Ego lifting is just negotiating with physics. Physics has never once blinked.' },
+
+  // — Pool expansion. Same rule as everything above: every figure here is
+  // a checkable one from the literature, because these get repeated in
+  // gyms as fact. Grouped by what they're actually about.
+
+  // — Sleep and water —
+  { kind: 'science', text: 'Diet on five hours of sleep and you’ll lose the same weight — but far more of it comes off as muscle instead of fat.' },
+  { kind: 'science', text: 'The day’s biggest growth-hormone pulse arrives in your first deep-sleep cycle. No supplement reproduces it.' },
+  { kind: 'science', text: 'Young athletes sleeping under 8 hours get injured markedly more often. Sleep is the cheapest prehab there is.' },
+  { kind: 'fuel', text: 'Muscle is about 75% water, and thirst lags the deficit — by the time you feel it, your output has already dipped.' },
+
+  // — Two different kinds of tired —
+  { kind: 'science', text: 'Most of what you feel after a set of twelve is local — the muscle itself. It’s heavy singles that tax the nervous system.' },
+  { kind: 'science', text: 'If even the warm-up feels heavy, you’re systemically fatigued. If only the top set is slow, it’s just the muscle.' },
+  { kind: 'science', text: 'Local fatigue clears in minutes to hours. The central kind, after truly maximal work, can take two or three days.' },
+  { kind: 'science', text: '“CNS fatigue” gets blamed for a lot of ordinary tiredness. Usually it’s a bad night’s sleep and a hard week, not a fried nervous system.' },
+
+  // — Tendon and connective tissue, which run on a slower clock —
+  { kind: 'science', text: 'Muscle adapts in weeks; tendon takes months. That gap is where most overuse injuries are born.' },
+  { kind: 'science', text: 'Tendons stiffen from slow, heavy, boring loading — long holds and controlled reps, not bouncing.' },
+  { kind: 'science', text: 'A cranky tendon usually wants lighter loading, not total rest. Unloaded connective tissue gets weaker fast.' },
+  { kind: 'science', text: 'Part of the drive out of a deep squat is tendon recoiling like a spring — free force you only get by reaching the bottom.' },
+
+  // — Leverage, and where your attention goes —
+  { kind: 'science', text: 'Deliberately thinking about the working muscle raises its measured activity — and at moderate loads, grows it more.' },
+  { kind: 'science', text: 'Flip the cue when it’s heavy: “push the floor away” beats “squeeze your quads” for raw force. Inward to build, outward to lift.' },
+  { kind: 'science', text: 'You can lower roughly 30% more than you can lift. The eccentric is the strongest thing you do — stop dropping it.' },
+  { kind: 'science', text: 'A curl is hardest at 90°, where the lever is longest — not at the bottom. Cables and bands move that peak somewhere else.' },
+
+  // — Things everyone repeats that aren't true —
+  { kind: 'fuel', text: 'The 30-minute anabolic window is a myth. The muscle stays primed for hours; the day’s total protein is what matters.' },
+  { kind: 'science', text: 'Lactic acid doesn’t cause next-day soreness. Lactate is gone within the hour — the ache is mechanical damage.' },
+  { kind: 'science', text: 'You can’t spot-reduce. Crunches build abs; they don’t get to choose where the fat comes off.' },
+  { kind: 'science', text: 'Most fat leaves the body as carbon dioxide — you breathe it out. Sweat is cooling, not a progress bar.' },
 ];
 
 // Never returns the tip that's already on screen, so the card visibly
