@@ -1,19 +1,44 @@
-# Jimmy the Goat — Project Architecture & State Summary
+# Jimmy the Goat — Architecture & Code Summary
 
-A gamified strength-training PWA. You log workouts; a goat mascot ("Jimmy") evolves
-through four tiers as your lifetime relative-strength volume grows; you earn coins,
-buy cosmetics, dress the goat, and compare/compete with friends.
+A gamified strength-training PWA (also shipped to iOS through Capacitor). You log
+workouts; a goat mascot — **Jimmy**, or **Gena** for accounts that picked female at
+onboarding — evolves through four tiers as your lifetime *relative-strength volume*
+grows; you earn coins, buy cosmetics, dress the mascot, and compete with friends.
 
 - **Live:** https://jimmy-the-goat.vercel.app
-- **Firebase project:** `jimmy-the-goat`
-- **Repo:** github.com/JimmyTheGoat555/jimmythegoat
+- **Firebase project:** `jimmy-the-goat` (Vercel scope `reef14`)
+- **iOS bundle id:** `com.jimmythegoat.app`
 
 > Generated from the source, not from memory. Where a thing does *not* exist, this
 > document says so explicitly — those absences are usually the most useful part.
+> Size of the codebase at the time of writing: **~35,700 lines of client JS/JSX across
+> 206 files**, **~7,600 lines of Cloud Functions across 38 modules**, plus 14 dev
+> harness pages and 5 Node test files.
 
 ---
 
-## 1. Tech Stack & Libraries
+## 0. Commands
+
+```bash
+npm run dev            # Vite dev server
+npm run build          # vite build → dist/
+npm test               # node --test over tools/*.test.mjs  (46 tests)
+npx oxlint src dev     # lint (config: .oxlintrc.json)
+npm run build:ios      # vite build + npx cap sync ios
+npm run open:ios       # open the Xcode workspace
+
+npx prettier --single-quote --print-width 120 --trailing-comma all --write <files>
+npx vercel --prod --scope reef14 --yes                       # deploy the client
+npx firebase deploy --only functions,firestore:rules --project jimmy-the-goat
+```
+
+There is **no** Prettier config file — the flags above are the project's de-facto
+format. Some older data files predate the 120-column setting and are deliberately left
+unformatted (`src/data/restTips.js`); do not reformat them wholesale.
+
+---
+
+## 1. Tech Stack
 
 ### Client
 
@@ -22,55 +47,70 @@ buy cosmetics, dress the goat, and compare/compete with friends.
 | Framework | React | 19.2 |
 | Build | Vite | 8.2 |
 | Routing | react-router-dom | 7.18 |
-| Styling | Tailwind CSS (v4, PostCSS plugin) | 4.3 |
+| Styling | Tailwind CSS v4 (PostCSS plugin, `@theme` tokens) | 4.3 |
 | Charts | recharts | 3.10 |
 | Icons | lucide-react | 1.42 |
 | Confetti | canvas-confetti | 1.9 |
-| Backend SDK | firebase (JS SDK, modular) | 12.18 |
-| PWA | vite-plugin-pwa (`injectManifest`) + workbox-precaching | 1.3 / 7.4 |
+| Backend SDK | firebase (modular JS SDK) | 12.18 |
+| PWA | vite-plugin-pwa (`injectManifest`) + workbox | 1.3 / 7.4 |
+| Native shell | Capacitor 8 (+ `@capacitor-community/admob`, `@capacitor-firebase/messaging`, `local-notifications`) | 8.5 |
 | Lint | oxlint | 1.79 |
 
-**Language:** JavaScript + JSX. Two files are TypeScript (`Leaderboard.tsx`,
-`JimmyEvolution.tsx`) — the project is *not* TS-first and has no `tsc` in the build.
+**Language:** JavaScript + JSX. Exactly two files are TypeScript
+(`components/social/Leaderboard.tsx`, `components/evolution/JimmyEvolution.tsx`). The
+project is *not* TS-first and there is no `tsc` in the build.
 
 ### ⚠️ There is no animation library
 
-**`framer-motion` is not installed and never has been.** Neither is GSAP, react-spring,
-or motion. All motion in this app is **hand-written CSS `@keyframes` in `src/index.css`**
-(22 of them: `goat-evolve`, `cheer-pop`, `cheer-burst`, `button-burst`, `screen-shake`,
-`chest-sheen-sweep`, `chest-rays-spin`, `tab-slide-in-forward`, `pedestal-pulse`,
-`rainbow-glow-pulse`, `reward-pop`, `tip-in`/`tip-out`, …) plus Tailwind's
-`transition-*` / `active:scale-*` utilities.
+**`framer-motion` is not installed and never has been.** Neither is GSAP, react-spring
+or motion. All motion is hand-written CSS `@keyframes` in `src/index.css` plus
+Tailwind's `transition-*` / `active:scale-*` utilities. `canvas-confetti` draws
+particles only — it does not animate DOM. Long-running, frame-driven animation (the
+end-of-workout card, the share sticker) is painted with the **Canvas 2D API**
+(`utils/workoutSummaryScene.js`, `utils/workoutSticker.js`) driven by
+`hooks/useAnimationClock.js`.
 
-`canvas-confetti` is the only runtime animation dependency, and it draws particles
-only — it does not animate DOM.
-
-Dance emotes are **animated WebP** in an `<img>`, not `<video>` and not a JS animation:
-H.264 has no alpha channel, so the source MP4s showed a checkerboard behind the goat.
-Consequence: there is no `play()`, no `currentTime`, no `loop` attribute. Playback is
-controlled by (a) a loop count baked into each file and (b) changing the `src` — a
-`#fragment` is a distinct URL to the image decoder but the same resource to the
-network, so a replay costs no bytes. See `JimmyAnimation.jsx`.
+Dance emotes are **animated WebP** in an `<img>`, not `<video>`: H.264 has no alpha
+channel, so the source MP4s showed a checkerboard behind the goat. Consequence: no
+`play()`, no `currentTime`, no `loop`. Playback is controlled by a loop count baked
+into each file and by changing the `src` — a `#fragment` is a distinct URL to the image
+decoder but the same resource to the network, so a replay costs no bytes.
 
 ### Server
 
 | Concern | Choice |
 |---|---|
 | Compute | Cloud Functions for Firebase **v2**, Node 22 |
-| SDK | firebase-admin 14.3, firebase-functions 7.3 |
+| SDK | firebase-admin 14.4, firebase-functions 7.4 |
 | Region | **default (`us-central1`)** — not overridden on either side |
-| DB | Cloud Firestore (native mode) |
-| Auth | Firebase Auth — **email + password only** |
-| Push | Firebase Cloud Messaging (web push) |
-| Hosting | Vercel (SPA rewrites) |
+| DB | Cloud Firestore (native mode), 673 lines of rules |
+| Auth | Firebase Auth — **email + password only**, e-mail verification **enforced** |
+| Push | FCM (web push + APNs via Capacitor) |
+| Hosting | Vercel (SPA rewrite `/(.*) → /index.html`) |
 
-**Auth note:** there is no Google/Apple/phone sign-in, and **email verification is
-deliberately disabled** — the `requireVerifiedEmail` guard was removed because ~29 of 31
-real accounts were unverified and it was locking people out of the social features.
+**Auth note:** there is no Google / Apple / phone sign-in. Verification *is* enforced
+now — `App.jsx` renders `PendingVerificationScreen` and nothing else while
+`!emailVerified` (this reverses an earlier decision recorded in older docs).
 
 ---
 
-## 2. Database Schema (Firestore)
+## 2. Repo layout
+
+```
+src/            206 files — the app
+functions/      38 modules — Cloud Functions (CommonJS)
+dev/            14 standalone harness pages (see §10)
+tools/          5 Node test files + sprite/asset scripts + 2 admin CLI scripts
+ios/            Capacitor iOS project (Xcode)
+public/         sprites, dance WebPs, icons, splash
+assets/ source-media/ video-src/   art pipeline sources (video-src is untracked)
+firestore.rules  firestore.indexes.json  firebase.json  vercel.json
+capacitor.config.json  vite.config.js  postcss.config.js  .oxlintrc.json
+```
+
+---
+
+## 3. Database Schema (Firestore)
 
 Every path that exists, from `firestore.rules` plus its writers. `//` marks who may
 write, since that is the load-bearing detail in this schema.
@@ -78,433 +118,511 @@ write, since that is the load-bearing detail in this schema.
 ```jsonc
 // ───────────────────────────────────────── TOP LEVEL
 
-friendCodes/{CODE}                 // public lookup table: code → uid
-{ uid: string }
+config/{docId}                     // WRITE: admin callables only. READ: any signed-in user.
+                                   // config/announcement — the global banner.
 
+usernames/{key}                    // global uniqueness index: lowercased name → uid
+{ uid: string }                    // WRITE: server only (usernames.js)
+
+friendCodes/{CODE}                 // public lookup table: code → uid
 trainerCodes/{CODE}                // same, for trainer↔trainee pairing
-{ uid: string }
 
 feedPosts/{postId}                 // WRITE: Cloud Functions only (logWorkout)
 {                                  // READ: any signed-in user
-  userId: string,
-  userName: string,
-  headline: string,                // e.g. "Bench Press + 4 more"
-  exerciseCount: number,
-  totalSets: number,
-  totalVolume: number,             // raw kg — display only
-  lifetimeVolume: number,          // poster's lifetime RSV after this workout
-  score: number,                   // this workout's Relative Strength Volume
-  coinsEarned: number,
-  equippedDance: string | null,
-  equippedAccessory: string | null,// legacy single slot, still written
-  equippedAccessories: string[],   // the multi-slot loadout actually rendered
-  timestamp: string,               // ISO
-  personalRecords?: [...]          // only when the poster opted in per-post
+  userId, userName, headline,      // "Bench Press + 4 more"
+  exerciseCount, totalSets,
+  totalVolume,                     // raw kg — display only
+  lifetimeVolume,                  // poster's lifetime RSV after this workout
+  score,                           // this workout's Relative Strength Volume
+  coinsEarned, timestamp,          // ISO
+  equippedDance, equippedAccessory, equippedAccessories[],
+  personalRecords?                 // only when the poster opted in, per post
 }
-
-feedPosts/{postId}/likes/{likerUid}   // WRITE: create/delete by that liker only
-{ likedAt: string, likerUid: string } // no update, ever; no counter field
+feedPosts/{postId}/likes/{likerUid}   // create/delete by that liker only; never update
+{ likedAt, likerUid }                 // no counter field anywhere
 
 cheers/{ownerUid}__{itemId}           // parent doc is a PATH SEGMENT ONLY — never written
 cheers/{targetId}/likes/{likerUid}    // cheers on PRs & routines, which are not documents
-{ likedAt: string, likerUid: string }
 
-rateLimits/{uid}                      // WRITE: Admin SDK only; client cannot read or reset
-{ /* hourly friend-request counters, per-friend nudge cooldowns */ }
+rateLimits/{uid}                      // Admin SDK only; client cannot read or reset
 
 // ───────────────────────────────────────── PER USER
 
 users/{uid}                        // READ: owner + connected trainer ONLY
 {
-  email: string,
-  displayName: string,
-  role: 'trainee' | 'trainer',
-  trainerCode: string,             // this account's own code (if trainer)
-  trainerId: string | null,        // who coaches me
-  friendCode: string,              // this account's own share code
-  friends: string[],               // uids — MUTUAL, server-managed
+  email, displayName, role: 'trainee'|'trainer',
+  trainerCode, trainerId, friendCode,
+  friends: string[],               // ⚠ server-managed, MUTUAL
   coins: number,                   // ⚠ server-managed
-  unlockedDances: string[],        // ⚠ server-managed
-  unlockedAccessories: string[],   // ⚠ server-managed
-  equippedDance: string | null,    // client-writable
-  equippedAccessory: string | null,// client-writable (legacy)
-  equippedAccessories: string[],   // client-writable, max 5, must be owned
-  badges: [{ id, at }],            // ⚠ server-managed
-  sharePRs: boolean,               // ⚠ server-managed (setSharePRs callable)
-  lastWorkoutAt: string,           // ⚠ server-managed
-  hasUnreadNudgePush: boolean,
-  usernameChangedOnce: boolean,    // one username change per account, ever
-  createdAt: string,
-  referredBy?: string, referredAt?: string
+  unlockedDances[], unlockedAccessories[],   // ⚠ server-managed
+  equippedDance, equippedAccessory, equippedAccessories[],  // client-writable (max 5, must be owned)
+  badges: [{id, at}],              // ⚠ server-managed
+  sharePRs, lastWorkoutAt,         // ⚠ server-managed
+  mascot, gender,                  // which character (mascots.js)
+  usernameChangedOnce, mustChangeUsername,
+  hasUnreadNudgePush, createdAt, referredBy?, referredAt?
 }
-// Client UPDATE allowlist is exactly:
-//   displayName, usernameChangedOnce, trainerId,
-//   equippedDance, equippedAccessory, equippedAccessories,
-//   hasUnreadNudgePush, friendCode
+// Client UPDATE allowlist is exactly: displayName, usernameChangedOnce, trainerId,
+// equippedDance, equippedAccessory, equippedAccessories, hasUnreadNudgePush, friendCode.
 // Everything else is Admin-SDK-only. `allow delete: if false`.
 
 users/{uid}/public/summary         // READ: ANY signed-in user. The only public mirror.
-{
-  displayName: string,
-  lifetimeVolume: number,          // drives the tier a friend sees
-  sharePRs: boolean,
-  personalRecords?: [{ exerciseId, name, weight, reps }],  // FIELD IS DELETED when sharing is off
-  unlockedDances: string[],        // for the dance showcase
-  equippedDance: string | null,    // ← the only 3 fields a client may write here
-  equippedAccessory: string | null,
-  equippedAccessories: string[]
-}
+{ displayName, lifetimeVolume, sharePRs, personalRecords?,
+  unlockedDances[], equippedDance, equippedAccessory, equippedAccessories[] }
+// personalRecords is DELETED, not flagged, when sharing is off.
 
 users/{uid}/workouts/{workoutId}   // the real private log
-{
-  exercises: [{
-    exerciseId: string,
-    name: string,
-    muscleGroup: string | null,
-    isBodyweight?: true,
-    sets: [{
-      id: string,
-      weight: number,              // effective load
-      reps: number,
-      relativeVolume: number,      // (effectiveLoad / bodyWeight) * reps
-      completed: true,
-      isBodyweight?: true, addedWeight?: number, bodyWeightAtLog?: number
-    }]
-  }],
-  startedAt: string, finishedAt: string,
-  assignedWorkoutId: string | null,
+{ exercises: [{ exerciseId, name, muscleGroup, isBodyweight?,
+      sets: [{ id, weight, reps, relativeVolume, completed,
+               isDropSet?, isPerHand?, perHandWeight?, addedWeight?, bodyWeightAtLog? }] }],
+  startedAt, finishedAt, assignedWorkoutId,
   verified: true,                  // ONLY a server-written workout can carry this
-  coinsEarned: number,
-  score: number,                   // sum of relativeVolume; 0 for recovery workouts
-  totalVolumeKg: number,
-  recoveryWorkout: boolean
-}
+  coinsEarned, score, totalVolumeKg, recoveryWorkout }
 
 users/{uid}/meta/records           // ⚠ server-only. Killed an O(N)-reads-per-log design.
-{
-  bestPerExercise: { [exerciseId]: { weight, reps, name } },
-  lifetimeVolume: number,
-  workoutCount: number,
-  streakDays: number,
-  lastWorkoutDay: number,
-  maxSetScore: number
-}
+{ bestPerExercise: {[exerciseId]: {weight, reps, name}},
+  lifetimeVolume, workoutCount, streakDays, lastWorkoutDay, maxSetScore }
 
-users/{uid}/meta/economy           // ⚠ server-only — abuse window
-{ recentWorkoutLogs: string[], lastWorkoutAt: string }
+users/{uid}/meta/economy           // ⚠ server-only — the abuse window
+{ recentWorkoutLogs[], lastWorkoutAt }
 
-users/{uid}/meta/profile           // owner-writable body data
-{
-  name: string, heightCm: string,
-  bodyWeightLog: [{ id, date, weight, visibility: 'public'|'private' }],
-  bodyType: string, fitnessGoal: string, weeklyTarget: string,
-  weighInDay: '' | 0..6
-}
+users/{uid}/meta/profile           // owner-writable body data (onboarding fields are server-written)
+{ name, heightCm, bodyWeightLog: [{id, date, weight, visibility}],
+  bodyType, fitnessGoal, weeklyTarget, weighInDay }
 
 users/{uid}/templates/{templateId} // saved routines — STRUCTURE ONLY, no sets/reps/loads
-{ title: string, exercises: [{ exerciseId, name, muscleGroup }], createdAt: string }
-
 users/{uid}/notifications/{id}     // inbox; a new doc here auto-fires a push
-{ type: string, title: string, body: string, data?: {...},
-  read: boolean, createdAt: string }
-
-users/{uid}/friendRequests/{fromUid}  // ⚠ fully server-managed, read-only to client
-{ fromUid, fromName, status: 'pending', createdAt }
-
-users/{uid}/fcmTokens/{token}      // owner only, both directions
-{ createdAt: string }
-
-users/{uid}/assignedWorkouts/{id}  // trainer → trainee
-{ title, exercises, assignedBy, assignedByName, status: 'pending'|'completed', createdAt }
+users/{uid}/messages/{id}          // ⚠ server-only — direct message from the founder
+users/{uid}/inbox/{itemId}         // ⚠ server-only — workout recommendations, bounty receipts
+users/{uid}/recommendedBy/{templateId}  // who sent that routine
+users/{uid}/friendRequests/{fromUid}    // ⚠ fully server-managed, read-only to client
+users/{uid}/fcmTokens/{token}           // owner only, both directions
+users/{uid}/assignedWorkouts/{id}       // trainer → trainee
 ```
 
 ### There is no `prs` collection
 
-Personal records are **derived**, never stored as their own documents. They live as
-`bestPerExercise` inside `users/{uid}/meta/records` (private, server-maintained) and as
-a `personalRecords` array inside `users/{uid}/public/summary` (public, opt-in). This is
-why cheering a PR needs the `cheers/{ownerUid}__{itemId}` side-collection — there is no
-PR document to hang a subcollection off.
+Personal records are **derived**, never stored as documents. They live as
+`bestPerExercise` in `users/{uid}/meta/records` (private, server-maintained) and as a
+`personalRecords` array in `users/{uid}/public/summary` (public, opt-in). That is why
+cheering a PR needs the `cheers/{ownerUid}__{itemId}` side-collection — there is no PR
+document to hang a subcollection off.
 
-### There are no phone numbers, and no contacts data
+### There are no phone numbers and no contacts data
 
-Nothing in the schema stores a phone number, and there is no address-book or
-contact-matching surface anywhere. Relevant to any "find friends" feature.
+Nothing in the schema stores a phone number; there is no address-book or
+contact-matching surface anywhere. Relevant to any "find friends" feature. Friend
+discovery is by **friend code**, by **username search** (`searchUsers` callable), or by
+**friends-of-friends** (`suggestFriends`) — never by free-text scan of the user table.
 
 ### Indexes
 
 - Composite: `feedPosts (userId ASC, timestamp DESC)`
-- Collection-group field overrides: `friendRequests.fromUid`, `likes.likerUid`
-  (both exist so account deletion can sweep a user's traces out of *other* people's docs)
+- Collection-group field overrides: `friendRequests.fromUid`, `likes.likerUid` (both
+  exist so account deletion can sweep a user's traces out of *other* people's docs)
 
 ---
 
-## 3. Global State
+## 4. Server: 44 deployed functions
 
-**There is almost no global state machinery.** No Redux, no Zustand, no Jotai, no
-TanStack Query. The pattern is:
+All in `functions/`, CommonJS, exported through `index.js`.
+
+**Callables (39)**
+
+```
+Economy      logWorkout · purchaseItem · rewardAdView · claimRestBoost
+Account      deleteAccount · completeOnboardingProfile · setAccountRole
+             claimUsername · checkUsernameAvailable · requireUsernameChange
+             syncPublicDisplayName · setSharePRs · claimReferral · claimWelcomeFriend
+Social       sendFriendRequest · respondToFriendRequest · removeFriend
+             suggestFriends · searchUsers · sendFriendNudge
+             recommendWorkout · acceptRecommendation · publishWorkoutRecords
+Coaching     disconnectTrainer · notifyTrainer
+Admin        adminAnalytics · adminSetAnnouncement · adminGrantCoins · adminGrantXp
+             adminFindUsers · adminUserProfile · adminMessageUser · adminAdjustCoins
+             adminShiftEvolution · adminSetMascot
+Backfills    backfillUsernames · backfillFemaleMascots · friendEveryoneWithJimmy
+```
+
+**Triggers (3)** — `notifyOnPostCheer`, `notifyOnItemCheer`, `sendPushOnNotificationCreate`
+**Scheduled (2)** — `weeklyWeighInReminders` (08:00 daily), `teaseLazyGoats` (10:00 daily)
+**HTTP (1)** — `admobRewardCallback` (AdMob Server-Side Verification endpoint)
+
+**One rule keeps push simple:** `sendPushOnNotificationCreate` turns *any* new doc in
+`users/{uid}/notifications` into a push. A new notification type never needs new server
+code.
+
+### Module map
+
+| Module | Lines | What it owns |
+|---|---|---|
+| `economy.js` | 1390 | The only coin entry points. Workout validation, scoring, rewards, first-workout grant. |
+| `storeCatalog.js` | 302 | Server source of truth: validation bounds, anti-abuse limits, reward formula, item prices. |
+| `records.js` | 464 | Personal-record + aggregate stats (ESM/CJS twin of `utils/personalRecords.js`). |
+| `badges.js` | 294 | Award logic (twin of `data/badges.js`, which is display-only). |
+| `adminAnalytics.js` | 562 | The Founder Console's single payload. |
+| `adminUserActions.js` | 466 | "God mode" on one account: dossier, coins, tier, mascot, message. |
+| `adminOps.js` | 182 | Global ops: announcement, mass coin/XP grants. |
+| `appAdmin.js` | 97 | Who is an admin + the gate every admin callable runs first. |
+| `usernames.js` | 346 | Globally unique names and the one rename path. |
+| `guards.js` | 256 | Shared preconditions for every callable that reaches *another* user. |
+| `social.js` | 202 | Friend requests (both sides written atomically). |
+| `admobSsv.js` | 191 | Server-side ad verification — the real "was this ad watched". |
+| `restBoost.js` `rewardAdView.js` | 156 / 80 | Ad → coins, ad → one-use 2× token. |
+| `recommendWorkout.js` `acceptRecommendation.js` | 158 / 115 | Send a routine to a friend's inbox, and take it. |
+| `officialAccount.js` `welcomeFriend.js` | 144 / 61 | The app's own "Jimmy" account; everyone is auto-friended with it. |
+| `mascots.js` `mascotBackfill.js` `evolution.js` `exercises.js` | 38–156 | Server twins of client data tables. |
+| `nudges.js` `nudgeMessages.js` | 71 / 23 | Allow-listed nudge text — never free text into someone's push. |
+| `friendSuggestions.js` `userSearch.js` `liveUsers.js` `publicName.js` `publicProfile.js` `publishRecords.js` `onboarding.js` `referral.js` `coaching.js` `accountRole.js` `account.js` `cheerNotifications.js` | | one concern each |
+
+### Server authority model
+
+The client may never write `coins`, `friends`, `badges`, `sharePRs`, `unlockedDances`,
+`unlockedAccessories`, `lastWorkoutAt`, `role` or any username field. Those flow only
+through callables, and `firestore.rules` enforces it with a diff-based allowlist.
+
+The store catalog is **duplicated on purpose** (`src/data/storeItems.js` ↔
+`functions/storeCatalog.js`) so a tampered client can never buy at its own price — the
+server ignores whatever cost the client sends. Same pattern for badges, records,
+exercises, mascots and nudge messages: client copy = display, server copy = truth.
+
+---
+
+## 5. Global State
+
+**There is almost no global state machinery.** No Redux, Zustand, Jotai or TanStack
+Query. The pattern is:
 
 ```
 Firebase onSnapshot  →  custom hook  →  App.jsx  →  props
 ```
 
-`App.jsx` is the single composition root. It calls ~15 hooks and prop-drills the
-results. This is deliberate and works at the current size; it is also the main thing
-that would need revisiting before the tree gets much deeper.
+`App.jsx` (1685 lines) is the single composition root: it calls ~30 hooks, owns the
+reward/celebration cascade, and prop-drills everything. This is deliberate at the
+current size and is also the main thing to revisit before the tree gets deeper.
 
 ### The one React Context: `JimmyLook`
 
 `src/context/JimmyLook.jsx` publishes **only the signed-in user's** look:
+`{ evolutionStage, equippedAccessories, mascot }`, consumed as
+`<JimmyAvatar {...useJimmyLook()} />`.
 
-```js
-{ evolutionStage: 1|2|3|4, equippedAccessories: string[] }
-```
+It is scoped on purpose, and **`JimmyAvatar` is deliberately NOT context-aware**: a
+leaderboard row, a feed post and a friend's profile all draw *somebody else's* goat from
+data that arrives with that row. If the avatar silently fell back to "the current user",
+a forgotten prop would render wrong data that looks entirely plausible (everyone quietly
+wearing your hat) instead of an obvious blank.
 
-Used as `<JimmyAvatar {...useJimmyLook()} size="lg" />`.
+### Where each piece of state lives
 
-**It is scoped on purpose, and `JimmyAvatar` is deliberately NOT context-aware.** A
-leaderboard row, a feed post, and a friend's profile all draw *somebody else's* goat
-from data that arrives with that row. If the avatar silently fell back to "the current
-user", a forgotten prop would render wrong data that looks entirely plausible
-(everyone quietly wearing your hat) instead of an obvious blank.
-
-### Where each piece of state actually lives
-
-| State | Source | Notes |
-|---|---|---|
-| `user` (auth) | `useAuth` → `onAuthStateChanged` | |
-| `account` / `profile` (the `users/{uid}` doc) | `useAuth` → `onSnapshot` | aliased as `account` in App |
-| `coins`, `unlockedDances`, `unlockedAccessories` | **the same `account` doc** | `useEconomy` holds *no state*; it only calls callables. Values arrive live via the account listener the instant the server writes them. |
-| `evolutionStage` | **derived, never stored** | `getEvolutionProgress(lifetimeVolume(workouts), { lastWorkoutAt })` in `App.jsx` |
-| `equippedAccessories` | `account` doc → `JimmyLookProvider` | |
-| body metrics | `useCloudProfile` → `meta/profile` | |
-| workouts | `useCloudWorkouts` | |
-| friends / requests | `useFriendsGraph` | |
-| feed | `useFeed` | |
-| notifications | `useNotifications` | |
-| active workout in progress | `useWorkouts` (local + localStorage) | survives a reload mid-session |
-
-### Evolution tiers (derived, points-based — *not* kg)
-
-```js
-goat   → threshold     0  → stage 1  '/assets/jimmy-goat.png'
-buff   → threshold   400  → stage 2  (~4 workouts)
-titan  → threshold  2000  → stage 3  (~20 workouts)
-legend → threshold  5000  → stage 4  (~50 workouts)
-```
-
-Measured in **Relative Strength Volume** (`load / bodyweight * reps`), so a lighter
-lifter ranks on the same scale as a heavier one. A **neglect penalty** drops the
-effective tier by exactly one after 5 idle days; any workout lifts it.
-
-### Server authority model
-
-The client may never write `coins`, `friends`, `badges`, `sharePRs`, `unlockedDances`,
-`unlockedAccessories`, or `lastWorkoutAt`. Those flow only through callables, and
-`firestore.rules` enforces it with a diff-based allowlist. The store catalog is
-**duplicated on purpose** (`src/data/storeItems.js` ↔ `functions/storeCatalog.js`) so
-a tampered client can never buy at its own price — the server ignores whatever cost
-the client sends.
-
-### Cloud Functions (18 deployed)
-
-```
-Callables:  logWorkout · purchaseItem · deleteAccount · disconnectTrainer · notifyTrainer
-            claimReferral · completeOnboardingProfile · setSharePRs
-            sendFriendRequest · respondToFriendRequest · removeFriend · suggestFriends
-            sendFriendNudge
-Triggers:   notifyOnPostCheer · notifyOnItemCheer · sendPushOnNotificationCreate
-Scheduled:  weeklyWeighInReminders (08:00 daily) · teaseLazyGoats (10:00 daily)
-```
-
-**One rule keeps this simple:** `sendPushOnNotificationCreate` turns *any* new doc in
-`users/{uid}/notifications` into a push. A new notification type therefore never needs
-new server code.
-
----
-
-## 4. Component Tree
-
-```
-src/
-├── App.jsx ................... Composition root: all hooks, all routes, all prop-drilling.
-├── main.jsx .................. Bootstrap + periodic service-worker update checks (hourly).
-├── sw.js ..................... Custom service worker (injectManifest strategy).
-│
-├── context/
-│   └── JimmyLook.jsx ......... The signed-in user's {evolutionStage, equippedAccessories}.
-│
-├── components/
-│   ├── evolution/
-│   │   ├── JimmyAvatar.jsx ... ⭐ The paper-doll renderer: tier sprite + per-stage accessory
-│   │   │                        layering, two-pass behind/front for the "worn" 3D illusion.
-│   │   ├── JimmyAnimation.jsx  Hero display: static sprite swapped for an animated-WebP dance.
-│   │   ├── accessoryArt.jsx .. Registry mapping catalog id → PNG, aspect, and behind-fraction.
-│   │   └── JimmyEvolution.tsx  Tier-progress presentation.
-│   │
-│   ├── workout/
-│   │   ├── WorkoutHome.jsx ... Launchpad: Jimmy on his pedestal, hype line, mission carousel.
-│   │   ├── ActiveWorkoutLogger.jsx  The live session: exercises, sets, rest timer.
-│   │   ├── ExerciseLogCard.jsx / SetRow.jsx / SetEntrySheet.jsx  Per-exercise & per-set entry.
-│   │   ├── ExercisePicker.jsx / MuscleGroupPicker.jsx  Exercise selection.
-│   │   ├── FullScreenTimer.jsx / WorkoutTimer.jsx  Rest timing, readable from across a gym.
-│   │   ├── WorkoutSummaryModal.jsx / WorkoutSummaryChecklist.jsx  Post-workout recap.
-│   │   ├── SilverChest.jsx / SilverLootboxModal.jsx  First-workout free-dance moment.
-│   │   ├── HypeSpeechBubble.jsx / MissionCard.jsx / ReorderableList.jsx  Supporting UI.
-│   │
-│   ├── social/
-│   │   ├── SocialPage.jsx .... Tab shell: notifications → leaderboard → suggestions →
-│   │   │                        friends → feed.
-│   │   ├── Leaderboard.tsx ... Weekly RSV ranking from friends' feed posts; rows link to profiles.
-│   │   ├── PublicFriendProfile.jsx ⭐ Someone else's profile — sanitized, mystery progress bar,
-│   │   │                        public PRs, weightless routines, cheers, tappable avatar.
-│   │   ├── FriendDancesModal.jsx  Dance showcase: their goat performs the emotes they own.
-│   │   ├── FriendSuggestions.jsx  "People you might know" carousel (friends-of-friends).
-│   │   ├── FriendsManager.jsx  Friend code, incoming requests, current friends.
-│   │   ├── SocialFeed.jsx / FeedPostCard.jsx  The feed and its cheerable cards.
-│   │   ├── NotificationsList.jsx  Inbox rendering.
-│   │   └── NudgeModal.jsx .... Fixed-list nudge picker (no free text, on purpose).
-│   │
-│   ├── progress/
-│   │   ├── ProgressView.jsx .. Stats tab shell.
-│   │   ├── StreakHeatmap.jsx / WeeklyVolumeCard.jsx / LifetimeVolumeCard.jsx
-│   │   ├── WeeklySummaryCard.jsx / MuscleGroupGoals.jsx / RecentWorkoutsList.jsx / StatTile.jsx
-│   │
-│   ├── shop/
-│   │   └── GymShop.jsx ....... Coin store: dances + accessories, previewed on YOUR stage's Jimmy.
-│   │
-│   ├── profile/
-│   │   ├── ProfileView.jsx ... Own profile: body stats, badges, settings entry.
-│   │   ├── SettingsPanel.jsx  Username, PR sharing, trainer link, account deletion.
-│   │   ├── BadgeShelf.jsx / WeighInModal.jsx / NotificationPromptModal.jsx
-│   │
-│   ├── trainer/
-│   │   ├── TrainerDashboard.jsx  Trainee roster.
-│   │   ├── TraineeDetail.jsx / TraineeWorkoutDetail.jsx  Read-only trainee history.
-│   │   ├── AssignWorkoutForm.jsx  Push a workout to a trainee.
-│   │   └── ReadOnlyExerciseCard.jsx
-│   │
-│   ├── auth/       AuthScreen.jsx · OnboardingFlow.jsx · FirebaseSetupNeeded.jsx
-│   ├── history/    HistoryList.jsx · WorkoutDetail.jsx
-│   ├── layout/     BottomNav.jsx · TopHud.jsx (coin balance) · tabPaths.js
-│   ├── legal/      LegalDocument.jsx
-│   └── shared/     GradientBorder.jsx (tier-coloured frame) · ConfirmDialog.jsx
-│                   ErrorBoundary.jsx · WheelPicker + BodyWeight/Date/Height/Scroll variants
-│
-├── hooks/    useAuth · useEconomy · useCloudWorkouts · useCloudProfile · useWorkouts
-│             useFriendsGraph · useFriendProfile · useFriendSuggestions · useFeed
-│             useCheers · useNotifications · useWorkoutTemplates · useAssignedWorkouts
-│             useTrainerTrainees · useExercises · useRestTimer · useWakeLock
-│             useTierUpCelebration · useLazyGoatNudge · useTabSwipe · useLocalStorage
-│
-├── utils/    evolutionTiers · workoutStats · personalRecords · friendPrivacy ⭐
-│             danceAnimations · tierTheme · volumeTiers · heatmap · weighIn · units
-│             onboarding · exerciseSorting · lastPerformance · restMessages · restAlarmSound
-│
-├── data/     storeItems ⭐ · exercises · badges · nudgeMessages · gymQuotes · restTips
-└── lib/      firebase · messaging (FCM) · storage · lazyNudge
-```
+| State | Source |
+|---|---|
+| auth user, the `users/{uid}` doc (aliased `account`) | `useAuth` (703 lines) |
+| `coins`, unlocks | **the same account doc** — `useEconomy` holds no state, it only calls callables |
+| `evolutionStage` | **derived, never stored** — `getEvolutionProgress(lifetimeVolume(workouts))` |
+| body metrics | `useCloudProfile` → `meta/profile` |
+| finished workouts | `useCloudWorkouts` (one snapshot, diffed) |
+| the workout in progress | `useWorkouts` — local state + localStorage, survives reload |
+| friends / requests / feed / notifications | `useFriendsGraph`, `useFeed`, `useNotifications` |
 
 ### Routes
 
 ```
-/  /progress  /social  /friends/:friendUid  /profile  /shop  /history
-/workouts/:id  /workout
+/  /progress  /social  /shop            ← bottom-tab routes (tabPaths.js, swipeable)
+/friends/:friendUid  /profile  /history
+/workout  /workouts/:id
 /trainees  /trainees/:id  /trainees/:id/assign  /trainees/:id/workouts/:workoutId
+/admin                                   ← rendered only when utils/appAdmin.js says so
+/privacy  /terms  /support               ← OUTSIDE App, signed-out (PublicInfoRoutes)
+*  → redirect to /
 ```
 
----
+`/privacy`, `/terms` and `/support` are intercepted by `PublicInfoRoutes` **before**
+`App`, because App returns `<AuthScreen/>` for every path when nobody is signed in and
+those URLs are the ones given to App Store Connect.
 
-## 5. Fully Implemented Features
-
-### Core loop
-- [x] **Email/password auth** + onboarding questionnaire (body type, goal, weekly target)
-- [x] **Workout logging** — exercise picker, per-set weight/reps, reorderable, bodyweight
-      exercises with added weight, rest timer with wake-lock and an audio alarm that
-      survives a locked screen
-- [x] **Server-validated logging** — `logWorkout` is the single scoring/reward authority;
-      client-written workouts can never carry `verified: true`
-- [x] **Relative Strength Volume scoring** — `load / bodyweight * reps`, so bodyweight matters
-- [x] **Incremental records aggregate** — `meta/records` replaced a full-history re-scan on
-      every single log (was O(N) reads per workout)
-- [x] **Workout templates** (structure-only) and **trainer-assigned workouts**
-- [x] **History**, workout detail, edit and delete
-
-### Progression & economy
-- [x] **4-tier evolution** with neglect penalty and a tier-up celebration
-- [x] **Coin economy** — server-authoritative, twin catalogs, rate-limited
-- [x] **Shop** — 4 dances + 6 accessories, previewed on your own tier's Jimmy
-- [x] **Silver Lootbox** — first real workout grants a free dance, once ever per account
-- [x] **Achievement badges** — re-derived server-side from stored history
-- [x] **Dance emotes** — animated WebP, 4 dances × 4 stages, replay-by-fragment
-
-### Paper doll
-- [x] **Multi-slot layering** — legs / body / neck / head / eyes, max 5, ownership enforced in rules
-- [x] **Per-stage placement** — every accessory has its own top/left/width per tier, calibrated
-      against measured sprite landmarks (pupil span, eye line, neck base, hip, sole)
-- [x] **`object-contain` box reconstruction** — one calibration serves every screen size
-- [x] **Two-pass behind/front rendering** with `clip-path: inset()` so a garment reads as
-      *worn* rather than stickered on (the neck occludes the collar's back edge)
-- [x] **Avatar consistency everywhere** — profile, progress, workout, feed, leaderboard, shop
-
-### Social
-- [x] **Mutual friend requests** via friend codes, server-managed both sides atomically
-- [x] **Weekly leaderboard** on RSV, built from friends' feed posts (never their private logs)
-- [x] **Social feed** with cheers (likes)
-- [x] **Cheers on PRs and routines** via the `{ownerUid}__{itemId}` side-collection,
-      optimistic UI with rollback, **double-tap to like**
-- [x] **Cheer notifications** — Firestore triggers, self-cheers skipped, names the actual lift
-- [x] **Public friend profile** — mystery progress bar (position, never a number),
-      opt-in PRs, weightless routines, "Copy to My Workouts"
-- [x] **Data sanitization** — `sanitizeFriendData` allowlist; PR sharing DELETES the field
-      rather than flagging it, so there is nothing to filter when it is off
-- [x] **Interactive friend avatar** → dance showcase modal
-- [x] **Friend suggestions** — friends-of-friends, ranked by mutual count, no user input
-      (so it cannot be used as a "does this person exist" oracle)
-- [x] **Nudges** — fixed message list, rate-limited per friend and globally
-- [x] **Leaderboard rows link to profiles**
-
-### Platform
-- [x] **PWA** — installable, offline shell, hourly + on-focus service-worker update checks
-- [x] **Web push (FCM)** — any new notification doc becomes a push, one rule for all types
-- [x] **Scheduled jobs** — weigh-in reminders, lazy-goat teasing
-- [x] **Trainer mode** — roster, read-only trainee history, workout assignment
-- [x] **Account deletion** — 8 steps, including sweeping this user's cheers out of *other*
-      people's items via a collection-group query
-- [x] **Rate limiting** — `rateLimits/{uid}`, Admin-SDK-only so devtools cannot reset it
+Three screens replace the router entirely when they apply: `PendingVerificationScreen`
+(unverified e-mail), `LegalConsentGate` (terms not accepted), `ForcedUsernameModal`
+(`mustChangeUsername`). All three are screens, not overlays — an overlay leaves the app
+reachable underneath.
 
 ---
 
-## Known gaps / open threads
+## 6. The workout-logging domain — the delicate parts
 
-These are real and current — worth knowing before proposing features.
+This is where most of the subtle logic lives. Read these three files before touching a
+set.
 
-- **Friend requests are silent.** `functions/social.js` writes **no** notification when a
-  request arrives. No badge, no push, no inbox entry. This is the single biggest hole in
-  the social loop.
-- **Like notifications do not coalesce** — one push per like.
-- **Saved routines are never published.** `sanitizeFriendData` handles them and
-  `PublicFriendProfile` renders them, but nothing writes `savedWorkouts` to
-  `public/summary`, so that section is always empty today.
-- **Deploy pending:** `suggestFriends` and the `unlockedDances` publishing in
-  `logWorkout`/`purchaseItem` are written and locally verified but **not yet deployed**.
-- **No dismissal memory** for friend suggestions — dismissing is local-only and they
-  return on the next fetch.
-- **`App.jsx` prop-drilling** is at the edge of comfortable.
-- **Buff's hoodie asset** (`hoodie-2.png`) has a pale bar across the muzzle — a known
-  artifact in the source image, kept at the owner's request.
-- **No tests.** `npm run` offers `dev`, `build`, `lint`, `preview` — nothing else.
+### `utils/setLoad.js` — the weight contract
+
+- **`set.weight` is ALWAYS the absolute load in kg.** Everything downstream (scoring,
+  volume, PRs, the leaderboard) reads only this.
+- A **per-hand** exercise (dumbbells, cable crossover) stores the **pair** in `weight`,
+  plus `perHandWeight` and `isPerHand: true` as a *format marker* so the UI can show the
+  number the lifter actually typed.
+- A **bodyweight** exercise stores belt weight in `addedWeight`; the server folds in
+  `bodyWeightAtLog`.
+- Legacy sets without the marker are left alone deliberately, and read back as the total
+  they were scored as.
+- ⚠️ **`deriveWeight` precedence hazard (server, `functions/economy.js`):** the server
+  prefers a valid `barWeight`/`weightPerSide` pair over `weight` — it must, for
+  un-reloaded old clients. So every client patch has to blank stale context (`NO_BAR` /
+  `NOT_PER_HAND`) or a freshly typed number is silently overruled. Use the patch
+  builders (`totalPatchFor`, `perHandPatchFor`, `blankLoadPatch`), never a bare
+  `{ weight }`.
+- The plate calculator (bar + plates per side) was **removed** and stays removed.
+  `entryKindFor()` can no longer return that kind, even for a set logged with it.
+
+### `utils/setCascade.js` — cascading entry
+
+Editing a set's load or reps flows the same values **down** to every later set in that
+exercise that is still open to them. Two rules: **down, never up**, and **a completed
+set is never rewritten**. One extension, which runs **both ways**: a drop set neither
+receives the cascade nor starts one (its load is a deliberate step down, and its reps
+are whatever failure gave). `numberSets()` numbers working sets only — three sets with a
+double drop reads `1, 2, ↳, ↳, 3`, not five sets.
+
+### Drop sets
+
+`+DS` on any row splices a new set immediately below it at **80 %** of the set above
+(`droppedLoadFrom`), reps blank, carrying `isDropSet: true`. Pressing it on a drop row
+nests another. They are ordinary sets everywhere else: counted in volume, PRs and
+analytics; excluded from the overload coach, from `seedSetsFromHistory`, and from what
+"+ Add Set" copies. The rest timer asks about the **next** set, so no rest before a
+drop and a full rest after the last one in the chain.
+
+### Set entry UI — wheel first, keyboard on request
+
+`SetRow.jsx` renders **no `<input>` at all**: weight and reps are buttons showing their
+number, with − / + (0.5 kg) beside the weight. Tapping one opens `SetEntrySheet.jsx`
+(two `WheelPicker` dials + steppers, portalled to `document.body`). **Double-tapping a
+dial** swaps that wheel in place for a numeric field, focused, and Enter/blur saves and
+restores the wheel. A typed number is snapped onto the dial's own 0.5 kg ladder, or the
+wheel would pull it to the nearer rung on the way back.
+
+Two traps that cost real debugging time:
+- A `filter: drop-shadow(...)` on an ancestor makes it the containing block for
+  `position: fixed` descendants — which is why the sheet is portalled.
+- `interactive-widget=resizes-content` in the viewport meta shrinks the *layout*
+  viewport when the keyboard opens, so CSS `orientation` can flip to landscape on a
+  portrait phone. `components/shared/RotateGate.jsx` therefore requires three signals to
+  agree (touch + phone-sized screen, viewport ratio > 1.5, and `screen.orientation`)
+  before showing the "rotate your device" gate.
+
+### Scoring — Relative Strength Volume
+
+`load ÷ bodyweight × reps`, summed per set. A lighter lifter ranks on the same scale as
+a heavier one. This is the number behind the tier ladder, the weekly leaderboard and
+`lifetimeVolume`.
+
+```
+goat   → 0      → stage 1
+buff   → 400    → stage 2   (~4 workouts)
+titan  → 2 000  → stage 3   (~20 workouts)
+legend → 5 000  → stage 4   (~50 workouts)
+```
+
+A typical session is worth ~100 points. **Thresholds are scaled, not the score**, for
+female accounts (`evolutionTiers.js`) — the same four tiers, reachable on the same
+number of sessions. A **neglect penalty** drops the effective tier by one after 5 idle
+days; any workout lifts it.
 
 ---
 
-## Conventions worth matching
+## 7. Component inventory
 
-- **Comments explain *why*, not *what*** — and specifically the non-obvious constraint or
-  the bug that motivated the shape. This codebase is unusually heavily commented; new code
-  should match that density.
+```
+components/
+├── admin/        AdminDashboard (the /admin route) · FounderConsole (presentational)
+│                 AnalyticsPanel · EconomyPanel · OperationsPanel · UserActionsPanel
+│                 consoleUi (cards/bars/chips) · consoleMock (metrics the DB can't answer yet)
+├── auth/         AuthScreen · OnboardingFlow (588 lines, one-topic-per-screen wizard)
+│                 PendingVerificationScreen · LegalConsentGate · FirebaseSetupNeeded
+├── evolution/    JimmyAvatar ⭐ (paper-doll renderer, two-pass behind/front layering)
+│                 JimmyAnimation (static sprite ↔ animated-WebP dance)
+│                 accessoryArt (catalog id → PNG, aspect, behind-fraction) · JimmyEvolution.tsx
+├── history/      HistoryList · WorkoutDetail (edit/delete a logged session)
+├── layout/       BottomNav · TopHud (coin balance) · tabPaths.js
+├── legal/        PublicInfoRoutes · PublicInfoPage · LegalDocument
+├── profile/      ProfileView · SettingsPanel (901 lines) · WeighInModal
+│                 BadgeRibbon · BadgeMedallion · BadgePickerModal (pick the 3 shown)
+│                 ForcedUsernameModal · NotificationPromptModal
+├── progress/     ProgressView · StreakHeatmap · WeeklyVolumeCard · LifetimeVolumeCard
+│                 WeeklySummaryCard · MuscleGroupGoals · RecentWorkoutsList · StatTile
+├── shared/       WheelPicker ⭐ (scroll-snap dial; BodyWeight/Date/Height/Scroll variants)
+│                 BottomSheet · ConfirmDialog · Toast · GradientBorder · ErrorBoundary
+│                 RotateGate (portrait lock on web) · AnnouncementBanner
+│                 FounderMessageModal/Sheet · AdPlayingOverlay
+├── shop/         GymShop · AdRewardCard ("need more coins?")
+├── social/       SocialPage (tab shell) · Leaderboard.tsx · PublicFriendProfile ⭐ (650)
+│                 SocialFeed · FeedPostCard · FriendsManager · FriendSearch
+│                 FriendSuggestions · FriendManagementModal · FriendPickerModal
+│                 NotificationsList/Modal · NudgeModal · SocialSheet (the header-modal shell)
+│                 WorkoutInbox · JimmyWelcomeBanner
+├── trainer/      TrainerDashboard · TraineeDetail · TraineeWorkoutDetail
+│                 AssignWorkoutForm · ReadOnlyExerciseCard
+└── workout/      ActiveWorkoutLogger ⭐ (1228) · ExerciseLogCard · SetRow · SetEntrySheet
+                  WeightEntryKind · ExercisePicker · MuscleGroupPicker · ExerciseGuideSheet
+                  ExerciseTipsSheet · ReorderableList · DragHandle
+                  FullScreenTimer (439, rest timer read from the floor) · WorkoutTimer
+                  FloatingWorkoutBar · RestAndRecover · LockerPromptModal · LockerReminderModal
+                  WorkoutHome (the lobby) · StartWorkoutSheet · PlanWorkoutModal · MissionCard
+                  WorkoutSummaryModal (confirm) · WorkoutCelebration (790, the victory lap)
+                  AnimatedWorkoutSummary (510, canvas card) · BadgeCelebrationModal
+                  SilverChest · SilverLootboxModal · SaveRoutinePrompt · SharePRsModal · QuickShare
+```
+
+### The post-workout cascade (order matters)
+
+`WorkoutSummaryModal` (confirm) → `WorkoutCelebration` (`finishFlow.step ===
+'celebration'`) → a queue of follow-up steps (`saveRoutine` → `SaveRoutinePrompt`,
+`sharePRs` → `SharePRsModal`) → `BadgeCelebrationModal` → `SilverLootboxModal` (first
+workout only) → `LockerReminderModal` (~90 min later, and only once `finishFlow` is
+finished). `App.jsx` owns the whole cascade in one `finishFlow` state object, and every
+reward modal is additionally guarded on `!activeWorkout` so nothing can fire while
+someone is starting a session.
+
+---
+
+## 8. Hooks, utils, data
+
+**hooks/** (36) — `useAuth` · `useEconomy` · `useCloudWorkouts` · `useCloudProfile` ·
+`useWorkouts` · `useWorkoutTemplates` · `useWorkoutInbox` · `useWorkoutCooldown` ·
+`useAssignedWorkouts` · `useExercises` · `useWeightEntryModes` · `useRestTimer` ·
+`useRestBoost` · `useRewardedAd` · `useWakeLock` · `useFriendsGraph` · `useFriendProfile`
+· `useFriendSearch` · `useFriendSuggestions` · `useFriendSummaries` · `useFeed` ·
+`useCheers` · `useNotifications` · `useTrainerTrainees` · `useAdminAnalytics` ·
+`useAdminOps` · `useAnnouncement` · `useFounderMessage` · `useLegalConsent` ·
+`useTierUpCelebration` · `useLazyGoatNudge` · `useTabSwipe` · `useAnimationClock` ·
+`useKeyboardInset` · `useBottomChrome` · `useReturnTo` · `useLocalStorage`
+
+**utils/** (36) — `setLoad` ⭐ · `setCascade` ⭐ · `units` · `lastPerformance` ·
+`exerciseSorting` · `workoutStats` · `personalRecords` · `leaderboard` ·
+`evolutionTiers` · `volumeTiers` · `tierTheme` · `heatmap` · `streak` · `weighIn` ·
+`friendPrivacy` ⭐ (the sanitization allowlist) · `danceAnimations` · `webpDuration` ·
+`workoutSticker` (1912 — the transparent share PNG, ten looks) ·
+`workoutSummaryScene` / `Data` / `Format` / `Timeline` · `canvas` · `motion` ·
+`shareWorkout` · `restAlarm` · `restNotification` · `restPresets` · `restMessages` ·
+`storeAlerts` · `formatIdleNumber` · `relativeTime` · `authErrors` · `onboarding` ·
+`appAdmin` · `idle`
+
+**data/** — `exercises` (544, the seed catalog) + `exerciseGuides` (480, description &
+form cues) · `jimmyWorkouts` (349, pre-built programs) · `badges` (479) · `mascots`
+(323, Jimmy/Gena) · `avatarAnchors` (186, where the body *is* per sprite) ·
+`storeItems` · `restTips` (58 rest-timer facts) · `gymQuotes` · `nudgeMessages`
+
+**config/** — `ads.js` (`USE_TEST_ADS = false` — live AdMob units, one per placement:
+`coins` and `restBoost`) ·
+`features.js` (`ENABLE_EMOTES = false` — dances are hidden, not removed)
+
+**lib/** — `firebase` · `messaging` (FCM, two token paths) · `localNotifications`
+(Capacitor) · `storage` (namespaced localStorage) · `splash` · `lazyNudge`
+
+---
+
+## 9. Tests — 46, in Node's own runner
+
+```
+tools/setLoad.test.mjs        19   the weight contract, drop-set arithmetic, cascade, numbering
+tools/progression.test.mjs    10   evolution tiers, neglect penalty, scaled ladders
+tools/badges.test.mjs          6   award logic
+tools/leaderboard.test.mjs     6   weekly ranking
+tools/jimmyWorkouts.test.mjs   5   the pre-built programs
+```
+
+They import the real client modules directly (`await import('../src/utils/...')`) — no
+DOM, no test framework, no mocking library. `npm test` runs all five.
+
+## 10. Dev harnesses — `dev/*.html`
+
+Standalone Vite pages that render one screen against fixtures, so any surface can be
+worked on **without a real account and without touching production data**:
+
+```
+guides.html    one ExerciseLogCard + the picker      logger.html    the full ActiveWorkoutLogger
+rest.html      the rest timer                        celebration.html  the finish cascade
+admin.html     the Founder Console on a fixture      settings.html  SettingsPanel
+lobby.html     WorkoutHome                           recent.html    RecentWorkoutsList
+leaderboard.html · friend-profile.html · consent.html · message.html · chill.html
+avatar-gallery.html  every sprite × accessory combination
+```
+
+⚠️ `dev/logger.jsx` runs on uid `'dev'` and writes the same
+`jimmy-goat:active-workout:dev` localStorage key the real dev session uses — it can
+overwrite a draft workout. `dev/guides.html` is the safe one for set-row work.
+
+---
+
+## 11. Deployment
+
+| Target | How |
+|---|---|
+| Web / PWA | `npx vercel --prod --scope reef14 --yes` → aliased to jimmy-the-goat.vercel.app |
+| Functions + rules | `npx firebase deploy --only functions,firestore:rules --project jimmy-the-goat` |
+| iOS | `npm run build:ios` then Xcode (signing, Push capability, APNs key, real AdMob id) |
+
+Vercel's SPA rewrite means **any missing path returns 200 with index.html** — an HTTP
+status is never proof that a chunk exists. To verify a deploy, read the chunk names out
+of the *live* main bundle and grep their contents; local hashes differ because Vercel
+builds on its own infrastructure.
+
+`main.jsx` registers the service worker with `registerType: 'autoUpdate'` and adds an
+hourly + on-visibility update check, because iOS keeps installed PWAs suspended for days
+and a deploy would otherwise never be picked up.
+
+---
+
+## 12. Conventions worth matching
+
+- **Comments explain *why*, not *what*** — specifically the non-obvious constraint or the
+  bug that motivated the shape. This codebase is unusually heavily commented and new code
+  is expected to match that density. A file typically opens with a several-paragraph
+  header explaining the decision behind it.
 - **Allowlist, never blocklist**, for anything crossing a privacy boundary.
-- **Server-authoritative for anything with value**; client-writable only for harmless vanity.
-- **Field presence as the visibility control**, not a flag a reader must remember to check.
+- **Server-authoritative for anything with value**; client-writable only for harmless
+  vanity. Any client-side "validation" is a UX nicety, never the security boundary.
+- **Field presence as the visibility control**, not a flag a reader must remember to check
+  (PR sharing deletes the field).
 - **A `useRef` latch, not state, for in-flight guards** — three fast taps all read the same
   stale `state` from their closure and all three fire.
 - **Derive during render**, not in an effect, where possible.
+- **Duplicate a table across the client/server boundary rather than trust the client** —
+  and say in both copies which one is the truth.
+- One component per file; a file that exports both a component and a constant breaks Vite
+  Fast Refresh (oxlint's `react/only-export-components` flags it).
+
+---
+
+## 13. Known gaps / open threads
+
+- **Cloud Functions are deliberately behind the client on ads.** `USE_TEST_ADS = false`
+  and `AD_REWARD_REQUIRES_SSV = true` are committed, but the functions deploy is being
+  HELD until the iOS build is on the App Store. With the flag live both `rewardAdView`
+  and `claimRestBoost` refuse, and a reward can then only arrive through AdMob's signed
+  callback — which needs a real ad on a device. Every user is on the web PWA today,
+  where the simulated ad claims through that callable, so deploying early takes both ad
+  rewards away with nothing to replace them. Deploy functions AT the release, not before.
+- **Emotes are flag-off** (`ENABLE_EMOTES = false`). All the data, clips, callables and
+  server grants still exist — the flag only gates rendering.
+- **Friend requests are silent.** `functions/social.js` writes no notification when a
+  request arrives. Still the biggest hole in the social loop.
+- **Like notifications do not coalesce** — one push per like.
+- **Saved routines are never published.** `sanitizeFriendData` handles them and
+  `PublicFriendProfile` renders them, but nothing writes `savedWorkouts` to
+  `public/summary`, so that section is always empty.
+- **No dismissal memory** for friend suggestions — dismissing is local-only.
+- **`App.jsx` prop-drilling** is at the edge of comfortable at 1685 lines.
+- **Buff's hoodie asset** (`hoodie-2.png`) has a pale bar across the muzzle — a known
+  artifact in the source image, kept at the owner's request.
+- **iOS release checklist not finished**: signing team (`DEVELOPMENT_TEAM` is unset),
+  Push Notifications capability (no `.entitlements` file, so `aps-environment` is
+  missing), APNs key upload to Firebase, `SKAdNetworkItems`, `PrivacyInfo.xcprivacy`,
+  privacy nutrition labels. `GoogleService-Info.plist` is DONE — in the bundle and in
+  the target's Copy Bundle Resources phase.
+- **No block or report anywhere** (App Store Guideline 1.2). The app carries a feed,
+  public profiles, friend search and free-text messages (`FriendPickerModal`, 140
+  chars) with no way to report content or block a user, and no moderation path. This is
+  a likely rejection for a social app and is the largest piece of the release still
+  outstanding.
+- **"Force Next Evolve" is still in Settings** (`SettingsPanel.jsx`), marked
+  TEMPORARY/TESTING ONLY by its own comment. Ships to users as-is.
