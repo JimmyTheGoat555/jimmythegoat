@@ -1,24 +1,30 @@
-import { useEffect, useRef, useState } from 'react';
-import ExerciseLogCard from './ExerciseLogCard';
-import ExercisePicker from './ExercisePicker';
-import WorkoutTimer from './WorkoutTimer';
-import FullScreenTimer from './FullScreenTimer';
-import ReorderableList from './ReorderableList';
-import WorkoutSummaryModal from './WorkoutSummaryModal';
-import LockerPromptModal from './LockerPromptModal';
-import ConfirmDialog from '../shared/ConfirmDialog';
-import { DEFAULT_SETS_PER_EXERCISE } from '../../hooks/useWorkouts';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
-import { useWeightEntryModes } from '../../hooks/useWeightEntryModes';
-import { useRestBoost } from '../../hooks/useRestBoost';
-import { useRewardedAd } from '../../hooks/useRewardedAd';
-import { AD_PLACEMENTS, REST_BOOST_SSV_CUSTOM_DATA } from '../../config/ads';
-import AdPlayingOverlay from '../shared/AdPlayingOverlay';
-import { lastPerformance, seedSetsFromHistory } from '../../utils/lastPerformance';
-import { sortExercisesByPriority, isPrioritySorted } from '../../utils/exerciseSorting';
-import { randomGymQuote } from '../../data/gymQuotes';
-import { useJimmyLook } from '../../context/JimmyLook';
-import JimmyAvatar from '../evolution/JimmyAvatar';
+import { useEffect, useRef, useState } from "react";
+import ExerciseLogCard from "./ExerciseLogCard";
+import ExercisePicker from "./ExercisePicker";
+import WorkoutTimer from "./WorkoutTimer";
+import FullScreenTimer from "./FullScreenTimer";
+import ReorderableList from "./ReorderableList";
+import WorkoutSummaryModal from "./WorkoutSummaryModal";
+import LockerPromptModal from "./LockerPromptModal";
+import ConfirmDialog from "../shared/ConfirmDialog";
+import { DEFAULT_SETS_PER_EXERCISE } from "../../hooks/useWorkouts";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useWeightEntryModes } from "../../hooks/useWeightEntryModes";
+import { useRestBoost } from "../../hooks/useRestBoost";
+import { useRewardedAd } from "../../hooks/useRewardedAd";
+import { AD_PLACEMENTS, REST_BOOST_SSV_CUSTOM_DATA } from "../../config/ads";
+import AdPlayingOverlay from "../shared/AdPlayingOverlay";
+import {
+  lastPerformance,
+  seedSetsFromHistory,
+} from "../../utils/lastPerformance";
+import {
+  sortExercisesByPriority,
+  isPrioritySorted,
+} from "../../utils/exerciseSorting";
+import { randomGymQuote } from "../../data/gymQuotes";
+import { useJimmyLook } from "../../context/JimmyLook";
+import JimmyAvatar from "../evolution/JimmyAvatar";
 
 // Up/down arrows. Inline SVG rather than an emoji for the same reason
 // ExerciseLogCard's chain is: it inherits currentColor and keeps its
@@ -110,12 +116,12 @@ function ToggleRow({ icon, title, subtitle, checked, onChange, label }) {
         aria-label={label}
         onClick={() => onChange(!checked)}
         className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
-          checked ? 'bg-[var(--tier-accent)]' : 'bg-neutral-700'
+          checked ? "bg-[var(--tier-accent)]" : "bg-neutral-700"
         }`}
       >
         <span
           className="absolute top-1 h-5 w-5 rounded-full bg-white transition-all"
-          style={{ left: checked ? '1.75rem' : '0.25rem' }}
+          style={{ left: checked ? "1.75rem" : "0.25rem" }}
         />
       </button>
     </div>
@@ -148,8 +154,8 @@ function ChillToggle({ on, onChange }) {
       aria-label="Chill Mode: no automatic rest timer"
       title={
         on
-          ? 'Chill Mode on — rests only when you start one'
-          : 'Chill Mode — log at your own pace, no automatic rest timer'
+          ? "Chill Mode on — rests only when you start one"
+          : "Chill Mode — log at your own pace, no automatic rest timer"
       }
       // Named when it is ON. A tinted icon was enough to say "you changed
       // something" at the moment of the tap, and not enough afterwards:
@@ -159,11 +165,17 @@ function ChillToggle({ on, onChange }) {
       // ~34px and only while the mode is on, which is exactly when the
       // header has one fewer thing to explain.
       className={`flex h-9 items-center justify-center gap-1 rounded-full transition-colors duration-300 active:scale-95 ${
-        on ? 'bg-sky-400/15 px-2.5 text-sky-300 ring-1 ring-sky-300/30' : 'w-9 text-neutral-500'
+        on
+          ? "bg-sky-400/15 px-2.5 text-sky-300 ring-1 ring-sky-300/30"
+          : "w-9 text-neutral-500"
       }`}
     >
       <SnowflakeIcon />
-      {on && <span className="text-[10px] font-bold uppercase tracking-[0.14em]">Chill</span>}
+      {on && (
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em]">
+          Chill
+        </span>
+      )}
     </button>
   );
 }
@@ -181,9 +193,9 @@ function PrioritySortToggle({ enabled, onChange, alreadyOptimal }) {
       subtitle={
         enabled
           ? alreadyOptimal
-            ? 'Already in the optimal order'
-            : 'Big lifts first, arms and core last'
-          : 'Off — drag the handles to set your own order'
+            ? "Already in the optimal order"
+            : "Big lifts first, arms and core last"
+          : "Off — drag the handles to set your own order"
       }
       checked={enabled}
       onChange={onChange}
@@ -215,17 +227,22 @@ function JimmyRoastModal({ onDoAbs, onSkip }) {
               alt="Jimmy, unimpressed"
               onError={() => setSpriteBroken(true)}
               className="h-28 w-28 object-contain"
-              style={{ filter: 'grayscale(0.55) brightness(0.85)' }}
+              style={{ filter: "grayscale(0.55) brightness(0.85)" }}
             />
           )}
         </div>
 
         <h2 className="mt-2 text-xl text-neutral-50">Where are the abs?</h2>
         <p className="mt-2 text-sm leading-snug text-neutral-300">
-          Didn&rsquo;t you say you&rsquo;d do abs at the end? Summer is coming. Don&rsquo;t be a Lazy Goat.
+          Didn&rsquo;t you say you&rsquo;d do abs at the end? Summer is coming.
+          Don&rsquo;t be a Lazy Goat.
         </p>
 
-        <button type="button" onClick={onDoAbs} className="btn-arcade mt-5 w-full py-3.5 text-base">
+        <button
+          type="button"
+          onClick={onDoAbs}
+          className="btn-arcade mt-5 w-full py-3.5 text-base"
+        >
           You&rsquo;re right, let&rsquo;s do abs
         </button>
         <button
@@ -257,7 +274,7 @@ const OVERLOAD_REPS = 12;
 const OVERLOAD_SETS = 2;
 const OVERLOAD_TOAST_MS = 7000;
 const OVERLOAD_COPY =
-  'Cruising past 12 reps? 🐐 It might be time to up the weight next time to hit failure and maximize growth!';
+  "Cruising past 12 reps? 🐐 It might be time to up the weight next time to hit failure and maximize growth!";
 
 // The toast itself: the lifter's own goat, head-cropped, beside the
 // line. Reads the look from context because this is YOUR coach — the
@@ -274,7 +291,7 @@ function OverloadToast({ exerciseName, onDismiss }) {
       aria-live="polite"
       onClick={onDismiss}
       className="fixed left-1/2 z-[80] flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/10 bg-neutral-950/95 px-3.5 py-3 text-left shadow-xl shadow-black/60 backdrop-blur transition active:scale-[0.98]"
-      style={{ top: 'calc(var(--safe-t) + 12px)' }}
+      style={{ top: "calc(var(--safe-t) + 12px)" }}
     >
       <span className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-neutral-800">
         <JimmyAvatar {...look} crop="head" className="h-full w-full" />
@@ -283,7 +300,9 @@ function OverloadToast({ exerciseName, onDismiss }) {
         <span className="block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
           Coaching · {exerciseName}
         </span>
-        <span className="mt-0.5 block text-[13px] leading-snug text-neutral-100">{OVERLOAD_COPY}</span>
+        <span className="mt-0.5 block text-[13px] leading-snug text-neutral-100">
+          {OVERLOAD_COPY}
+        </span>
       </span>
     </button>
   );
@@ -291,10 +310,12 @@ function OverloadToast({ exerciseName, onDismiss }) {
 
 // Custom exercises can carry any group string, so match loosely rather
 // than only on the catalog's own 'core' id.
-const CORE_GROUPS = new Set(['core', 'abs', 'abdominals']);
+const CORE_GROUPS = new Set(["core", "abs", "abdominals"]);
 
 export function hasCoreWork(exercises) {
-  return (exercises ?? []).some((e) => CORE_GROUPS.has(String(e.muscleGroup ?? '').toLowerCase()));
+  return (exercises ?? []).some((e) =>
+    CORE_GROUPS.has(String(e.muscleGroup ?? "").toLowerCase()),
+  );
 }
 
 // Which catalog group the picker should open on when the roast is
@@ -308,14 +329,18 @@ export function hasCoreWork(exercises) {
 // treats as "no preference" and falls back to its first chip — a missing
 // group must not open an empty sheet.
 export function coreGroupId(muscleGroups) {
-  return (muscleGroups ?? []).find((group) => CORE_GROUPS.has(String(group.id ?? '').toLowerCase()))?.id ?? null;
+  return (
+    (muscleGroups ?? []).find((group) =>
+      CORE_GROUPS.has(String(group.id ?? "").toLowerCase()),
+    )?.id ?? null
+  );
 }
 
 // mm:ss for the minimised rest chip — two-digit minutes so the chip
 // never changes width mid-rest.
 function mmss(totalSeconds) {
   const s = Math.max(0, Math.floor(totalSeconds));
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
 export default function ActiveWorkoutLogger({
@@ -383,7 +408,10 @@ export default function ActiveWorkoutLogger({
   // Which exercises have had the overload toast this session, keyed to
   // the session so a new workout on the same mount starts clean; and the
   // toast on screen, if any (`key` restarts the dismiss timer).
-  const [notifiedExercises, setNotifiedExercises] = useState(() => ({ startedAt: workout.startedAt, ids: new Set() }));
+  const [notifiedExercises, setNotifiedExercises] = useState(() => ({
+    startedAt: workout.startedAt,
+    ids: new Set(),
+  }));
   const [overloadToast, setOverloadToast] = useState(null);
   useEffect(() => {
     if (!overloadToast) return undefined;
@@ -403,10 +431,15 @@ export default function ActiveWorkoutLogger({
   // full-screen, and a rest that reaches 0:00 re-opens it regardless (see
   // the isDone effect below), so nobody can navigate their way out of the
   // alarm.
-  const [timerMinimized, setTimerMinimized] = useState(() => Boolean(rest.isVisible));
+  const [timerMinimized, setTimerMinimized] = useState(() =>
+    Boolean(rest.isVisible),
+  );
   // Remembered across workouts — someone who lifts to Jimmy's order wants
   // it every session, and someone who arranges their own does too.
-  const [priorityOn, setPriorityOn] = useLocalStorage('jimmys-priority-sort', false);
+  const [priorityOn, setPriorityOn] = useLocalStorage(
+    "jimmys-priority-sort",
+    false,
+  );
   // Chill Mode: whether checking a set starts a rest countdown at all.
   //
   // OFF IS THE DEFAULT, EVERY SESSION. What is stored is not a preference
@@ -427,7 +460,10 @@ export default function ActiveWorkoutLogger({
   // silenced two sets ago. Scoping it to the workout id keeps that and
   // drops the part that outstayed its welcome. One key holding at most one
   // id, so nothing accumulates.
-  const [chillModeFor, setChillModeFor] = useLocalStorage('chill-mode-for', null);
+  const [chillModeFor, setChillModeFor] = useLocalStorage(
+    "chill-mode-for",
+    null,
+  );
   // Which exercises are entered as a plain total rather than per hand.
   // (There used to be a plate calculator behind this too; it is gone —
   // see SetRow.) One owner for the whole screen; the cards only read and
@@ -454,12 +490,17 @@ export default function ActiveWorkoutLogger({
   // is no longer in the list simply stops matching and the derivation
   // takes over again.
   const [openExerciseId, setOpenExerciseId] = useState(null);
-  const isExerciseFinished = (e) => e.sets.length > 0 && e.sets.every((set) => set.completed);
+  const isExerciseFinished = (e) =>
+    e.sets.length > 0 && e.sets.every((set) => set.completed);
   const firstUnfinished = workout.exercises.find((e) => !isExerciseFinished(e));
-  const pinnedExists = workout.exercises.some((e) => e.exerciseId === openExerciseId);
+  const pinnedExists = workout.exercises.some(
+    (e) => e.exerciseId === openExerciseId,
+  );
   const expandedExerciseId = pinnedExists
     ? openExerciseId
-    : (firstUnfinished?.exerciseId ?? workout.exercises.at(-1)?.exerciseId ?? null);
+    : (firstUnfinished?.exerciseId ??
+      workout.exercises.at(-1)?.exerciseId ??
+      null);
 
   // Tapping the open card's chevron folds it away; tapping a closed one
   // opens it. Both go through here so "which is open" has one writer.
@@ -487,7 +528,11 @@ export default function ActiveWorkoutLogger({
     const from = list.findIndex((e) => e.exerciseId === exerciseId);
     for (let step = 1; step <= list.length; step += 1) {
       const candidate = list[(from + step) % list.length];
-      if (candidate && candidate.exerciseId !== exerciseId && !isExerciseFinished(candidate))
+      if (
+        candidate &&
+        candidate.exerciseId !== exerciseId &&
+        !isExerciseFinished(candidate)
+      )
         return candidate.exerciseId;
     }
     return null;
@@ -521,12 +566,19 @@ export default function ActiveWorkoutLogger({
   // handleUpdateSet. The server is not told any of this; it sees one
   // token id on one exercise and checks it against its own list.
   const restBoost = useRestBoost(uid, { bypass: isAdmin });
-  const liveTokenIds = new Set(restBoost.pendingTokens.map((token) => token.id));
-  const boundTokenIds = new Set(workout.exercises.map((e) => e.boostTokenId).filter(Boolean));
-  const unboundBoosts = restBoost.pendingTokens.filter((token) => !boundTokenIds.has(token.id));
+  const liveTokenIds = new Set(
+    restBoost.pendingTokens.map((token) => token.id),
+  );
+  const boundTokenIds = new Set(
+    workout.exercises.map((e) => e.boostTokenId).filter(Boolean),
+  );
+  const unboundBoosts = restBoost.pendingTokens.filter(
+    (token) => !boundTokenIds.has(token.id),
+  );
   // A token is only worth drawing as "2×" on its card while the server
   // would still honour it — an expired one is a plain exercise again.
-  const isBoosted = (exercise) => Boolean(exercise.boostTokenId) && liveTokenIds.has(exercise.boostTokenId);
+  const isBoosted = (exercise) =>
+    Boolean(exercise.boostTokenId) && liveTokenIds.has(exercise.boostTokenId);
   // The exercise the running rest belongs to, if it is still in the
   // workout, and whether it is already doubled.
   const restExercise = rest.exerciseId
@@ -536,16 +588,18 @@ export default function ActiveWorkoutLogger({
   const restExerciseBoosted = Boolean(restExercise) && isBoosted(restExercise);
   const boostAd = useRewardedAd(null, {
     bypass: isAdmin,
-    callable: 'claimRestBoost',
+    callable: "claimRestBoost",
     placement: AD_PLACEMENTS.restBoost,
     customData: REST_BOOST_SSV_CUSTOM_DATA,
-    unavailableReason: restBoost.remainingToday <= 0 ? "Today's 2× boosts are used up." : null,
+    unavailableReason:
+      restBoost.remainingToday <= 0 ? "Today's 2× boosts are used up." : null,
     // Pinned to the rest's exercise in the same breath as it is folded
     // into the local list, so the timer goes straight from "watching" to
     // "active" — never through a frame of "armed" first.
     onClaimed: (data) => {
       restBoost.addLocalToken(data);
-      if (restExerciseId && typeof data?.tokenId === 'string') onBindRestBoost?.(restExerciseId, data.tokenId);
+      if (restExerciseId && typeof data?.tokenId === "string")
+        onBindRestBoost?.(restExerciseId, data.tokenId);
     },
   });
   // Real ads pay out of band (AdMob → the server → the snapshot), with no
@@ -618,7 +672,10 @@ export default function ActiveWorkoutLogger({
   const handlePriorityToggle = (next) => {
     setPriorityOn(next);
     navigator.vibrate?.([30]);
-    if (next) onReorderExercises(sortExercisesByPriority(workout.exercises).map((e) => e.exerciseId));
+    if (next)
+      onReorderExercises(
+        sortExercisesByPriority(workout.exercises).map((e) => e.exerciseId),
+      );
   };
 
   // Adding an exercise mid-workout while the sort is on should drop it into
@@ -627,7 +684,9 @@ export default function ActiveWorkoutLogger({
   const exerciseCount = workout.exercises.length;
   useEffect(() => {
     if (priorityOn && !isPrioritySorted(workout.exercises)) {
-      onReorderExercises(sortExercisesByPriority(workout.exercises).map((e) => e.exerciseId));
+      onReorderExercises(
+        sortExercisesByPriority(workout.exercises).map((e) => e.exerciseId),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priorityOn, exerciseCount]);
@@ -645,9 +704,12 @@ export default function ActiveWorkoutLogger({
   // The one colour the minimised rest chip is drawn in. Tailwind's
   // red-500 as a literal for the same reason FullScreenTimer keeps one:
   // the chip's colour is a single style expression across its states.
-  const restChipColor = rest.isDone ? '#ef4444' : 'var(--tier-accent)';
+  const restChipColor = rest.isDone ? "#ef4444" : "var(--tier-accent)";
 
-  const completedSets = workout.exercises.reduce((sum, e) => sum + e.sets.filter((s) => s.completed).length, 0);
+  const completedSets = workout.exercises.reduce(
+    (sum, e) => sum + e.sets.filter((s) => s.completed).length,
+    0,
+  );
   const canFinish = completedSets > 0;
 
   // Picking an exercise no longer closes the sheet — you stay inside it to
@@ -688,7 +750,9 @@ export default function ActiveWorkoutLogger({
   // exercise added but left entirely unchecked isn't core work, it's an
   // intention, which is exactly what the roast is about.
   const handleFinishPressed = () => {
-    const performed = workout.exercises.filter((e) => e.sets.some((s) => s.completed));
+    const performed = workout.exercises.filter((e) =>
+      e.sets.some((s) => s.completed),
+    );
     if (!hasCoreWork(performed)) {
       navigator.vibrate?.([30]);
       setShowCoreRoast(true);
@@ -716,6 +780,12 @@ export default function ActiveWorkoutLogger({
   //     the rest at the wrong end — after the finisher, when the lifter
   //     is most in need of one, while the set they went straight from
   //     started a countdown they had to cancel with a dumbbell in hand.
+  //     What this CANNOT answer is the other order. It reads the sets
+  //     as they are at the moment of the tick, so it only knows about a
+  //     drop set that already exists — and the honest way to train is to
+  //     finish the set, then decide to drop. Tick first and the rest is
+  //     correct on the evidence available and wrong about the intent;
+  //     handleAddDropSet below is the other half, and cancels it.
   //   * inside a superset you move to the next exercise, so only the LAST
   //     member's set ends the round. Adjacency is what defines the group
   //     (see useWorkouts' cohereSupersets, which keeps it true), so "last"
@@ -735,18 +805,28 @@ export default function ActiveWorkoutLogger({
   // before counting — otherwise the set that just crossed twelve would be
   // the one set not counted.
   const maybeCoachOverload = (exerciseId, setId, patch) => {
-    const ids = notifiedExercises.startedAt === workout.startedAt ? notifiedExercises.ids : new Set();
+    const ids =
+      notifiedExercises.startedAt === workout.startedAt
+        ? notifiedExercises.ids
+        : new Set();
     if (ids.has(exerciseId)) return;
     const exercise = workout.exercises.find((e) => e.exerciseId === exerciseId);
     if (!exercise) return;
-    const sets = exercise.sets.map((s) => (s.id === setId ? { ...s, ...patch } : s));
+    const sets = exercise.sets.map((s) =>
+      s.id === setId ? { ...s, ...patch } : s,
+    );
     // Drop sets are excluded on purpose. Stripping weight and repping out
     // past twelve is exactly what a drop set IS, so counting one here
     // would have the coach telling people to go heavier because their
     // drop sets worked. Same reason shouldRestAfter skips them.
-    const cruising = sets.filter((s) => s.completed && !s.isDropSet && Number(s.reps) > OVERLOAD_REPS).length;
+    const cruising = sets.filter(
+      (s) => s.completed && !s.isDropSet && Number(s.reps) > OVERLOAD_REPS,
+    ).length;
     if (cruising < OVERLOAD_SETS) return;
-    setNotifiedExercises({ startedAt: workout.startedAt, ids: new Set(ids).add(exerciseId) });
+    setNotifiedExercises({
+      startedAt: workout.startedAt,
+      ids: new Set(ids).add(exerciseId),
+    });
     setOverloadToast({ exerciseId, name: exercise.name, key: Date.now() });
   };
 
@@ -761,8 +841,11 @@ export default function ActiveWorkoutLogger({
     // to the next exercise that logs a set, so it is never spent on an
     // exercise that is already doubled.
     if (patch.completed === true && unboundBoosts.length > 0) {
-      const current = workout.exercises.find((e) => e.exerciseId === exerciseId);
-      if (current && !isBoosted(current)) onBindRestBoost?.(exerciseId, unboundBoosts[0].id);
+      const current = workout.exercises.find(
+        (e) => e.exerciseId === exerciseId,
+      );
+      if (current && !isBoosted(current))
+        onBindRestBoost?.(exerciseId, unboundBoosts[0].id);
     }
     if (patch.completed === true) lastCompletedExerciseRef.current = exerciseId;
     // ── Advancing the accordion ───────────────────────────────────────
@@ -778,8 +861,12 @@ export default function ActiveWorkoutLogger({
     // in hand first — otherwise the set that just finished the exercise is
     // the one set not counted.
     if (patch.completed === true) {
-      const current = workout.exercises.find((e) => e.exerciseId === exerciseId);
-      const after = current?.sets.map((s) => (s.id === setId ? { ...s, ...patch } : s)) ?? [];
+      const current = workout.exercises.find(
+        (e) => e.exerciseId === exerciseId,
+      );
+      const after =
+        current?.sets.map((s) => (s.id === setId ? { ...s, ...patch } : s)) ??
+        [];
       if (after.length > 0 && after.every((s) => s.completed)) {
         const next = nextUnfinishedAfter(exerciseId);
         if (next) setOpenExerciseId(next);
@@ -788,13 +875,46 @@ export default function ActiveWorkoutLogger({
     // The set is marked done either way — the only thing Chill Mode
     // decides is whether a countdown follows it. Nothing else about
     // logging changes, which is what makes it safe to switch on.
-    if (!isChillMode && patch.completed === true && shouldRestAfter(exerciseId, setId)) {
+    if (
+      !isChillMode &&
+      patch.completed === true &&
+      shouldRestAfter(exerciseId, setId)
+    ) {
       // The rest remembers whose it is: that is what the 2× offer is
       // made for, and what "active" is read against on every later rest
       // the same exercise starts.
       rest.start({ exerciseId });
       setTimerMinimized(false);
     }
+  };
+
+  // Hanging a drop set off the set you just finished ends the rest it
+  // started.
+  //
+  // shouldRestAfter can only see the sets that exist when the tick
+  // happens, and in the flow people actually use — finish the set, then
+  // decide it has a drop in it — the row does not exist yet, so the
+  // countdown is already running by the time the button is pressed.
+  // Adding the drop set is the intent arriving late, and a drop set IS
+  // the absence of rest, so the clock goes.
+  //
+  // Narrow on purpose, because cancelling a rest somebody wanted is the
+  // worse mistake: the running rest has to belong to THIS exercise, and
+  // the set the drop hangs off has to be the last one completed in it —
+  // i.e. the set that started the rest. Adding a drop set further up the
+  // card is an edit to work already done, not a declaration about the
+  // next thirty seconds, and it leaves the clock alone.
+  const handleAddDropSet = (exerciseId, afterSetId) => {
+    onAddDropSet(exerciseId, afterSetId);
+    if (!rest.isVisible || rest.exerciseId !== exerciseId) return;
+    const exercise = workout.exercises.find((e) => e.exerciseId === exerciseId);
+    // .filter().at(-1) rather than findLast: the same idiom the rest of
+    // the file uses, and it does not need ES2023 on an iOS WebView.
+    const lastCompleted = exercise?.sets
+      .filter((set) => set.completed === true)
+      .at(-1);
+    if (lastCompleted?.id !== afterSetId) return;
+    rest.dismiss();
   };
 
   // Minimising hides the overlay but leaves the clock running (see
@@ -819,8 +939,8 @@ export default function ActiveWorkoutLogger({
     <div
       className="flex flex-col gap-4"
       style={{
-        paddingTop: 'calc(var(--safe-t) + 1.5rem)',
-        paddingBottom: `calc(${rest.isVisible && timerMinimized ? '10rem' : '7rem'} + var(--nav-total))`,
+        paddingTop: "calc(var(--safe-t) + 1.5rem)",
+        paddingBottom: `calc(${rest.isVisible && timerMinimized ? "10rem" : "7rem"} + var(--nav-total))`,
       }}
     >
       <header className="flex items-center justify-between gap-2">
@@ -853,7 +973,11 @@ export default function ActiveWorkoutLogger({
           <h1 className="text-2xl font-bold text-neutral-50">Workout</h1>
           <WorkoutTimer startedAt={workout.startedAt} />
           {screenLockActive && (
-            <span className="text-sm" title="Screen will stay on for the workout" aria-label="Screen lock active">
+            <span
+              className="text-sm"
+              title="Screen will stay on for the workout"
+              aria-label="Screen lock active"
+            >
               🔒
             </span>
           )}
@@ -877,16 +1001,26 @@ export default function ActiveWorkoutLogger({
               type="button"
               onClick={() => setLockerOpen(true)}
               aria-label={
-                workout.lockerNumber ? `Locker ${workout.lockerNumber} — tap to change it` : 'Save your locker number'
+                workout.lockerNumber
+                  ? `Locker ${workout.lockerNumber} — tap to change it`
+                  : "Save your locker number"
               }
-              title={workout.lockerNumber ? `Locker ${workout.lockerNumber}` : 'Locker number'}
+              title={
+                workout.lockerNumber
+                  ? `Locker ${workout.lockerNumber}`
+                  : "Locker number"
+              }
               className={`flex h-9 min-w-9 items-center justify-center gap-0.5 rounded-full px-1.5 text-sm transition active:scale-95 ${
-                workout.lockerNumber ? 'text-[var(--ember)]' : 'text-neutral-400'
+                workout.lockerNumber
+                  ? "text-[var(--ember)]"
+                  : "text-neutral-400"
               }`}
             >
               <span aria-hidden="true">🔐</span>
               {workout.lockerNumber && (
-                <span className="text-[11px] font-bold tabular-nums">{workout.lockerNumber}</span>
+                <span className="text-[11px] font-bold tabular-nums">
+                  {workout.lockerNumber}
+                </span>
               )}
             </button>
           )}
@@ -894,10 +1028,10 @@ export default function ActiveWorkoutLogger({
           <button
             type="button"
             onClick={handleRestTap}
-            aria-label={rest.isVisible ? 'Show rest timer' : 'Start a rest'}
-            title={rest.isVisible ? 'Show rest timer' : 'Start a rest'}
+            aria-label={rest.isVisible ? "Show rest timer" : "Start a rest"}
+            title={rest.isVisible ? "Show rest timer" : "Start a rest"}
             className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-300 active:scale-95 ${
-              rest.isVisible ? 'text-[var(--tier-accent)]' : 'text-neutral-400'
+              rest.isVisible ? "text-[var(--tier-accent)]" : "text-neutral-400"
             }`}
           >
             <StopwatchIcon />
@@ -956,12 +1090,12 @@ export default function ActiveWorkoutLogger({
               aria-pressed={isReordering}
               className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold transition active:scale-[0.98] ${
                 isReordering
-                  ? 'bg-[var(--success)] text-white'
-                  : 'border border-white/10 bg-neutral-900/60 text-neutral-300'
+                  ? "bg-[var(--success)] text-white"
+                  : "border border-white/10 bg-neutral-900/60 text-neutral-300"
               }`}
             >
               {isReordering ? (
-                '✓ Done Reordering'
+                "✓ Done Reordering"
               ) : (
                 <>
                   <UpDownArrows /> Reorder Exercises
@@ -985,7 +1119,13 @@ export default function ActiveWorkoutLogger({
               // of truth that every reorder could put out of step.
               const openedHere = gid && prev?.supersetId !== gid;
               const closesHere = gid && next?.supersetId !== gid;
-              const supersetPosition = !gid ? null : openedHere ? 'first' : closesHere ? 'last' : 'middle';
+              const supersetPosition = !gid
+                ? null
+                : openedHere
+                  ? "first"
+                  : closesHere
+                    ? "last"
+                    : "middle";
               return (
                 <ExerciseLogCard
                   exercise={exercise}
@@ -996,27 +1136,49 @@ export default function ActiveWorkoutLogger({
                   // Offered only where it can actually do something: there
                   // has to be a next exercise, and it must not already be
                   // in this group.
-                  onLinkNext={next && next.supersetId !== gid ? () => onLinkSuperset(exercise.exerciseId) : null}
+                  onLinkNext={
+                    next && next.supersetId !== gid
+                      ? () => onLinkSuperset(exercise.exerciseId)
+                      : null
+                  }
                   // One break control per group, on its first card, since
                   // unlinking dissolves the whole group anyway.
-                  onUnlink={supersetPosition === 'first' ? () => onUnlinkSuperset(exercise.exerciseId) : null}
+                  onUnlink={
+                    supersetPosition === "first"
+                      ? () => onUnlinkSuperset(exercise.exerciseId)
+                      : null
+                  }
                   compact={isReordering}
                   boosted={isBoosted(exercise)}
                   guide={exercises.getExercise(exercise.exerciseId) ?? null}
                   onAddSet={() => onAddSet(exercise.exerciseId)}
-                  onAddDropSet={(afterSetId) => onAddDropSet(exercise.exerciseId, afterSetId)}
-                  onUpdateSet={(setId, patch) => handleUpdateSet(exercise.exerciseId, setId, patch)}
-                  onRemoveSet={(setId) => onRemoveSet(exercise.exerciseId, setId)}
+                  onAddDropSet={(afterSetId) =>
+                    handleAddDropSet(exercise.exerciseId, afterSetId)
+                  }
+                  onUpdateSet={(setId, patch) =>
+                    handleUpdateSet(exercise.exerciseId, setId, patch)
+                  }
+                  onRemoveSet={(setId) =>
+                    onRemoveSet(exercise.exerciseId, setId)
+                  }
                   onRemoveExercise={() => onRemoveExercise(exercise.exerciseId)}
                   entryMode={entryModes.modeFor(exercise.exerciseId)}
-                  onEntryModeChange={(mode) => entryModes.setModeFor(exercise.exerciseId, mode)}
+                  onEntryModeChange={(mode) =>
+                    entryModes.setModeFor(exercise.exerciseId, mode)
+                  }
                   bodyWeightKg={bodyWeightKg}
                   // The accordion. Off entirely while reordering — that
                   // mode collapses everything to a drag row anyway, and
                   // two different ideas of "collapsed" on one screen is
                   // one too many.
-                  expanded={isReordering || exercise.exerciseId === expandedExerciseId}
-                  onExpand={isReordering ? null : () => toggleExercise(exercise.exerciseId)}
+                  expanded={
+                    isReordering || exercise.exerciseId === expandedExerciseId
+                  }
+                  onExpand={
+                    isReordering
+                      ? null
+                      : () => toggleExercise(exercise.exerciseId)
+                  }
                 />
               );
             }}
@@ -1066,23 +1228,35 @@ export default function ActiveWorkoutLogger({
             <button
               type="button"
               onClick={() => setTimerMinimized(false)}
-              aria-label={rest.isDone ? 'Rest over — open the timer' : 'Open the rest timer'}
+              aria-label={
+                rest.isDone
+                  ? "Rest over — open the timer"
+                  : "Open the rest timer"
+              }
               className={`flex w-full items-center justify-center gap-3 rounded-2xl border-2 bg-neutral-950/80 py-3 transition active:scale-[0.98] ${
-                rest.isOverdue ? 'motion-safe:animate-pulse' : ''
+                rest.isOverdue ? "motion-safe:animate-pulse" : ""
               }`}
               style={{
                 borderColor: restChipColor,
                 boxShadow: `0 0 30px -10px ${restChipColor}`,
               }}
             >
-              <span className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: restChipColor }}>
-                {rest.isDone ? 'Over by' : 'Resting'}
+              <span
+                className="text-[11px] font-bold uppercase tracking-[0.18em]"
+                style={{ color: restChipColor }}
+              >
+                {rest.isDone ? "Over by" : "Resting"}
               </span>
               <span
                 className="text-4xl font-black leading-none tabular-nums"
-                style={{ color: restChipColor, textShadow: `0 0 26px ${restChipColor}55` }}
+                style={{
+                  color: restChipColor,
+                  textShadow: `0 0 26px ${restChipColor}55`,
+                }}
               >
-                {rest.isDone ? `+${mmss(rest.overdueSeconds)}` : mmss(rest.secondsLeft)}
+                {rest.isDone
+                  ? `+${mmss(rest.overdueSeconds)}`
+                  : mmss(rest.secondsLeft)}
               </span>
             </button>
           )}
@@ -1091,10 +1265,14 @@ export default function ActiveWorkoutLogger({
             disabled={!canFinish}
             onClick={handleFinishPressed}
             className={`w-full font-semibold text-lg py-4 rounded-2xl transition active:scale-[0.98] ${
-              canFinish ? 'bg-[var(--success)] text-white' : 'bg-neutral-800 text-neutral-600'
+              canFinish
+                ? "bg-[var(--success)] text-white"
+                : "bg-neutral-800 text-neutral-600"
             }`}
           >
-            {canFinish ? `Finish Workout · ${completedSets} sets` : 'Complete a set to finish'}
+            {canFinish
+              ? `Finish Workout · ${completedSets} sets`
+              : "Complete a set to finish"}
           </button>
         </div>
       </div>
@@ -1119,7 +1297,7 @@ export default function ActiveWorkoutLogger({
           timer mid-ad cannot unmount the ad. */}
       {boostAd.busy && !boostAd.isNative && (
         <AdPlayingOverlay
-          rewarding={boostAd.status === 'rewarding'}
+          rewarding={boostAd.status === "rewarding"}
           caption="Your rest timer keeps counting."
           rewardingTitle="Arming your 2×…"
           rewardingCaption="Almost there — the clock is still running."

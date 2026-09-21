@@ -1,13 +1,13 @@
-import { StrictMode, useEffect } from 'react';
-import { createRoot } from 'react-dom/client';
-import '../src/index.css';
-import ActiveWorkoutLogger from '../src/components/workout/ActiveWorkoutLogger';
-import { JimmyLookProvider } from '../src/context/JimmyLook';
-import { useExercises } from '../src/hooks/useExercises';
-import { useActiveWorkout } from '../src/hooks/useWorkouts';
-import { useRestTimer } from '../src/hooks/useRestTimer';
-import { getExercise } from '../src/data/exercises';
-import { tierCssVars } from '../src/utils/tierTheme';
+import { StrictMode, useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import "../src/index.css";
+import ActiveWorkoutLogger from "../src/components/workout/ActiveWorkoutLogger";
+import { JimmyLookProvider } from "../src/context/JimmyLook";
+import { useExercises } from "../src/hooks/useExercises";
+import { useActiveWorkout } from "../src/hooks/useWorkouts";
+import { useRestTimer } from "../src/hooks/useRestTimer";
+import { getExercise } from "../src/data/exercises";
+import { tierCssVars } from "../src/utils/tierTheme";
 
 // The active-workout screen on a throwaway local workout (uid 'dev', so
 // nothing touches a real account), with one exercise of every entry kind
@@ -25,10 +25,16 @@ import { tierCssVars } from '../src/utils/tierTheme';
 // session away and starts a fresh one.
 
 const params = new URLSearchParams(location.search);
-const TIER = params.get('tier') || 'legend';
-const BODY_WEIGHT = Number(params.get('bw')) || 82;
-const DEFAULT_IDS = ['bench-press', 'incline-db-press', 'lat-pulldown', 'pull-up', 'goblet-squat'];
-const IDS = (params.get('exercises') || '').split(',').filter(Boolean);
+const TIER = params.get("tier") || "legend";
+const BODY_WEIGHT = Number(params.get("bw")) || 82;
+const DEFAULT_IDS = [
+  "bench-press",
+  "incline-db-press",
+  "lat-pulldown",
+  "pull-up",
+  "goblet-squat",
+];
+const IDS = (params.get("exercises") || "").split(",").filter(Boolean);
 const PRESET = (IDS.length ? IDS : DEFAULT_IDS)
   .map((id) => getExercise(id))
   .filter(Boolean)
@@ -40,8 +46,8 @@ const PRESET = (IDS.length ? IDS : DEFAULT_IDS)
   }));
 
 function Harness() {
-  const exercises = useExercises('dev');
-  const session = useActiveWorkout('dev');
+  const exercises = useExercises("dev");
+  const session = useActiveWorkout("dev");
   const rest = useRestTimer(90);
   const { activeWorkout, startWorkout, discardWorkout } = session;
 
@@ -58,8 +64,14 @@ function Harness() {
 
   if (!activeWorkout) return null;
   return (
-    <JimmyLookProvider evolutionStage={3} account={{ mascot: 'jimmy', equippedAccessories: [] }}>
-      <div className="mx-auto min-h-screen max-w-md px-4" style={tierCssVars(TIER)}>
+    <JimmyLookProvider
+      evolutionStage={3}
+      account={{ mascot: "jimmy", equippedAccessories: [] }}
+    >
+      <div
+        className="mx-auto min-h-screen max-w-md px-4"
+        style={tierCssVars(TIER)}
+      >
         <ActiveWorkoutLogger
           workout={activeWorkout}
           exercises={exercises}
@@ -68,6 +80,7 @@ function Harness() {
           onAddExercise={session.addExercise}
           onRemoveExercise={session.removeExercise}
           onAddSet={session.addSet}
+          onAddDropSet={session.addDropSet}
           onUpdateSet={session.updateSet}
           onRemoveSet={session.removeSet}
           onReorderExercises={session.reorderExercises}
@@ -87,7 +100,7 @@ function Harness() {
   );
 }
 
-createRoot(document.getElementById('root')).render(
+createRoot(document.getElementById("root")).render(
   <StrictMode>
     <Harness />
   </StrictMode>,
