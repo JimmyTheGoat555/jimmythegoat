@@ -328,6 +328,20 @@ export function reconcileSetLoad(set, exerciseId) {
   return next;
 }
 
+// Every set of every exercise, reconciled — the payload logWorkout
+// actually sends (hooks/useEconomy.js) and the payload the finish gate
+// checks (utils/validateWorkout.js), from one definition, so the second
+// can never be validating a different array from the first.
+//
+// Mapped rather than mutated: `exercises` is live React state and the
+// finish flow keeps rendering it while the call is in flight.
+export function reconcileWorkoutLoads(exercises) {
+  return (exercises ?? []).map((exercise) => ({
+    ...exercise,
+    sets: (exercise.sets ?? []).map((set) => reconcileSetLoad(set, exercise.exerciseId)),
+  }));
+}
+
 // The whole load a set represents, for the number under every weight
 // field. Differs from absoluteSetWeight in ONE case, on purpose: a legacy
 // per-hand set (no marker) stores one implement, and the pair is what the

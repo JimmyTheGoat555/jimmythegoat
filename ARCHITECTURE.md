@@ -22,7 +22,7 @@ grows; you earn coins, buy cosmetics, dress the mascot, and compete with friends
 ```bash
 npm run dev            # Vite dev server
 npm run build          # vite build → dist/
-npm test               # node --test over tools/*.test.mjs  (46 tests)
+npm test               # node --test over tools/*.test.mjs  (80 tests)
 npx oxlint src dev     # lint (config: .oxlintrc.json)
 npm run build:ios      # vite build + npx cap sync ios
 npm run open:ios       # open the Xcode workspace
@@ -537,6 +537,19 @@ finished). `App.jsx` owns the whole cascade in one `finishFlow` state object, an
 reward modal is additionally guarded on `!activeWorkout` so nothing can fire while
 someone is starting a session.
 
+**The gate comes first.** `handleFinishWorkout` validates before it does anything else —
+`firstWorkoutProblem` (`utils/validateWorkout.js`) over the reconciled payload, then a
+throw that `WorkoutSummaryModal` catches and prints under the numbers. Nothing moves
+until it passes: no celebration, no `logWorkout`, no `discardWorkout`. It exists because
+the celebration is OPTIMISTIC — it used to start the moment "Done" was tapped, while the
+callable was still in the air, so a workout the server refused got congratulated first
+and corrected afterwards.
+
+The gate is a mirror of `validateAndScoreWorkout`, not a second authority. It carries
+only the checks a client can settle by itself, and it says which exercise and which set
+row, which the server cannot know. Everything else — the cooldown, a spent boost token —
+still comes back as a rejection and still takes the celebration down.
+
 ---
 
 ## 8. Hooks, utils, data
@@ -575,19 +588,28 @@ form cues) · `jimmyWorkouts` (349, pre-built programs) · `badges` (479) · `ma
 
 ---
 
-## 9. Tests — 55, in Node's own runner
+## 9. Tests — 80, in Node's own runner
 
 ```
-tools/setLoad.test.mjs        19   the weight contract, drop-set arithmetic, cascade, numbering
-tools/progression.test.mjs    10   evolution tiers, neglect penalty, scaled ladders
-tools/badges.test.mjs          6   award logic
-tools/leaderboard.test.mjs     6   weekly ranking
-tools/jimmyWorkouts.test.mjs   5   the pre-built programs
-tools/moderation.test.mjs      9   block filtering, report ids, array identity
+tools/setLoad.test.mjs          24   the weight contract, drop sets, cascade, numbering, the reconciler
+tools/validateWorkout.test.mjs  12   the finish gate — and that it agrees with the server's validator
+tools/progression.test.mjs      10   evolution tiers, neglect penalty, scaled ladders
+tools/moderation.test.mjs        9   block filtering, report ids, array identity
+tools/deriveWeight.test.mjs      8   the server's own load derivation, weight vs stale context
+tools/badges.test.mjs            6   award logic
+tools/leaderboard.test.mjs       6   weekly ranking
+tools/jimmyWorkouts.test.mjs     5   the pre-built programs
 ```
 
 They import the real client modules directly (`await import('../src/utils/...')`) — no
-DOM, no test framework, no mocking library. `npm test` runs all six.
+DOM, no test framework, no mocking library. `npm test` runs all eight.
+
+Two of them reach across into `functions/` through `createRequire` and run the real
+server code beside the client's, because in both cases the point IS the agreement:
+`deriveWeight.test.mjs` pins how a submitted set becomes a load, and the last block of
+`validateWorkout.test.mjs` asserts the client gate and `validateAndScoreWorkout` reach the
+same verdict on every fixture. A mirror nobody checks drifts, and a gate that has drifted
+refuses workouts the server would have taken.
 
 ## 10. Dev harnesses — `dev/*.html`
 
@@ -601,6 +623,7 @@ admin.html     the Founder Console on a fixture      settings.html  SettingsPane
 lobby.html     WorkoutHome                           recent.html    RecentWorkoutsList
 leaderboard.html · friend-profile.html · consent.html · message.html · chill.html
 moderation.html  every ⋯ surface at once, on an in-memory block list
+finish.html      the finish gate — each way a workout can be refused, and the order it happens in
 avatar-gallery.html  every sprite × accessory combination
 ```
 

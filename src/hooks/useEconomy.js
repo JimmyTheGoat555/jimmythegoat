@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, functions } from '../lib/firebase';
-import { reconcileSetLoad } from '../utils/setLoad';
+import { reconcileWorkoutLoads } from '../utils/setLoad';
 
 // Thin wrapper around the two server-side economy entry points (see
 // functions/economy.js) — this hook holds NO local balance/inventory state
@@ -11,17 +11,6 @@ import { reconcileSetLoad } from '../utils/setLoad';
 // live `profile` listener the instant the Cloud Function updates them;
 // duplicating that into a second piece of state here would just be one
 // more thing that could drift out of sync with the source of truth.
-// Every set in the payload, with any self-contradicting load context
-// repaired. Mapped rather than mutated: `workout.exercises` is live React
-// state and the finish flow keeps rendering it while the call is in
-// flight.
-function reconcileWorkoutLoads(exercises) {
-  return (exercises ?? []).map((exercise) => ({
-    ...exercise,
-    sets: (exercise.sets ?? []).map((set) => reconcileSetLoad(set, exercise.exerciseId)),
-  }));
-}
-
 export function useEconomy(uid) {
   // A logged-out call is meaningless (there's no uid to credit), but the
   // callable's own `request.auth` check on the server is the real

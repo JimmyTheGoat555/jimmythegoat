@@ -52,6 +52,8 @@ import { EVOLUTION_TIERS, getEvolutionProgress, progressionScale, TRAINER_MIN_ST
 import { lastPerformance, seedSetsFromHistory } from './utils/lastPerformance';
 import { isBodyweightExercise } from './data/exercises';
 import { withoutBlocked, withoutBlockedUids } from './utils/moderation';
+import { firstWorkoutProblem } from './utils/validateWorkout';
+import { reconcileWorkoutLoads } from './utils/setLoad';
 // NOT lazy, unlike the other post-workout overlays. Measured: a lazy
 // boundary costs ~300ms of blank home screen between cascade steps even
 // with the chunk already prefetched — React throttles revealing content
@@ -801,9 +803,12 @@ export default function App() {
   // "Saving…" until then (`settled`). The workout is NOT discarded until
   // the server accepts it, and a rejection takes the celebration down
   // and leaves the summary modal — still mounted beneath it — showing
-  // the reason, exactly as before. The offline retry below does not pass
-  // it: a celebration appearing out of nowhere because the connection
-  // came back is not a transition anyone asked for.
+  // the reason. That path is now only reachable for the rejections a
+  // client cannot predict (the cooldown, a spent boost token): everything
+  // this device can decide for itself is decided in STEP 1 below, before
+  // the celebration starts at all. The offline retry does not pass
+  // `optimistic`: a celebration appearing out of nowhere because the
+  // connection came back is not a transition anyone asked for.
   const handleFinishWorkout = async (
     { sharePersonalRecords = false, sharedRecordExerciseIds = null } = {},
     { optimistic = false } = {},
@@ -811,6 +816,33 @@ export default function App() {
     const workout = activeWorkoutRef.current;
     if (!workout) return;
 
+    // ── STEP 1 — validate, before ANYTHING moves ────────────────────────
+    //
+    // First statement of the finish, and deliberately ahead of every line
+    // below it, including the optimistic celebration. The server does
+    // these same checks and refuses the whole workout on any of them, and
+    // the celebration used to start while that call was still in the air:
+    // a rejection landed as a card being pulled off the screen and
+    // replaced by red text, which reads as the app taking back something
+    // it had already given.
+    //
+    // Checked against the RECONCILED payload — the exact array useEconomy
+    // is about to send — so a set the reconciler repairs on the way out
+    // is not reported here as broken.
+    //
+    // Thrown, not shown: WorkoutSummaryModal's own handler already keeps
+    // the workout on screen and prints the message under the numbers,
+    // which is the one place the lifter can act on it. `finishBlocked`
+    // marks it as a verdict rather than a failure — nothing about it
+    // improves by being tried again (see the offline retry).
+    const problem = firstWorkoutProblem(reconcileWorkoutLoads(workout.exercises));
+    if (problem) {
+      const blocked = new Error(problem.message);
+      blocked.finishBlocked = true;
+      throw blocked;
+    }
+
+    // ── STEP 2 — from here the workout is going to be saved ─────────────
     // Completed sets only — the celebration is a record of what was done.
     const performed = workout.exercises
       .map((e) => ({ name: e.name, sets: e.sets.filter((set) => set.completed) }))
@@ -1085,8 +1117,13 @@ export default function App() {
       pendingOfflineFinishRef.current = null;
       try {
         await finishWorkoutRef.current?.(pending);
-      } catch {
-        pendingOfflineFinishRef.current = pending;
+      } catch (err) {
+        // A finish blocked by validation is a verdict, not a failed
+        // attempt — the payload is the same every time, so re-arming it
+        // would retry a refusal on every reconnect, forever. The workout
+        // stays in activeWorkout either way; this one simply waits for the
+        // lifter to reopen the summary and read what is wrong with it.
+        if (!err?.finishBlocked) pendingOfflineFinishRef.current = pending;
       }
     };
     window.addEventListener('online', retry);

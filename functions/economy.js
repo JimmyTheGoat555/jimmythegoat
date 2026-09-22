@@ -1390,6 +1390,10 @@ exports.logWorkout = onCall(async (request) => {
 // typed, so it is worth pinning in a test rather than only exercising it
 // through a callable that needs Firestore.
 exports.deriveWeight = deriveWeight;
+// Exported for tools/validateWorkout.test.mjs, which runs this validator
+// beside the client's mirror of it (src/utils/validateWorkout.js) and
+// asserts the two reach the same verdict. A mirror nobody checks drifts.
+exports.validateAndScoreWorkout = validateAndScoreWorkout;
 
 exports.purchaseItem = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
