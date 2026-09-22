@@ -1100,6 +1100,16 @@ export default function App() {
     setFinishFlow((current) => (current?.step === 'locker' ? { ...current, step: 'celebration' } : current));
   };
 
+  // Phase 1 is now TWO steps — the locker reminder and then the
+  // celebration — and the reward modals below have to stay behind both of
+  // them. They used to say `step !== 'celebration'`, which was the same
+  // thing when the celebration was the first step and is not any more: a
+  // badge or a chest HELD from an earlier workout (see the guards' own
+  // note — a queued reward waits out a session that has since started)
+  // would otherwise be let through the moment this flow opened on the
+  // locker, and land on top of it.
+  const inFinishPhase1 = finishFlow?.step === 'locker' || finishFlow?.step === 'celebration';
+
   // Advances the machine one step. Called by every Phase 1/2 screen when
   // it is finished with the user; `reward` fires exactly once, on the way
   // out of the celebration, so the coin toast and the badge/chest overlays
@@ -1736,7 +1746,7 @@ export default function App() {
             is owed), it is only held: the moment the new session ends, the
             same guards let it through. Nothing here may ever interrupt a
             workout that is running. */}
-        {badgeCelebration && !activeWorkout && finishFlow?.step !== 'celebration' && (
+        {badgeCelebration && !activeWorkout && !inFinishPhase1 && (
           <BadgeCelebrationModal badgeIds={badgeCelebration} onClaim={() => setBadgeCelebration(null)} />
         )}
 
@@ -1746,7 +1756,7 @@ export default function App() {
             callbacks means no step needs to know what follows it — and
             anything that ever queues a reward early cannot stack a chest
             on top of a half-ticked list. */}
-        {lootboxReward && !activeWorkout && finishFlow?.step !== 'celebration' && !badgeCelebration && (
+        {lootboxReward && !activeWorkout && !inFinishPhase1 && !badgeCelebration && (
           <Suspense fallback={null}>
             <SilverLootboxModal
               reward={lootboxReward}
