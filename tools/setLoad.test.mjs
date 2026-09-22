@@ -325,3 +325,49 @@ test('the cascade neither enters a drop set nor leaves one', () => {
   assert.equal(up.find((s) => s.id === 'd').weight, 80, 'set 3 was not dropped to the finisher weight');
   assert.equal(up.find((s) => s.id === 'd').reps, 7, 'nor to the reps failure happened to give');
 });
+
+// ── reconcileSetLoad: repairing a set whose context contradicts it ──────
+//
+// The payload guard added after a real report: "weight must be between 1
+// and 250 kg — got 40". The set carried stale per-hand context from an
+// older draft, the server read the context instead of the weight, derived
+// 260, and then quoted the 40 in the error. These pin the repair, and —
+// just as importantly — pin what it must NOT touch.
+const { reconcileSetLoad } = await import('../src/utils/setLoad.js');
+
+test('reconcileSetLoad repairs a per-hand marker that lost its number', () => {
+  const stale = { weight: 40, perHandWeight: 130, isPerHand: true };
+  const fixed = reconcileSetLoad(stale, 'incline-db-press');
+  assert.equal(fixed.perHandWeight, 20, 'half the stored pair');
+  assert.equal(fixed.isPerHand, true, 'the marker STAYS — dropping it makes the server double the pair');
+  assert.equal(fixed.weight, 40, 'the typed load is never changed');
+});
+
+test('reconcileSetLoad drops plates that do not add up to the weight', () => {
+  const stale = { weight: 40, barWeight: 20, weightPerSide: 110 };
+  const fixed = reconcileSetLoad(stale, 'bench-press');
+  assert.equal(fixed.barWeight, undefined);
+  assert.equal(fixed.weightPerSide, undefined);
+  assert.equal(fixed.weight, 40);
+});
+
+test('reconcileSetLoad leaves a consistent set completely alone', () => {
+  const ok = { weight: 80, perHandWeight: 40, isPerHand: true };
+  assert.equal(reconcileSetLoad(ok, 'incline-db-press'), ok, 'same object — no needless re-render');
+  const bar = { weight: 100, barWeight: 20, weightPerSide: 40 };
+  assert.equal(reconcileSetLoad(bar, 'bench-press'), bar);
+});
+
+test('reconcileSetLoad does not touch an UNMARKED per-hand set', () => {
+  // "40" here means one dumbbell by convention, and the server doubles it.
+  // Repairing this would be guessing, and guessing halves somebody's lift.
+  const legacy = { weight: 40 };
+  assert.equal(reconcileSetLoad(legacy, 'incline-db-press'), legacy);
+});
+
+test('reconcileSetLoad ignores blank and bodyweight sets', () => {
+  const blank = { weight: '' };
+  assert.equal(reconcileSetLoad(blank, 'incline-db-press'), blank);
+  const body = { addedWeight: 20 };
+  assert.equal(reconcileSetLoad(body, 'pull-up'), body);
+});

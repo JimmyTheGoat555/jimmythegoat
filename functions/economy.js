@@ -229,9 +229,18 @@ function validateAndScoreWorkout(exercises, bodyWeightKg) {
         // make a re-opened set silently change its own total.
         effectiveWeight = round1(deriveWeight(rawSet, exercise.exerciseId));
         if (!Number.isFinite(effectiveWeight) || effectiveWeight < MIN_WEIGHT_KG || effectiveWeight > MAX_WEIGHT_KG) {
+          // Report the number that was actually CHECKED, not `rawSet.weight`.
+          // Those are different values — deriveWeight doubles a per-hand
+          // set and adds up a bar — and printing the second while testing
+          // the first produced the one error nobody could act on:
+          // "Weight must be between 1 and 250 kg — got 40", for a set whose
+          // derived load was 260. When they differ, say both.
+          const stated = round1(rawSet.weight);
+          const from =
+            Number.isFinite(stated) && stated !== effectiveWeight ? ` (derived from a stored weight of ${stated})` : '';
           throw new HttpsError(
             'invalid-argument',
-            `Weight must be between ${MIN_WEIGHT_KG} and ${MAX_WEIGHT_KG} kg — got ${rawSet.weight}.`,
+            `Weight must be between ${MIN_WEIGHT_KG} and ${MAX_WEIGHT_KG} kg — got ${effectiveWeight}${from}.`,
           );
         }
       }
@@ -372,12 +381,38 @@ function sanitizeStartedAt(startedAt, finishedAtIso, now) {
 // Falls back to the client's own `weight` whenever the context is absent
 // or nonsense, which covers every set logged before the calculator existed
 // and every custom exercise that has no equipment at all.
+// How far two numbers may drift and still count as the same load. The
+// wheel steps in 0.1 kg and everything is round1'd, so anything at or
+// under half a step is rounding, and anything above it is disagreement.
+const SAME_LOAD_EPSILON = 0.05;
+
 function deriveWeight(rawSet, exerciseId) {
+  // `weight` is the absolute load and the context fields beside it are
+  // meant to AGREE with it — that is the contract written at the top of
+  // src/utils/setLoad.js, and the two patch builders there are what make
+  // it true. This function used to prefer the context unconditionally,
+  // which inverted that contract: a set carrying stale barWeight /
+  // weightPerSide / perHandWeight (an old client, or a localStorage draft
+  // written before the plate calculator was removed) had its real weight
+  // silently ignored in favour of last month's plates. setLoad.js calls
+  // out that exact failure — "type 110 over the 100 that came with it and
+  // the server scores 100, silently".
+  //
+  // So the context is still used, because it is the only thing that can
+  // tell a 20 kg bar with 40 a side apart from a plain 100, and because a
+  // client that has not reloaded still sends it — but only while it agrees
+  // with the stated weight. When they disagree, the stated weight wins.
+  const stated = Number(rawSet.weight);
+  const hasStated = Number.isFinite(stated) && stated > 0;
+  const agrees = (derived) => !hasStated || Math.abs(derived - stated) <= SAME_LOAD_EPSILON;
+
   if (BARBELL_EXERCISE_IDS.has(exerciseId)) {
     const bar = Number(rawSet.barWeight);
     const side = Number(rawSet.weightPerSide);
     if (ALLOWED_BAR_WEIGHTS.has(bar) && Number.isFinite(side) && side >= 0) {
-      return bar + side * 2;
+      const fromPlates = bar + side * 2;
+      if (agrees(fromPlates)) return fromPlates;
+      return stated;
     }
   }
   // EVERY number that reaches here for a dumbbell exercise is per-hand,
@@ -397,10 +432,26 @@ function deriveWeight(rawSet, exerciseId) {
   // in Firestore are never re-sent through here, so no past session, chart
   // or lifetime total moves.
   if (DUMBBELL_EXERCISE_IDS.has(exerciseId)) {
-    const perHand = rawSet.isPerHand === true ? Number(rawSet.perHandWeight) : Number(rawSet.weight);
-    if (Number.isFinite(perHand) && perHand > 0) return perHand * 2;
+    if (rawSet.isPerHand === true) {
+      // Marked per hand: `weight` should already be the pair. If the
+      // marker and the load disagree the marker is the stale half — it is
+      // the field a bare `{ weight: n }` write leaves behind.
+      const perHand = Number(rawSet.perHandWeight);
+      if (Number.isFinite(perHand) && perHand > 0) {
+        const pair = perHand * 2;
+        return agrees(pair) ? pair : stated;
+      }
+      // Marked, but carrying no per-hand number to check against. `weight`
+      // is the pair by the marker's own definition, so it is returned AS
+      // IS — falling through to the unmarked branch below would double a
+      // number that has already been doubled.
+      return Number(rawSet.weight);
+    }
+    // Unmarked — the legacy shape the note above describes. The number
+    // IS one implement, so it doubles.
+    if (hasStated) return stated * 2;
   }
-  return rawSet.weight;
+  return Number(rawSet.weight);
 }
 
 // The context fields, rebuilt from scratch like every other field on a
@@ -1334,6 +1385,12 @@ exports.logWorkout = onCall(async (request) => {
 // Price and ownership are both re-checked against server state inside a
 // transaction — a client sending a stale/forged cost is simply ignored,
 // only `storeCatalog.js`'s price is ever charged.
+// Exported for tools/deriveWeight.test.mjs only — it is the one piece of
+// scoring that can silently log a different number from the one the lifter
+// typed, so it is worth pinning in a test rather than only exercising it
+// through a callable that needs Firestore.
+exports.deriveWeight = deriveWeight;
+
 exports.purchaseItem = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
   const uid = request.auth.uid;

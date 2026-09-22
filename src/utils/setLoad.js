@@ -278,6 +278,56 @@ export function droppedLoadFrom(parent, exerciseId, { isBodyweight = false } = {
   return totalPatchFor(exerciseId, Math.max(WEIGHT_MIN_KG, toHalfKg(weight * DROP_SET_FACTOR)));
 }
 
+// ── Repairing a set whose context contradicts its weight ────────────────
+//
+// Everything above keeps `weight` and its context fields in agreement.
+// This is the safety net for a set that got into state some other way: a
+// localStorage draft written by a build from before the plate calculator
+// was removed, or an install that has not reloaded since. Those sets carry
+// context describing a load their `weight` no longer has, and
+// functions/economy.js's deriveWeight reads the context — so the number
+// the lifter typed is scored as something else, or, if the stale context
+// adds up past 250 kg, the whole workout is refused at the last step with
+// an error quoting the weight that was fine.
+//
+// Run over the payload on the way out (hooks/useEconomy.js). It repairs
+// only genuine self-contradiction, never ambiguity: an unmarked per-hand
+// set is left exactly as it is, because "40" meaning one dumbbell and "40"
+// meaning the pair are indistinguishable and the convention says the
+// former.
+const SAME_LOAD_EPSILON = 0.05; // half the wheel's 0.1 kg step — rounding, not disagreement
+
+export function reconcileSetLoad(set, exerciseId) {
+  const weight = Number(set?.weight);
+  // A blank set, or a bodyweight one carrying `addedWeight` instead —
+  // neither has an absolute load to check the context against.
+  if (!Number.isFinite(weight) || weight <= 0) return set;
+
+  let next = set;
+
+  // Plates that do not add up to the stored weight are last month's.
+  // Dropping them makes the server believe `weight`, which is the contract.
+  if (isBarbellExercise(exerciseId) && (set.barWeight !== undefined || set.weightPerSide !== undefined)) {
+    const plated = Number(set.barWeight) + Number(set.weightPerSide) * 2;
+    if (!Number.isFinite(plated) || Math.abs(plated - weight) > SAME_LOAD_EPSILON) {
+      next = { ...next, ...NO_BAR };
+    }
+  }
+
+  // A per-hand marker whose number does not double to the stored weight.
+  // The marker is REPAIRED, not removed: dropping `isPerHand` would put
+  // the set back into the legacy shape and the server would double the
+  // pair a second time — the opposite of the fix.
+  if (isPerHandExercise(exerciseId) && set.isPerHand === true) {
+    const perHand = Number(set.perHandWeight);
+    if (!Number.isFinite(perHand) || Math.abs(perHand * 2 - weight) > SAME_LOAD_EPSILON) {
+      next = { ...next, perHandWeight: Math.round((weight / 2) * 100) / 100 };
+    }
+  }
+
+  return next;
+}
+
 // The whole load a set represents, for the number under every weight
 // field. Differs from absoluteSetWeight in ONE case, on purpose: a legacy
 // per-hand set (no marker) stores one implement, and the pair is what the
