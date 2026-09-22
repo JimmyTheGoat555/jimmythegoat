@@ -155,7 +155,7 @@ const AD_REWARD_REQUIRES_SSV = true;
 // multiplier on coins the lifter has still to EARN. Watching an ad during
 // a rest arms a one-use token (functions/restBoost.js) that logWorkout
 // redeems against exactly one exercise of the workout it is spent on,
-// doubling that exercise's share of the payout. The line drawn for
+// doubling the first REST_BOOST_MAX_SETS sets of it. The line drawn for
 // AD_REWARD_COINS holds here too: the boost multiplies coins and nothing
 // else — volume, score, records, badges and the tier come out of a boosted
 // session exactly as they would have without the ad.
@@ -163,6 +163,19 @@ const AD_REWARD_REQUIRES_SSV = true;
 // Still inside MAX_COINS_PER_WORKOUT. A boosted session cannot outrun the
 // cap any more than a heavy one can.
 const REST_BOOST_MULTIPLIER = 2;
+// …and only for this many SETS of it. A boost is bought with one ad and
+// pinned to one exercise, but it does not follow that exercise for as long
+// as somebody keeps adding sets to it: an ad buys three doubled sets, not
+// an uncapped exercise. Without this, the way to get the most out of one
+// ad view is to pile every set of the session into a single exercise,
+// which is both the worst possible training advice and the highest
+// possible payout — exactly the wrong thing for a game about lifting to
+// reward.
+//
+// Counted over the exercise's COMPLETED sets in the order they were
+// logged, since those are the only ones that score at all. Sets past the
+// third pay their normal rate; nothing is refused and nothing is lost.
+const REST_BOOST_MAX_SETS = 3;
 // How long a token stays redeemable after the ad. Long enough to cover any
 // real session that was already under way when it was claimed; short
 // enough that one cannot be banked for next week. An expired token is
@@ -290,6 +303,7 @@ module.exports = {
   AD_REWARD_COINS,
   AD_REWARD_REQUIRES_SSV,
   REST_BOOST_MULTIPLIER,
+  REST_BOOST_MAX_SETS,
   REST_BOOST_TTL_MS,
   REST_BOOSTS_PER_DAY,
   MAX_PENDING_REST_BOOSTS,

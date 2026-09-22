@@ -70,6 +70,13 @@ export const AD_REWARD_COINS = 50;
 // these exist so the timer can print "2×" and hide the offer once today's
 // are spent, before anyone sits through an ad that cannot pay.
 export const REST_BOOST_MULTIPLIER = 2;
+// How many of the boosted exercise's sets actually pay double. One ad buys
+// three doubled sets, not an exercise that doubles for as long as somebody
+// keeps adding rows to it — see functions/storeCatalog.js, which is where
+// it is enforced. Here it is what the timer counts down for the lifter, so
+// that "2 sets left" is on screen before the fourth one is logged rather
+// than explained afterwards by a coin total that came up short.
+export const REST_BOOST_MAX_SETS = 3;
 export const REST_BOOSTS_PER_DAY = 3;
 export const REST_BOOST_TTL_MS = 3 * 60 * 60 * 1000;
 

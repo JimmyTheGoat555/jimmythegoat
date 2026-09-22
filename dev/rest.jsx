@@ -12,11 +12,30 @@ import { playRestAlarm, unlockRestAlarm } from '../src/utils/restAlarm';
 //   ?seconds=4   rest length (default 5)
 //   ?full=0      start with the full-screen clock hidden — the floating bar
 //                and the hook's raw state are what is left on screen
+//   ?boost=…     the 2× ad offer in one of its states, so the copy can be
+//                read without an account, a token or an ad: `offer` (the
+//                button), `armed`, `busy`, or a NUMBER — how many doubled
+//                sets are left on the boosted exercise, which is what the
+//                "active" notice counts down (0 = spent).
 //
 // window.__rest is the live hook result, for driving it from the console.
 
 const params = new URLSearchParams(location.search);
 const SECONDS = Number(params.get('seconds')) || 5;
+
+// ActiveWorkoutLogger builds this for real (from the account's tokens and
+// the workout's own sets); here it is built from the query string so each
+// state can be read on its own.
+function boostOfferFromParams(raw) {
+  if (raw === null) return null;
+  if (raw === 'offer') return { available: true, onWatch: () => {} };
+  if (raw === 'armed') return { armed: true };
+  if (raw === 'busy') return { busy: true };
+  const setsLeft = Number(raw);
+  if (!Number.isFinite(setsLeft)) return null;
+  return { active: true, setsLeft };
+}
+const BOOST_OFFER = boostOfferFromParams(params.get('boost'));
 
 function Harness() {
   const rest = useRestTimer(SECONDS);
@@ -88,6 +107,7 @@ function Harness() {
           onAddTime={rest.addTime}
           onSkip={rest.dismiss}
           onMinimize={() => setFull(false)}
+          boostOffer={BOOST_OFFER}
         />
       )}
     </div>

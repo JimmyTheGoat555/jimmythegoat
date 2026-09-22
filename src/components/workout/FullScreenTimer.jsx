@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { nextRestTip, TIP_KINDS } from '../../data/restTips';
-import { REST_BOOST_MULTIPLIER } from '../../data/storeItems';
+import { REST_BOOST_MAX_SETS, REST_BOOST_MULTIPLIER } from '../../data/storeItems';
 import { REST_BOOST_OFFER_MIN_SECONDS } from '../../hooks/useRestBoost';
 
 // The rest timer, sized to be read from the floor. Replaces the little
@@ -225,7 +225,11 @@ function RestTipCard() {
 //   * an "active" notice, held for the whole of every rest the boosted
 //     exercise starts, so the lifter knows the boost is running and that
 //     there is no second ad to take for it. Not a button, deliberately —
-//     the one thing it must not read as is "tap for another";
+//     the one thing it must not read as is "tap for another". It counts
+//     the doubled sets down (REST_BOOST_MAX_SETS of them) and then says
+//     the boost is spent, because the alternative is a lifter logging a
+//     fourth set under a notice that says it pays double when it does
+//     not, and finding out from the coin total afterwards;
 //   * an "armed" chip for a token with nowhere to land yet (a leftover
 //     from an earlier session — see ActiveWorkoutLogger), held for the
 //     rest of the countdown;
@@ -245,6 +249,13 @@ function RestBoostOffer({ offer, secondsLeft, isDone }) {
   // and overdue included, because it answers "where did the button go",
   // and that question does not stop at 1:00.
   if (offer.active) {
+    // How many doubled sets are left on this exercise — counted off the
+    // workout itself by ActiveWorkoutLogger, against the same
+    // REST_BOOST_MAX_SETS the server pays to. Held for the whole rest,
+    // done and overdue included, because it answers "how many more of
+    // these still count", and that question does not stop at 1:00.
+    const setsLeft = Math.max(0, Number(offer.setsLeft ?? REST_BOOST_MAX_SETS));
+    const spent = setsLeft === 0;
     return (
       <div
         className="w-full max-w-sm rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-2.5 text-center"
@@ -253,9 +264,13 @@ function RestBoostOffer({ offer, secondsLeft, isDone }) {
         {/* Two lines on a phone; text-balance splits them evenly instead of
             leaving one word orphaned on the second. */}
         <p className="text-balance text-sm font-bold uppercase tracking-[0.18em] text-amber-300">
-          🔥 {REST_BOOST_MULTIPLIER}× coins active for this exercise!
+          {spent ? `${REST_BOOST_MULTIPLIER}× boost spent` : `🔥 ${REST_BOOST_MULTIPLIER}× coins active for this exercise!`}
         </p>
-        <p className="mt-0.5 text-xs text-amber-200/70">Every set you log in it pays double. No second ad needed.</p>
+        <p className="mt-0.5 text-xs text-amber-200/70">
+          {spent
+            ? `All ${REST_BOOST_MAX_SETS} doubled sets are logged — anything more on this exercise pays its normal rate.`
+            : `${setsLeft} more ${setsLeft === 1 ? 'set pays' : 'sets pay'} double on this exercise. No second ad needed.`}
+        </p>
       </div>
     );
   }
@@ -269,7 +284,9 @@ function RestBoostOffer({ offer, secondsLeft, isDone }) {
         <p className="text-sm font-bold uppercase tracking-[0.18em] text-amber-300">
           ⚡ {REST_BOOST_MULTIPLIER}× coins armed
         </p>
-        <p className="mt-0.5 text-xs text-amber-200/70">Lands on the next exercise you log a set in.</p>
+        <p className="mt-0.5 text-xs text-amber-200/70">
+          Lands on the next exercise you log a set in, for {REST_BOOST_MAX_SETS} sets.
+        </p>
       </div>
     );
   }
@@ -305,7 +322,7 @@ function RestBoostOffer({ offer, secondsLeft, isDone }) {
         className="w-full rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-2.5 text-center transition active:scale-[0.98]"
       >
         <span className="block text-sm font-bold text-amber-300">
-          🎬 Watch an ad · {REST_BOOST_MULTIPLIER}× coins for THIS exercise
+          🎬 Watch an ad · {REST_BOOST_MULTIPLIER}× coins on {REST_BOOST_MAX_SETS} sets
         </span>
         <span className="mt-0.5 block text-[11px] text-amber-200/60">
           Optional. Offer closes at 1:00 — the clock keeps running.

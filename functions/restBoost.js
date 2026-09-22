@@ -5,7 +5,9 @@
 // rewardAdView pays coins for an ad. This pays a MULTIPLIER on coins the
 // lifter still has to earn: the token armed here is redeemed by logWorkout
 // (economy.js) against one exercise of the workout it is spent on, and
-// that exercise's share of the payout is doubled. Nothing else about the
+// that exercise's first REST_BOOST_MAX_SETS sets are doubled — three
+// doubled sets, not an exercise that doubles for as long as somebody
+// keeps adding rows to it (see storeCatalog.js). Nothing else about the
 // workout changes — volume, score, records, badges, the tier — because an
 // ad may never claim that somebody lifted something (see the header of
 // rewardAdView.js; this is the same rule one level up).

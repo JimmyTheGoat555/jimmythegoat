@@ -22,7 +22,7 @@ grows; you earn coins, buy cosmetics, dress the mascot, and compete with friends
 ```bash
 npm run dev            # Vite dev server
 npm run build          # vite build → dist/
-npm test               # node --test over tools/*.test.mjs  (80 tests)
+npm test               # node --test over tools/*.test.mjs  (88 tests)
 npx oxlint src dev     # lint (config: .oxlintrc.json)
 npm run build:ios      # vite build + npx cap sync ios
 npm run open:ios       # open the Xcode workspace
@@ -310,7 +310,7 @@ code.
 | `guards.js` | 256 | Shared preconditions for every callable that reaches *another* user. |
 | `social.js` | 202 | Friend requests (both sides written atomically). |
 | `admobSsv.js` | 191 | Server-side ad verification — the real "was this ad watched". |
-| `restBoost.js` `rewardAdView.js` | 156 / 80 | Ad → coins, ad → one-use 2× token. |
+| `restBoost.js` `rewardAdView.js` | 156 / 80 | Ad → coins, ad → one-use 2× token (one exercise, 3 sets). |
 | `recommendWorkout.js` `acceptRecommendation.js` | 158 / 115 | Send a routine to a friend's inbox, and take it. |
 | `officialAccount.js` `welcomeFriend.js` | 144 / 61 | The app's own "Jimmy" account; everyone is auto-friended with it. |
 | `mascots.js` `mascotBackfill.js` `evolution.js` `exercises.js` | 38–156 | Server twins of client data tables. |
@@ -588,7 +588,7 @@ form cues) · `jimmyWorkouts` (349, pre-built programs) · `badges` (479) · `ma
 
 ---
 
-## 9. Tests — 80, in Node's own runner
+## 9. Tests — 88, in Node's own runner
 
 ```
 tools/setLoad.test.mjs          24   the weight contract, drop sets, cascade, numbering, the reconciler
@@ -596,19 +596,21 @@ tools/validateWorkout.test.mjs  12   the finish gate — and that it agrees with
 tools/progression.test.mjs      10   evolution tiers, neglect penalty, scaled ladders
 tools/moderation.test.mjs        9   block filtering, report ids, array identity
 tools/deriveWeight.test.mjs      8   the server's own load derivation, weight vs stale context
+tools/restBoost.test.mjs         8   one ad = one exercise, 3 doubled sets, never a set worth less
 tools/badges.test.mjs            6   award logic
 tools/leaderboard.test.mjs       6   weekly ranking
 tools/jimmyWorkouts.test.mjs     5   the pre-built programs
 ```
 
 They import the real client modules directly (`await import('../src/utils/...')`) — no
-DOM, no test framework, no mocking library. `npm test` runs all eight.
+DOM, no test framework, no mocking library. `npm test` runs all nine.
 
-Two of them reach across into `functions/` through `createRequire` and run the real
-server code beside the client's, because in both cases the point IS the agreement:
+Three of them reach across into `functions/` through `createRequire` and run the real
+server code, because in each case the point IS what the server does:
 `deriveWeight.test.mjs` pins how a submitted set becomes a load, and the last block of
 `validateWorkout.test.mjs` asserts the client gate and `validateAndScoreWorkout` reach the
-same verdict on every fixture. A mirror nobody checks drifts, and a gate that has drifted
+same verdict on every fixture, and `restBoost.test.mjs` pins `coinsFor` — the one part of
+the payout an ad can move. A mirror nobody checks drifts, and a gate that has drifted
 refuses workouts the server would have taken.
 
 ## 10. Dev harnesses — `dev/*.html`
@@ -623,6 +625,7 @@ admin.html     the Founder Console on a fixture      settings.html  SettingsPane
 lobby.html     WorkoutHome                           recent.html    RecentWorkoutsList
 leaderboard.html · friend-profile.html · consent.html · message.html · chill.html
 moderation.html  every ⋯ surface at once, on an in-memory block list
+rest.html        ?boost= puts the 2× offer in each of its states, incl. the set countdown
 finish.html      the finish gate — each way a workout can be refused, and the order it happens in
 avatar-gallery.html  every sprite × accessory combination
 ```

@@ -41,6 +41,7 @@ const {
   MAX_COINS_PER_WORKOUT,
   RECOMMENDATION_BOUNTY_COINS,
   REST_BOOST_MULTIPLIER,
+  REST_BOOST_MAX_SETS,
   LEGACY_BODYWEIGHT_KG,
   STORE_ITEMS_BY_ID,
   STARTER_ACCESSORY_ID,
@@ -333,6 +334,13 @@ function validateAndScoreWorkout(exercises, bodyWeightKg) {
 // that feeds lifetime volume, tiers, records and the feed, is untouched by
 // a boost. An ad doubles coins; it never doubles what somebody lifted.
 //
+// …and to at most REST_BOOST_MAX_SETS of them. One ad buys three doubled
+// sets on one exercise, not an exercise that doubles for as long as
+// somebody keeps adding rows to it. `exercise.sets` is `cleanSets` — the
+// COMPLETED sets, in the order they were logged — so "the first three"
+// means the first three that actually count, and a fourth set is not
+// refused or dropped, it simply pays its normal rate.
+//
 // `accountMultiplier` is the account's own rate — evolution.js's
 // coinMultiplierFor: ~1.54 for a female lifter, 1 for everyone else. It
 // goes on the whole payout, after the boosts and before the cap, so the
@@ -340,8 +348,11 @@ function validateAndScoreWorkout(exercises, bodyWeightKg) {
 function coinsFor(cleanExercises, boostedIndexes, accountMultiplier = 1) {
   let points = 0;
   cleanExercises.forEach((exercise, i) => {
-    const multiplier = boostedIndexes.has(i) ? REST_BOOST_MULTIPLIER : 1;
-    for (const set of exercise.sets) points += set.relativeVolume * multiplier;
+    const boosted = boostedIndexes.has(i);
+    exercise.sets.forEach((set, setIndex) => {
+      const multiplier = boosted && setIndex < REST_BOOST_MAX_SETS ? REST_BOOST_MULTIPLIER : 1;
+      points += set.relativeVolume * multiplier;
+    });
   });
   return Math.min(MAX_COINS_PER_WORKOUT, Math.round(round2(points) * COINS_PER_RELATIVE_POINT * accountMultiplier));
 }
@@ -1394,6 +1405,9 @@ exports.deriveWeight = deriveWeight;
 // beside the client's mirror of it (src/utils/validateWorkout.js) and
 // asserts the two reach the same verdict. A mirror nobody checks drifts.
 exports.validateAndScoreWorkout = validateAndScoreWorkout;
+// Exported for tools/restBoost.test.mjs — the rest-timer boost's arithmetic
+// is the one part of the payout an ad can change, so it is pinned directly.
+exports.coinsFor = coinsFor;
 
 exports.purchaseItem = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');

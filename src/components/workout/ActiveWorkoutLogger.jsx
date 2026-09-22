@@ -13,6 +13,7 @@ import { useWeightEntryModes } from "../../hooks/useWeightEntryModes";
 import { useRestBoost } from "../../hooks/useRestBoost";
 import { useRewardedAd } from "../../hooks/useRewardedAd";
 import { AD_PLACEMENTS, REST_BOOST_SSV_CUSTOM_DATA } from "../../config/ads";
+import { REST_BOOST_MAX_SETS } from "../../data/storeItems";
 import AdPlayingOverlay from "../shared/AdPlayingOverlay";
 import {
   lastPerformance,
@@ -554,11 +555,19 @@ export default function ActiveWorkoutLogger({
   // The offer is made for THIS exercise. A rest carries the id of the
   // exercise whose set started it (rest.exerciseId — handleUpdateSet
   // below hands it to rest.start), and a token claimed during that rest
-  // is pinned to it the moment the ad pays out: the whole exercise, sets
-  // already logged included, pays double. Every later rest the same
-  // exercise starts then shows "active" in the offer's place — there is
-  // no second ad to take for it — and the next exercise gets an offer of
-  // its own, within today's budget.
+  // is pinned to it the moment the ad pays out: its first
+  // REST_BOOST_MAX_SETS completed sets pay double, sets already logged
+  // included. Every later rest the same exercise starts then shows
+  // "active" in the offer's place — there is no second ad to take for
+  // it — and the next exercise gets an offer of its own, within today's
+  // budget.
+  //
+  // One ad, one exercise, three doubled sets. The per-exercise half was
+  // always true; the three is what stops the best way to spend an ad
+  // being "put the whole session into one exercise", which is the worst
+  // possible training advice for a game about lifting to reward. The
+  // server is what enforces it (functions/economy.js's coinsFor); what
+  // happens here is the COUNTING, so the lifter can see it going.
   //
   // "Armed" is the leftover case: a live token no exercise has claimed
   // yet and no running rest to pin it to — one that outlived the workout
@@ -586,6 +595,22 @@ export default function ActiveWorkoutLogger({
     : null;
   const restExerciseId = restExercise?.exerciseId ?? null;
   const restExerciseBoosted = Boolean(restExercise) && isBoosted(restExercise);
+  // How many of the boost's REST_BOOST_MAX_SETS doubled sets this exercise
+  // has already spent.
+  //
+  // DERIVED, never stored. The server counts the first
+  // REST_BOOST_MAX_SETS completed sets of a boosted exercise when it pays
+  // (functions/economy.js's coinsFor), so the honest thing for the timer
+  // to count is the same sets, from the same array. A counter kept beside
+  // the workout would have to be incremented on every tick, decremented
+  // when a set is un-ticked or deleted, and cleared on a new workout — and
+  // would be wrong the first time one of those was missed. This cannot
+  // drift, and it resets for a new workout because a new workout is a new
+  // array.
+  const boostedSetsUsed = restExerciseBoosted
+    ? (restExercise.sets ?? []).filter((set) => set.completed).length
+    : 0;
+  const boostedSetsLeft = Math.max(0, REST_BOOST_MAX_SETS - boostedSetsUsed);
   const boostAd = useRewardedAd(null, {
     bypass: isAdmin,
     callable: "claimRestBoost",
@@ -616,6 +641,11 @@ export default function ActiveWorkoutLogger({
     // This exercise already pays double: for every rest it starts, the
     // offer's spot says so instead of offering a second ad.
     active: restExerciseBoosted,
+    // …for this many more sets. Once it hits zero the notice says the
+    // boost is spent rather than claiming sets are still doubling, which
+    // is the whole point of counting it on screen: the lifter finds out
+    // BEFORE logging a fourth set, not afterwards from a coin total.
+    setsLeft: boostedSetsLeft,
     armed: unboundBoosts.length > 0,
     // Hidden, not disabled, for every reason it could not pay: this
     // exercise is already boosted, today's budget is spent, the server
