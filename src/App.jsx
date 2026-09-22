@@ -384,10 +384,6 @@ export default function App() {
   // what follows it, and a step that doesn't apply is simply never queued
   // instead of being a render condition somebody has to remember.
   const [finishFlow, setFinishFlow] = useState(null);
-  // The locker number this session started with, held back until the rest
-  // of the cascade has played — step 4, and the only one that is useful
-  // rather than celebratory. See LockerPromptModal.jsx.
-  const [lockerReminder, setLockerReminder] = useState(null);
   const handleSignUp = async (data) => {
     const { warning, verificationSent } = await signUp(data);
     // The trainer-code warning wins the one notice slot when both apply:
@@ -843,6 +839,20 @@ export default function App() {
     }
 
     // ── STEP 2 — from here the workout is going to be saved ─────────────
+    //
+    // The locker number, read off the ref's snapshot because discardWorkout()
+    // below wipes the real thing. Null whenever the question was skipped,
+    // answered "no locker", or never asked — and null is what decides
+    // whether the cascade opens on the reminder or straight on the
+    // celebration.
+    const lockerNumber = workout.lockerNumber ?? null;
+    // Where the finish flow STARTS. The locker reminder used to be step 4,
+    // after the celebration, the badges and the chest; it is step 0 now.
+    // The practical thing goes first, while the phone is still in the
+    // lifter's hand and they are still standing next to the locker —
+    // ninety seconds of confetti later they are already walking, and a
+    // modal that arrives then is a modal in the way.
+    const firstStep = lockerNumber ? 'locker' : 'celebration';
     // Completed sets only — the celebration is a record of what was done.
     const performed = workout.exercises
       .map((e) => ({ name: e.name, sets: e.sets.filter((set) => set.completed) }))
@@ -863,7 +873,8 @@ export default function App() {
     );
     if (optimistic) {
       setFinishFlow({
-        step: 'celebration',
+        step: firstStep,
+        lockerNumber,
         settled: false,
         queue: [],
         workoutId: null,
@@ -950,11 +961,6 @@ export default function App() {
     if (workout.assignedWorkoutId) {
       completeAssignment(workout.assignedWorkoutId, workoutId);
     }
-    // Same reason, same place: `workout` here is the ref's snapshot, and
-    // discardWorkout() below wipes the real thing. Null whenever the
-    // question was skipped, answered "no locker", or never asked.
-    const lockerNumber = workout.lockerNumber ?? null;
-
     // (Re-)arm the 71h local re-engagement nudge off this fresh workout —
     // prompts for notification permission if it hasn't been asked. Fire
     // and forget; a failure here must never block finishing a workout.
@@ -983,10 +989,9 @@ export default function App() {
       // item the account can actually see on its goat — so the moment is
       // back on for everyone.
       if (firstWorkoutReward) setLootboxReward(firstWorkoutReward);
-      // Queued with the rest and sequenced by the render guards below, so
-      // it lands after the celebrating is over and stays put until it is
-      // acknowledged.
-      if (lockerNumber) setLockerReminder(lockerNumber);
+      // The locker reminder is NOT queued here any more — it is step 0 of
+      // the flow now, shown and acknowledged before the celebration ever
+      // mounts. See `firstStep` above.
 
       if (recoveryWorkout) {
         // The server withheld coins/volume for this one (>= 5 days since
@@ -1044,7 +1049,8 @@ export default function App() {
     if (shareable.length > 0) queue.push('sharePRs');
 
     const settled = {
-      step: 'celebration',
+      step: firstStep,
+      lockerNumber,
       settled: true,
       queue,
       workoutId,
@@ -1066,15 +1072,32 @@ export default function App() {
       routineExercises: workout.exercises,
       reward: showReward,
     };
-    // Optimistic: the card is up already, this is a props update — the
-    // server's records and coins landing on it. Otherwise (the offline
-    // retry) it mounts when the main thread is free, not in the frame the
-    // callable resolves in: that frame is busy with the server's writes
-    // landing in five listeners at once (the profile's coins, the history,
-    // the feed post, the economy doc, notifications), each re-rendering
-    // this tree.
-    if (optimistic) setFinishFlow(settled);
+    // Optimistic: the flow is already on screen, so this is a props update
+    // — the server's records and coins landing on it. The STEP is taken
+    // from what is on screen, not from `settled`: the lifter may have
+    // already dismissed the locker reminder and be watching the
+    // celebration, and resetting them to step 0 would replay a modal they
+    // have answered. Null means the finish was rejected and torn down
+    // between the two, in which case there is nothing to update.
+    //
+    // Otherwise (the offline retry) the flow mounts when the main thread
+    // is free, not in the frame the callable resolves in: that frame is
+    // busy with the server's writes landing in five listeners at once
+    // (the profile's coins, the history, the feed post, the economy doc,
+    // notifications), each re-rendering this tree.
+    if (optimistic) setFinishFlow((prev) => (prev ? { ...settled, step: prev.step } : prev));
     else whenIdle(() => setFinishFlow(settled), { timeout: 300 });
+  };
+
+  // Step 0 → Phase 1. The locker reminder is the one screen in the cascade
+  // that is not a reward, so it does not go through advanceFinishFlow: it
+  // fires no `reward()`, consumes no queue entry and — crucially — is not
+  // gated on `settled`, because there is nothing for the server to say
+  // about a locker number. It is dismissable the instant it appears, even
+  // while logWorkout is still in the air, which is the whole reason it can
+  // go first without costing anybody a moment's wait.
+  const dismissLockerReminder = () => {
+    setFinishFlow((current) => (current?.step === 'locker' ? { ...current, step: 'celebration' } : current));
   };
 
   // Advances the machine one step. Called by every Phase 1/2 screen when
@@ -1569,6 +1592,24 @@ export default function App() {
           </Suspense>
         )}
 
+        {/* ── Step 0: the locker, before any of the celebrating ───────
+            First, and on purpose. This is the only genuinely PRACTICAL
+            screen in the cascade — it exists to stop somebody leaving
+            their kit in a locker they can no longer name — and it used to
+            be last, behind the checklist, the trophies and the chest. By
+            then the phone has been in a hand for a minute of confetti and
+            the lifter is already moving; a modal that arrives at that
+            point is an obstacle between them and the door.
+
+            It holds the celebration back rather than racing it: nothing
+            below renders until the step advances. The server call is
+            already in flight underneath (handleFinishWorkout does not
+            await anything to get here), so reading this costs the finish
+            no time at all. */}
+        {finishFlow?.step === 'locker' && (
+          <LockerReminderModal lockerNumber={finishFlow.lockerNumber} onClose={dismissLockerReminder} />
+        )}
+
         {/* ── Phase 1: the celebration, and nothing else on screen ────
             Deliberately the ONLY thing rendered while it plays: every
             prompt below is guarded on the step, which is what the
@@ -1713,14 +1754,6 @@ export default function App() {
               onClose={() => setLootboxReward(null)}
             />
           </Suspense>
-        )}
-
-        {/* Step 4, the practical one. Waits for all three celebrations, and
-            unlike them it has to survive being ignored for a minute —
-            people read this on the way to the changing room, not at the
-            moment it appears. */}
-        {lockerReminder && !activeWorkout && !finishFlow && !badgeCelebration && !lootboxReward && (
-          <LockerReminderModal lockerNumber={lockerReminder} onClose={() => setLockerReminder(null)} />
         )}
 
         {settingsOpen && (

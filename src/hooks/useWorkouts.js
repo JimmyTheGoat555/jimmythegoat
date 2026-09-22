@@ -57,6 +57,19 @@ function emptySets() {
   }));
 }
 
+// First occurrence wins, order otherwise untouched. Takes the incoming
+// {exerciseId, ...} shape, not the built one, so the dedupe happens before
+// any sets are seeded and a dropped duplicate costs nothing.
+function dedupeById(exercises) {
+  const seen = new Set();
+  return exercises.filter((exercise) => {
+    const id = exercise?.exerciseId;
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 function emptyWorkout(
   presetExercises,
   { assignedWorkoutId = null, templateId = null, programId = null, programTitle = null } = {},
@@ -70,7 +83,19 @@ function emptyWorkout(
     // addExercise() builds from, just pre-seeded all at once. Neither
     // carries a set count today, so they get the same default 3 as a
     // hand-added exercise rather than a different number for no reason.
-    exercises: (presetExercises ?? []).map((exercise) => ({
+    //
+    // Deduped by exerciseId, for the same reason addExercise() refuses a
+    // duplicate: an exercise is a ROW, and two rows sharing an id are the
+    // same row twice. Nothing can produce one today — Jimmy's Workouts
+    // have none, a saved routine comes from an already-deduped workout,
+    // and the trainer's picker toggles rather than appends — but every
+    // one of those is a property of a UI, not of this function, and the
+    // failure downstream is not proportionate: bindRestBoost below would
+    // stamp one rest-boost token onto both copies, and logWorkout refuses
+    // the ENTIRE workout for it ("One boost cannot cover two exercises").
+    // A session lost at the finish line, for a routine that merely listed
+    // an exercise twice.
+    exercises: dedupeById(presetExercises ?? []).map((exercise) => ({
       exerciseId: exercise.exerciseId,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
@@ -418,13 +443,23 @@ export function useActiveWorkout(uid) {
   // removing the exercise frees the token again for nothing. A second
   // bind to the same exercise replaces the first: the only way that
   // happens is the earlier token having expired under it.
+  //
+  // The FIRST match, not every match. A token names one exercise — that
+  // is the server's rule, and it enforces it by refusing the whole
+  // workout — so a map() that stamped every exercise sharing the id would
+  // turn one duplicated row into a finish nobody can complete. emptyWorkout
+  // above already dedupes, which is what makes this unreachable; this is
+  // the half that makes it harmless even if something upstream stops
+  // being true.
   const bindRestBoost = useCallback(
     (exerciseId, tokenId) => {
       setActiveWorkout((prev) => {
         if (!prev) return prev;
+        const target = prev.exercises.findIndex((e) => e.exerciseId === exerciseId);
+        if (target === -1) return prev;
         return {
           ...prev,
-          exercises: prev.exercises.map((e) => (e.exerciseId === exerciseId ? { ...e, boostTokenId: tokenId } : e)),
+          exercises: prev.exercises.map((e, i) => (i === target ? { ...e, boostTokenId: tokenId } : e)),
         };
       });
     },

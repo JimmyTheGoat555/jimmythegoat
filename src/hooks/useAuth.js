@@ -527,7 +527,13 @@ export function useAuth() {
   // is no mirror to keep in sync and no privacy consequence, so a round
   // trip through a Cloud Function would buy nothing. The field is absent
   // on every account that predates the feature and absence reads as ON,
-  // which is why only turning it off ever writes anything.
+  // which is why OFF is the only value that has to exist in the document
+  // for the setting to work — not that it is the only one ever written.
+  // Both directions write, and both land on the live `profile` snapshot
+  // (see the listener at the top of this file), which is the single copy
+  // of this flag anywhere in the app: App.jsx reads `account.askForLocker`
+  // straight off it and hands it to the logger. There is no mirror, no
+  // cache and no second key that could disagree with it.
   const setAskForLocker = useCallback(
     async (ask) => {
       if (!user) return;

@@ -1,10 +1,16 @@
-// The other half of LockerPromptModal, ninety minutes later: the last step
-// of the post-workout cascade (checklist → badges → chest → this).
+// The other half of LockerPromptModal, ninety minutes later: the FIRST
+// step of the post-workout cascade (this → checklist → badges → chest).
 //
-// Deliberately last and deliberately NOT a toast. A toast auto-dismisses,
-// and the one thing this screen exists to do is still be there when
-// someone has finished celebrating and is walking back to the changing
-// room. It waits for a tap.
+// Deliberately first. It used to be last, and the reasoning then was that
+// somebody reads this on the way to the changing room — but by the end of
+// the cascade they are already walking, and a modal that arrives then is
+// in the way rather than in time. It goes in front now, while the phone
+// is still in a hand and the locker is still an arm's length away, and
+// the celebration waits behind it (App.jsx's `firstStep`).
+//
+// Deliberately NOT a toast, which has not changed. A toast auto-dismisses,
+// and a locker number nobody read is a locker number nobody has. It waits
+// for a tap.
 //
 // Not lazy-loaded, for the same reason BadgeCelebrationModal isn't: a
 // Suspense boundary costs a visible blank seam between cascade steps, and

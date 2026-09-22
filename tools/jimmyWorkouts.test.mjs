@@ -137,3 +137,30 @@ test('a prescription seeds its reps on every set and keeps the weight from histo
     ],
   );
 });
+
+test('no session lists the same exercise twice', () => {
+  // An exercise is a ROW in the logger, and two rows sharing an id are the
+  // same row twice. useWorkouts' addExercise has always refused a
+  // duplicate by hand; a PROGRAM is the one route into a session that does
+  // not go through it, which is why this is checked here rather than
+  // trusted.
+  //
+  // The consequence is out of all proportion to the typo that would cause
+  // it. One rest-timer boost token binds to one exercise, and logWorkout
+  // refuses the ENTIRE workout when a token turns up on two of them ("One
+  // boost cannot cover two exercises") — so a program that listed an
+  // exercise twice would cost somebody the session at the finish line,
+  // only if they happened to watch a boost ad, and only for that exercise.
+  // emptyWorkout dedupes now, so this is belt and braces; but the braces
+  // are cheap and the belt is in another file.
+  let sessions = 0;
+  for (const split of JIMMY_SPLITS) {
+    for (const workout of getJimmySplit(split.id).workouts) {
+      sessions += 1;
+      const ids = programWorkoutTemplate(split, workout).exercises.map((e) => e.exerciseId);
+      assert.ok(ids.length > 0, `${split.id} / ${workout.name} has no exercises`);
+      assert.equal(new Set(ids).size, ids.length, `${split.id} / ${workout.name} repeats an exercise: ${ids.join(', ')}`);
+    }
+  }
+  assert.ok(sessions >= 15, `walked only ${sessions} sessions — the shape of the data changed`);
+});

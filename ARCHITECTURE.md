@@ -22,7 +22,7 @@ grows; you earn coins, buy cosmetics, dress the mascot, and compete with friends
 ```bash
 npm run dev            # Vite dev server
 npm run build          # vite build → dist/
-npm test               # node --test over tools/*.test.mjs  (88 tests)
+npm test               # node --test over tools/*.test.mjs  (89 tests)
 npx oxlint src dev     # lint (config: .oxlintrc.json)
 npm run build:ios      # vite build + npx cap sync ios
 npm run open:ios       # open the Xcode workspace
@@ -529,11 +529,15 @@ components/
 
 ### The post-workout cascade (order matters)
 
-`WorkoutSummaryModal` (confirm) → `WorkoutCelebration` (`finishFlow.step ===
-'celebration'`) → a queue of follow-up steps (`saveRoutine` → `SaveRoutinePrompt`,
-`sharePRs` → `SharePRsModal`) → `BadgeCelebrationModal` → `SilverLootboxModal` (first
-workout only) → `LockerReminderModal` (~90 min later, and only once `finishFlow` is
-finished). `App.jsx` owns the whole cascade in one `finishFlow` state object, and every
+`WorkoutSummaryModal` (confirm) → `LockerReminderModal` (`step === 'locker'`, only when
+the session recorded a locker) → `WorkoutCelebration` (`step === 'celebration'`) → a queue
+of follow-up steps (`saveRoutine` → `SaveRoutinePrompt`, `sharePRs` → `SharePRsModal`) →
+`BadgeCelebrationModal` → `SilverLootboxModal` (first workout only). The locker reminder
+is step 0, not step 4: it is the one screen here that is practical rather than celebratory,
+and by the end of the cascade the lifter is already walking away from the locker. It is
+the only step not gated on `settled` — there is nothing for the server to say about a
+locker number — so it can be read and dismissed while `logWorkout` is still in flight, and
+costs the finish nothing. `App.jsx` owns the whole cascade in one `finishFlow` state object, and every
 reward modal is additionally guarded on `!activeWorkout` so nothing can fire while
 someone is starting a session.
 
@@ -588,7 +592,7 @@ form cues) · `jimmyWorkouts` (349, pre-built programs) · `badges` (479) · `ma
 
 ---
 
-## 9. Tests — 88, in Node's own runner
+## 9. Tests — 89, in Node's own runner
 
 ```
 tools/setLoad.test.mjs          24   the weight contract, drop sets, cascade, numbering, the reconciler
@@ -599,7 +603,7 @@ tools/deriveWeight.test.mjs      8   the server's own load derivation, weight vs
 tools/restBoost.test.mjs         8   one ad = one exercise, 3 doubled sets, never a set worth less
 tools/badges.test.mjs            6   award logic
 tools/leaderboard.test.mjs       6   weekly ranking
-tools/jimmyWorkouts.test.mjs     5   the pre-built programs
+tools/jimmyWorkouts.test.mjs     6   the pre-built programs, and that none repeats an exercise
 ```
 
 They import the real client modules directly (`await import('../src/utils/...')`) — no
