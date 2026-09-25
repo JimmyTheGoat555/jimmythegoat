@@ -95,10 +95,26 @@ export const ACCESSORY_ART = {
   // line — an absolute vertical because the hip-to-sole run is the same
   // share of every sprite (hips 45%, ground 84%), so the garment's
   // vertical extent is fixed by the contract rather than by a landmark.
+  //
+  // Per stage from the Titan up. Stages 1 and 2 still share the original
+  // cut; 3 and 4 are their own, for the reason the tank and the hoodie
+  // are — the Legend is not the Goat at a bigger size, and one pair of
+  // jeans stretched over all four bodies stops reading as denim that
+  // fits. The map form is what `artFor` resolves, and it falls back to
+  // stage 1, so a stage with no cut of its own keeps the shared one
+  // rather than rendering nothing.
   'accessory-jeans': {
     slot: 'legs',
-    src: '/assets/accessories/jeans.png',
-    aspect: 0.654,
+    src: {
+      1: '/assets/accessories/jeans.png',
+      2: '/assets/accessories/jeans.png',
+      3: '/assets/accessories/jeans-3.png',
+      4: '/assets/accessories/jeans-4.png',
+    },
+    // Measured off each trimmed file, not guessed: 225×344, 111×181,
+    // 127×182. The three cuts genuinely differ in proportion, which is
+    // the whole reason `aspect` may be a map.
+    aspect: { 1: 0.654, 2: 0.654, 3: 0.613, 4: 0.698 },
     fit: { anchor: 'hips', width: 0.93, dyH: 0.204 },
   },
   // Drawn per stage — the user made a version for each Jimmy, and the
