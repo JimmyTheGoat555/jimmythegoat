@@ -630,6 +630,7 @@ lobby.html     WorkoutHome                           recent.html    RecentWorkou
 leaderboard.html · friend-profile.html · consent.html · message.html · chill.html
 moderation.html  every ⋯ surface at once, on an in-memory block list
 rest.html        ?boost= puts the 2× offer in each of its states, incl. the set countdown
+friends-sheet.html  the Friends sheet over a long page — nested scroll, both axes
 finish.html      the finish gate — each way a workout can be refused, and the order it happens in
 avatar-gallery.html  every sprite × accessory combination
 ```

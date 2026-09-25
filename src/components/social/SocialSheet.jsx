@@ -6,11 +6,17 @@
 // outside to close. Extracted rather than copy-pasted twice because two
 // sheets opened from the same header row that scroll or round their
 // corners differently look like a bug.
+//
+// overscroll-contain on the scroller, matching shared/BottomSheet: a sheet
+// is a surface ON TOP of a page, so reaching the end of it must not hand
+// the rest of the flick to the page underneath. Without it the last inch
+// of a scroll here moves the tab behind the scrim, which reads as the
+// sheet dragging the whole app around with it.
 export default function SocialSheet({ title, subtitle, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center" onClick={onClose}>
       <div
-        className="max-h-[85vh] w-full overflow-y-auto rounded-t-3xl border border-white/10 bg-neutral-950 sm:max-w-sm sm:rounded-3xl"
+        className="max-h-[85vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl border border-white/10 bg-neutral-950 sm:max-w-sm sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

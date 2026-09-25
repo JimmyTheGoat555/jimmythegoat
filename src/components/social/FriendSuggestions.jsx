@@ -17,6 +17,10 @@ import JimmyAvatar from '../evolution/JimmyAvatar';
 // Same scroll idiom as WorkoutHome's mission carousel: negative margins so
 // the row bleeds to the screen edge while the cards keep the page's
 // padding, and scroll-snap so a flick parks on a card.
+//
+// This row lives at the BOTTOM of a sheet that itself scrolls vertically
+// (SocialSheet), which is the one place a horizontal scroller needs to say
+// so out loud — see the rail's className below.
 
 function mutualLabel({ mutualCount, mutualNames }) {
   if (!mutualCount) return 'Suggested for you';
@@ -127,7 +131,23 @@ export default function FriendSuggestions({ suggestions: allSuggestions, loading
         <p className="text-xs text-neutral-600 mt-0.5">Friends of your friends.</p>
       </div>
 
-      <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-4 px-4">
+      {/* touch-pan-x is the fix for "the sheet moves instead of the row".
+          Without a declared touch-action the browser has to WAIT and watch
+          which way a touch drifts before it commits an axis, and a swipe
+          across a row of cards is never perfectly horizontal — so a sheet
+          that scrolls vertically wins the ambiguity and the carousel sits
+          still. Declaring pan-x commits at the first pixel instead of
+          guessing. pinch-zoom is kept alongside it deliberately: zoom you
+          ask for is an accessibility control (index.css says the same
+          thing where it sets touch-action on body).
+
+          overscroll-x-contain is the other half — either end of the row is
+          the end. Without it a flick past the last card chains outward,
+          and iOS turns that overrun into a back-swipe on the sheet.
+
+          Same three classes, same reasons, as the sticker rail in
+          WorkoutCelebration.jsx. */}
+      <div className="flex touch-pan-x touch-pinch-zoom snap-x snap-mandatory overflow-x-auto overscroll-x-contain -mx-4 gap-3 px-4 pb-1">
         {suggestions.map((suggestion) => (
           <SuggestionCard key={suggestion.uid} suggestion={suggestion} onAdd={onAdd} />
         ))}
