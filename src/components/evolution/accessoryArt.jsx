@@ -103,6 +103,18 @@ export const ACCESSORY_ART = {
   // fits. The map form is what `artFor` resolves, and it falls back to
   // stage 1, so a stage with no cut of its own keeps the shared one
   // rather than rendering nothing.
+  //
+  // 3 and 4 are cut by GEOMETRY, not by a denim colour mask (see the
+  // hoodie below for the same technique on a torso piece). Below the
+  // waistband every row of the render is [hand][leg][leg][hand] or
+  // [leg][leg], so keeping the runs that overlap the middle of the body
+  // drops the hands without a threshold; only the shoes the hem falls
+  // over need colour, and blue-vs-brown there is unambiguous. Keeping the
+  // trouser's own outline rather than its blue pixels is what preserves
+  // the tan frayed threads across every rip — a colour mask takes those
+  // with the fur — and the flesh behind each rip, which is this exact
+  // body's, because per-stage art is only ever drawn on the stage it was
+  // cut from (see accessoryArtStageFor).
   'accessory-jeans': {
     slot: 'legs',
     src: {
@@ -111,11 +123,24 @@ export const ACCESSORY_ART = {
       3: '/assets/accessories/jeans-3.png',
       4: '/assets/accessories/jeans-4.png',
     },
-    // Measured off each trimmed file, not guessed: 225×344, 111×181,
-    // 127×182. The three cuts genuinely differ in proportion, which is
+    // Measured off each trimmed file, not guessed: 225×344, 110×179,
+    // 127×183. The three cuts genuinely differ in proportion, which is
     // the whole reason `aspect` may be a map.
-    aspect: { 1: 0.654, 2: 0.654, 3: 0.613, 4: 0.698 },
-    fit: { anchor: 'hips', width: 0.93, dyH: 0.204 },
+    aspect: { 1: 0.654, 2: 0.654, 3: 0.615, 4: 0.694 },
+    // 1 and 2 keep the numbers the shared cut was tuned to by eye. 3 and
+    // 4 are measured: their render and their sprite are the same body in
+    // the same pose, so horn-tip-to-sole and the silhouette width
+    // register one onto the other (they agree to 0.1% and 1.0%), and the
+    // cut's bounding box then gives its size and centre directly. Both
+    // land on 1.07 hip-spans wide, which is the landmark doing its job —
+    // and is also why the old shared 0.93 left a strip of thigh showing
+    // down each side of the Titan.
+    fit: {
+      anchor: 'hips',
+      width: { 1: 0.93, 2: 0.93, 3: 1.075, 4: 1.071 },
+      dxW: { 1: 0, 2: 0, 3: 0.002, 4: 0.006 },
+      dyH: { 1: 0.204, 2: 0.204, 3: 0.176, 4: 0.195 },
+    },
   },
   // Drawn per stage — the user made a version for each Jimmy, and the
   // Legend's is not the Goat's garment at a bigger size. Stage 1 and 2 came
@@ -149,6 +174,19 @@ export const ACCESSORY_ART = {
   // his shorts are dark too, so colour grabs them and subtraction is the one
   // that works. Try both on anything new.
   //
+  // The Buff's is a THIRD technique, and the one to reach for when a new
+  // render arrives: cut by geometry, not by colour. The source is a full
+  // character on a transparent canvas, so each row's silhouette already
+  // says where the arms are — three runs across a row means arm, torso,
+  // arm, and the middle one is the garment. Only the rows where the arms
+  // fuse into the shoulders need a colour seam, and there the test has to
+  // be read per SIDE: the character is lit from the right, so the
+  // garment's shadowed left edge sits near -15 on R-B while its lit right
+  // edge sits near +10, and one global threshold cannot sit above the lit
+  // cloth and below the shadowed fur at once. Two thresholds do. The
+  // per-row edges are then median-filtered, because a garment's edge is a
+  // smooth line and every pixel of jitter shows up as a stub of fur.
+  //
   // The Buff's keeps the shadowed face from inside its hood, at the user's
   // request — as on the Legend, it reads as the hood shading him.
   'accessory-hoodie': {
@@ -159,15 +197,21 @@ export const ACCESSORY_ART = {
       3: '/assets/accessories/hoodie-3.png',
       4: '/assets/accessories/hoodie-4.png',
     },
-    aspect: { 1: 0.757, 2: 0.476, 3: 0.562, 4: 0.642 },
+    aspect: { 1: 0.757, 2: 0.535, 3: 0.562, 4: 0.642 },
     // Same story as the tank. The hood is why the centre sits so much
     // closer to the neck on the later cuts: those PNGs include the hooded
     // head, so their centre is higher up the garment.
+    //
+    // The Buff's three numbers are not eyeballed: the render and the
+    // sprite are the same body in the same pose, so horn-tip-to-sole and
+    // the silhouette width register one onto the other (they agree to
+    // 1.1%), and the cut's own bounding box then gives its width and
+    // centre in canvas fractions directly.
     fit: {
       anchor: 'neck',
-      widthW: { 1: 0.659, 2: 0.5, 3: 0.666, 4: 0.604 },
-      dxW: { 1: 0.008, 2: 0.001, 3: 0.008, 4: -0.022 },
-      dyH: { 1: 0.136, 2: 0.065, 3: 0.081, 4: 0.096 },
+      widthW: { 1: 0.659, 2: 0.729, 3: 0.666, 4: 0.604 },
+      dxW: { 1: 0.008, 2: 0.003, 3: 0.008, 4: -0.022 },
+      dyH: { 1: 0.136, 2: 0.052, 3: 0.081, 4: 0.096 },
     },
   },
 };
