@@ -22,7 +22,7 @@ grows; you earn coins, buy cosmetics, dress the mascot, and compete with friends
 ```bash
 npm run dev            # Vite dev server
 npm run build          # vite build → dist/
-npm test               # node --test over tools/*.test.mjs  (89 tests)
+npm test               # node --test over tools/*.test.mjs  (98 tests)
 npx oxlint src dev     # lint (config: .oxlintrc.json)
 npm run build:ios      # vite build + npx cap sync ios
 npm run open:ios       # open the Xcode workspace
@@ -525,6 +525,7 @@ components/
                   WorkoutSummaryModal (confirm) · WorkoutCelebration (790, the victory lap)
                   AnimatedWorkoutSummary (510, canvas card) · BadgeCelebrationModal
                   SilverChest · SilverLootboxModal · SaveRoutinePrompt · SharePRsModal · QuickShare
+                  WorkoutTour (the first-workout coach marks — see below)
 ```
 
 ### The post-workout cascade (order matters)
@@ -554,6 +555,30 @@ only the checks a client can settle by itself, and it says which exercise and wh
 row, which the server cannot know. Everything else — the cooldown, a spent boost token —
 still comes back as a rejection and still takes the celebration down.
 
+### The first-workout tour (once per account, four controls)
+
+`WorkoutTour` + `useWorkoutTour` + `data/workoutTour.js`. Coach marks over the snowflake
+(Chill Mode), the stopwatch (rest), the bulb (form cues) and `+DS` — the four controls on
+the logging screen that say nothing about themselves. A dark scrim with a hole in it, one
+step at a time; tap anywhere to advance, **Skip tutorial** on every step, Escape closes it.
+
+Three things about it are load-bearing:
+
+- **It finds its targets with `data-tour="…"` selectors, not refs.** Two of the four are
+  inside lists (a bulb per card, a `+DS` per row), so a ref would have to be threaded
+  down and then disambiguated. `querySelector` returns the first match in document
+  order, which is the topmost one on screen — the one worth pointing at.
+- **A step whose target is absent is skipped**, and the counter is snapshotted at open
+  time so it reads an honest "2 of 3". The bulb only exists for exercises with tips.
+- **It runs once and waits for something to point at.** The flag is
+  `jimmy-goat:workout-tutorial-seen:<uid>`, written when the tour OPENS, not when it
+  finishes — a tab closed mid-tour must not replay it. On top of that it needs an empty
+  cloud history (the reinstall case, where the flag is gone but the lifter is not new)
+  and at least one exercise on screen, and it waits `ARM_DELAY_MS` before believing that
+  history, because the Firestore listener publishes `[]` until its first snapshot lands.
+
+`dev/logger.html?tour=1` replays it, ignoring both the flag and the history.
+
 ---
 
 ## 8. Hooks, utils, data
@@ -566,7 +591,8 @@ still comes back as a rejection and still takes the celebration down.
 `useCheers` · `useNotifications` · `useTrainerTrainees` · `useAdminAnalytics` ·
 `useAdminOps` · `useAnnouncement` · `useFounderMessage` · `useLegalConsent` ·
 `useTierUpCelebration` · `useLazyGoatNudge` · `useTabSwipe` · `useAnimationClock` ·
-`useKeyboardInset` · `useBottomChrome` · `useReturnTo` · `useLocalStorage`
+`useKeyboardInset` · `useBottomChrome` · `useReturnTo` · `useLocalStorage` ·
+`useWorkoutTour`
 
 **utils/** (36) — `setLoad` ⭐ · `setCascade` ⭐ · `units` · `lastPerformance` ·
 `exerciseSorting` · `workoutStats` · `personalRecords` · `leaderboard` ·
@@ -576,12 +602,13 @@ still comes back as a rejection and still takes the celebration down.
 `workoutSummaryScene` / `Data` / `Format` / `Timeline` · `canvas` · `motion` ·
 `shareWorkout` · `restAlarm` · `restNotification` · `restPresets` · `restMessages` ·
 `storeAlerts` · `formatIdleNumber` · `relativeTime` · `authErrors` · `onboarding` ·
-`appAdmin` · `idle`
+`appAdmin` · `idle` · `tourLayout`
 
 **data/** — `exercises` (544, the seed catalog) + `exerciseGuides` (480, description &
 form cues) · `jimmyWorkouts` (349, pre-built programs) · `badges` (479) · `mascots`
 (323, Jimmy/Gena) · `avatarAnchors` (186, where the body *is* per sprite) ·
-`storeItems` · `restTips` (58 rest-timer facts) · `gymQuotes` · `nudgeMessages`
+`storeItems` · `restTips` (58 rest-timer facts) · `gymQuotes` · `nudgeMessages` ·
+`workoutTour` (the four coach-mark steps)
 
 **config/** — `ads.js` (`USE_TEST_ADS = false` — live AdMob units, one per placement:
 `coins` and `restBoost`) ·
@@ -592,7 +619,7 @@ form cues) · `jimmyWorkouts` (349, pre-built programs) · `badges` (479) · `ma
 
 ---
 
-## 9. Tests — 89, in Node's own runner
+## 9. Tests — 98, in Node's own runner
 
 ```
 tools/setLoad.test.mjs          24   the weight contract, drop sets, cascade, numbering, the reconciler
@@ -601,13 +628,14 @@ tools/progression.test.mjs      10   evolution tiers, neglect penalty, scaled la
 tools/moderation.test.mjs        9   block filtering, report ids, array identity
 tools/deriveWeight.test.mjs      8   the server's own load derivation, weight vs stale context
 tools/restBoost.test.mjs         8   one ad = one exercise, 3 doubled sets, never a set worth less
+tools/tourLayout.test.mjs        9   the first-workout tour's bubble: which side, and the two clamps
 tools/badges.test.mjs            6   award logic
 tools/leaderboard.test.mjs       6   weekly ranking
 tools/jimmyWorkouts.test.mjs     6   the pre-built programs, and that none repeats an exercise
 ```
 
 They import the real client modules directly (`await import('../src/utils/...')`) — no
-DOM, no test framework, no mocking library. `npm test` runs all nine.
+DOM, no test framework, no mocking library. `npm test` runs all ten.
 
 Three of them reach across into `functions/` through `createRequire` and run the real
 server code, because in each case the point IS what the server does:
@@ -633,6 +661,7 @@ rest.html        ?boost= puts the 2× offer in each of its states, incl. the set
 friends-sheet.html  the Friends sheet over a long page — nested scroll, both axes
 tab-swipe.html   the real useTabSwipe over plain content and a carousel, driven by real touch events
 finish.html      the finish gate — each way a workout can be refused, and the order it happens in
+logger.html      ?tour=1 replays the first-workout tour (it runs unforced here too, once)
 avatar-gallery.html  every sprite × accessory combination
 ```
 

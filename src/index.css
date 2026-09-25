@@ -1217,3 +1217,27 @@ html.app-ready #root {
     transform: rotate(0deg);
   }
 }
+
+/* The first-workout tour's spotlight ring (components/workout/WorkoutTour).
+   A slow breath on the ring and nothing else: the control inside the hole
+   is the real UI and must not move or flash, and the scrim around it is
+   already doing the work of saying "look here". The ring is drawn OUTSIDE
+   the hole's edge, so the glow spreading is the only thing animating. */
+.tour-ring {
+  animation: tour-ring-breathe 2.2s ease-in-out infinite;
+}
+@keyframes tour-ring-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ember) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--ember) 0%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-ring {
+    animation: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ember) 25%, transparent);
+  }
+}

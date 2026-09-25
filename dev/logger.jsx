@@ -19,6 +19,12 @@ import { tierCssVars } from "../src/utils/tierTheme";
 //   ?exercises=bench-press,lateral-raise   which catalog ids (default below)
 //   ?tier=legend                           which tier palette
 //   ?bw=82                                 body weight for the bodyweight total
+//   ?tour=1                                force the first-workout tour
+//
+// The tour runs here unforced too: no `history` prop means an empty
+// history, which is what it reads as "this person's first session". It
+// writes `jimmy-goat:workout-tutorial-seen:anon` when it opens, so the
+// second load of this page is quiet — ?tour=1 ignores that flag.
 //
 // window.__workout is the session, window.__session its mutators (for
 // seeding sets from the console), and window.__reset() throws the

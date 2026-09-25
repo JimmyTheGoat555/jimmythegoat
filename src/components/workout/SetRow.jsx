@@ -395,6 +395,9 @@ export default function SetRow({
       <button
         type="button"
         onClick={onAddDropSet}
+        // The first-workout tour points at the FIRST of these on screen —
+        // see data/workoutTour.js.
+        data-tour="dropset"
         aria-label={`${label} — add a drop set below it`}
         title="Add a drop set below"
         tabIndex={-1}

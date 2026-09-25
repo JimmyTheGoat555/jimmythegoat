@@ -7,10 +7,12 @@ import ReorderableList from "./ReorderableList";
 import WorkoutSummaryModal from "./WorkoutSummaryModal";
 import LockerPromptModal from "./LockerPromptModal";
 import ConfirmDialog from "../shared/ConfirmDialog";
+import WorkoutTour from "./WorkoutTour";
 import { DEFAULT_SETS_PER_EXERCISE } from "../../hooks/useWorkouts";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useWeightEntryModes } from "../../hooks/useWeightEntryModes";
 import { useRestBoost } from "../../hooks/useRestBoost";
+import { useWorkoutTour } from "../../hooks/useWorkoutTour";
 import { useRewardedAd } from "../../hooks/useRewardedAd";
 import { AD_PLACEMENTS, REST_BOOST_SSV_CUSTOM_DATA } from "../../config/ads";
 import { REST_BOOST_MAX_SETS } from "../../data/storeItems";
@@ -153,6 +155,9 @@ function ChillToggle({ on, onChange }) {
       onClick={() => onChange(!on)}
       aria-pressed={on}
       aria-label="Chill Mode: no automatic rest timer"
+      // Step 1 of the first-workout tour points here. See
+      // data/workoutTour.js for why the tour finds its targets this way.
+      data-tour="chill"
       title={
         on
           ? "Chill Mode on — rests only when you start one"
@@ -502,6 +507,39 @@ export default function ActiveWorkoutLogger({
     : (firstUnfinished?.exerciseId ??
       workout.exercises.at(-1)?.exerciseId ??
       null);
+
+  // ── The first-workout tour ──────────────────────────────────────────
+  //
+  // Four controls on this screen that a first-timer has no way to read:
+  // the snowflake, the stopwatch, the bulb and +DS. Everything else here
+  // either says what it is in words or does the obvious thing.
+  //
+  // It waits for an exercise to be on screen rather than opening the
+  // moment this screen mounts, for two reasons that happen to agree.
+  // Three of the four targets do not exist on an empty workout — the bulb
+  // and +DS are inside an exercise card — so a tour that ran at mount
+  // would have nothing to point at. And a lifter who has just tapped
+  // "Start Workout" is looking for the exercise picker, not a lecture.
+  //
+  // `history` is the cloud workout list, so an empty one is "has never
+  // finished a session". It is a belt-and-braces check on top of the
+  // once-only flag, for the reinstall/new-device case where the flag is
+  // gone but the person is not new. See useWorkoutTour for what it does
+  // about that list being briefly empty while Firestore is still loading.
+  //
+  // And not while something else owns the screen: the picker, a rest, the
+  // summary, the locker prompt, a confirm, or reorder mode. A spotlight
+  // under a full-screen timer is a scrim nobody can see or dismiss.
+  const tourEligible =
+    history.length === 0 &&
+    workout.exercises.length > 0 &&
+    !pickerOpen &&
+    !rest.isVisible &&
+    !showSummary &&
+    !lockerOpen &&
+    !confirmCancel &&
+    !isReordering;
+  const tour = useWorkoutTour({ uid, eligible: tourEligible });
 
   // Tapping the open card's chevron folds it away; tapping a closed one
   // opens it. Both go through here so "which is open" has one writer.
@@ -1058,6 +1096,7 @@ export default function ActiveWorkoutLogger({
           <button
             type="button"
             onClick={handleRestTap}
+            data-tour="rest"
             aria-label={rest.isVisible ? "Show rest timer" : "Start a rest"}
             title={rest.isVisible ? "Show rest timer" : "Start a rest"}
             className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-300 active:scale-95 ${
@@ -1401,6 +1440,19 @@ export default function ActiveWorkoutLogger({
           still handed back by LockerReminderModal when the workout is
           saved — but a popup nobody asked for, standing in front of the
           first set of every session, is the wrong way to ask. */}
+      {/* Over the page and the bottom nav, under every modal — see
+          WorkoutTour's z-index note. Unmounts itself by way of
+          `tour.step` going null, on the last step or on Skip. */}
+      {tour.step && (
+        <WorkoutTour
+          step={tour.step}
+          stepNumber={tour.stepNumber}
+          stepCount={tour.stepCount}
+          onNext={tour.next}
+          onDismiss={tour.dismiss}
+        />
+      )}
+
       {lockerOpen && (
         <LockerPromptModal
           onSave={(number) => {

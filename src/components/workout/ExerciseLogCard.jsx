@@ -288,6 +288,9 @@ export default function ExerciseLogCard({
                 <button
                   type="button"
                   onClick={() => setTipsOpen(true)}
+                  // The first-workout tour points at the FIRST of these on
+                  // screen — see data/workoutTour.js.
+                  data-tour="tips"
                   aria-label={`Form tips for ${exercise.name}`}
                   className="-my-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition active:scale-90"
                 >
