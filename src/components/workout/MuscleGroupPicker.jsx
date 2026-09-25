@@ -41,7 +41,15 @@ export default function MuscleGroupPicker({ selectedGroup, onSelect }) {
   }, []);
 
   return (
-    <div ref={stripRef} className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none">
+    // touch-pan-x / overscroll-x-contain: same pair as every other
+    // sideways scroller here (FriendSuggestions has the long version). The
+    // first stops the browser waiting to see which way a drag across the
+    // chips drifts before it picks an axis; the second stops a flick past
+    // the last chip chaining out to whatever is behind.
+    <div
+      ref={stripRef}
+      className="scrollbar-none flex touch-pan-x touch-pinch-zoom overflow-x-auto overscroll-x-contain -mx-4 gap-2 px-4 pb-1"
+    >
       {MUSCLE_GROUPS.map((group) => {
         const active = group.id === selectedGroup;
         return (

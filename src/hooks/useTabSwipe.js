@@ -13,6 +13,53 @@ const MAX_DURATION_MS = 600;
 // to the next tab.
 const MAX_VERTICAL_RATIO = 0.5;
 
+// ── Gestures that belong to something else ──────────────────────────────
+//
+// MAX_VERTICAL_RATIO above is what keeps a SCROLL from flipping a tab, and
+// it works because a scroll is vertical and a tab swipe is horizontal.
+// That reasoning runs out the moment a screen contains something that
+// scrolls sideways — a card carousel, a chart strip, a row of chips. A
+// deliberate horizontal drag across one of those is, by every threshold
+// here, a perfect tab swipe: fast, straight, far. So the tab changed under
+// the lifter's finger and the row they were actually dragging did not
+// move.
+//
+// The rule is ownership: a gesture that starts inside an element that can
+// scroll sideways belongs to that element, and this hook does not get a
+// vote on it. Checked at touchstart, against the element the touch landed
+// on and its ancestors up to the container.
+//
+// Unconditional, deliberately — NOT "unless the row is already at its
+// end". A rail sitting at its last card would otherwise hand the next
+// flick to the tab bar, so the same drag would mean two different things
+// depending on a scroll position nobody is looking at. Swiping the page
+// around a carousel still works; swiping the carousel only ever moves the
+// carousel.
+//
+// WorkoutCelebration's sticker rail solved this for itself first, by
+// stopping propagation on the rail (its comment says the tab used to flip
+// under the celebration). That fix stays — it also covers the rail while
+// it is LOCKED, when overflow-x is hidden and the test below would say
+// "not a scroller" — but no new carousel should have to know this hook
+// exists.
+//
+// A pixel of slop: sub-pixel layout can leave scrollWidth a hair over
+// clientWidth on elements that do not actually scroll.
+const SCROLL_SLOP_PX = 1;
+
+function ownsHorizontalGesture(target, container) {
+  let node = target instanceof Element ? target : null;
+  while (node) {
+    if (node.scrollWidth > node.clientWidth + SCROLL_SLOP_PX) {
+      const { overflowX } = getComputedStyle(node);
+      if (overflowX === 'auto' || overflowX === 'scroll') return true;
+    }
+    if (node === container) return false; // walked the whole way out
+    node = node.parentElement;
+  }
+  return false;
+}
+
 // Real-time finger-tracking (the content visually sliding WITH your
 // thumb mid-drag, only settling once you lift) would need every tab's
 // screen mounted at once side-by-side — a genuinely different app
@@ -27,7 +74,10 @@ const MAX_VERTICAL_RATIO = 0.5;
 // Passive listeners throughout, and preventDefault() is never called —
 // vertical scrolling and every existing tap/click target keep behaving
 // exactly as before; a swipe that doesn't clear the thresholds above is
-// simply a no-op here, not something this hook ever intercepts.
+// simply a no-op here, not something this hook ever intercepts. Nor is a
+// swipe that began inside something that scrolls sideways: this hook
+// declines those rather than competing for them (see
+// ownsHorizontalGesture).
 export function useTabSwipe(tabPaths, containerRef) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -53,6 +103,13 @@ export function useTabSwipe(tabPaths, containerRef) {
       if (e.touches.length !== 1) {
         // A pinch or some other multi-touch gesture starting mid-swipe —
         // bail rather than guess which finger to keep tracking.
+        touch = null;
+        return;
+      }
+      // Started on a carousel, a chart strip, a row of chips — whatever it
+      // is, it scrolls sideways and the drag is its own. See
+      // ownsHorizontalGesture.
+      if (ownsHorizontalGesture(e.target, el)) {
         touch = null;
         return;
       }

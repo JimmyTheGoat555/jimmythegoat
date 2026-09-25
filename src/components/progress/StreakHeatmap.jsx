@@ -66,7 +66,11 @@ export default function StreakHeatmap({ workouts }) {
         </span>
       </div>
 
-      <div ref={scrollRef} className="overflow-x-auto -mx-1 px-1">
+      {/* The year of squares is wider than the phone, so it scrolls
+          sideways inside a tab that scrolls down — touch-pan-x commits the
+          axis at the first pixel, overscroll-x-contain keeps a flick at
+          either end from leaking out. */}
+      <div ref={scrollRef} className="touch-pan-x touch-pinch-zoom overflow-x-auto overscroll-x-contain -mx-1 px-1">
         <div className="flex flex-col gap-1 w-max">
           <div className="flex gap-1">
             {weeks.map((week, i) => (

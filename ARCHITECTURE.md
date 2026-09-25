@@ -631,6 +631,7 @@ leaderboard.html · friend-profile.html · consent.html · message.html · chill
 moderation.html  every ⋯ surface at once, on an in-memory block list
 rest.html        ?boost= puts the 2× offer in each of its states, incl. the set countdown
 friends-sheet.html  the Friends sheet over a long page — nested scroll, both axes
+tab-swipe.html   the real useTabSwipe over plain content and a carousel, driven by real touch events
 finish.html      the finish gate — each way a workout can be refused, and the order it happens in
 avatar-gallery.html  every sprite × accessory combination
 ```
