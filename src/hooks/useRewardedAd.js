@@ -312,17 +312,31 @@ export function useRewardedAd(
         return null;
       }
       setStatus('playing');
-      try {
-        // Resolves when the ad closes. The REWARD does not come from here
-        // — the Rewarded listener above owns that, because this promise
-        // resolves just as happily for an ad somebody skipped.
-        await AdMob.showRewardVideoAd();
-      } catch (err) {
+      // DELIBERATELY NOT AWAITED, and the comment that used to sit here
+      // had this backwards: it said the promise "resolves when the ad
+      // closes" and "resolves just as happily for an ad somebody
+      // skipped". It does neither.
+      //
+      // The plugin resolves this call from inside the SDK's
+      // userDidEarnRewardHandler and nowhere else (ios AdRewardExecutor
+      // .swift, showRewardVideoAd). An ad the user skips never reaches
+      // that handler, so the call is left hanging — not resolved, not
+      // rejected. Awaiting it therefore parked one permanently pending
+      // promise per skipped ad, and put the recovery below in a catch
+      // that could never run for the commonest outcome of all.
+      //
+      // The lifecycle never depended on it anyway: Rewarded decides
+      // whether coins are owed, Dismissed decides when the UI is free
+      // again. What this call is still worth keeping for is its
+      // REJECTION — "No ad prepared", "An ad is already showing",
+      // "Reward Video is Not Ready Yet" — which is the only way a show
+      // that never got off the ground reports itself.
+      AdMob.showRewardVideoAd().catch((err) => {
         setError(friendlyAuthError(err, "Couldn't play the ad — try again."));
         setStatus('idle');
         inFlight.current = false;
         prepare();
-      }
+      });
       return null;
     }
 
