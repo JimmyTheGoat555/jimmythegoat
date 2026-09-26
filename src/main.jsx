@@ -26,6 +26,13 @@ import { isStaleBuildError } from './utils/staleBuild.js'
 Sentry.init(
   {
     dsn: import.meta.env.VITE_SENTRY_DSN,
+    // Production builds only. The SDK still initialises in dev — the same
+    // client, the same beforeSend, so anything wired to it behaves the same
+    // on both — it just transmits nothing. Without this, every crash while
+    // developing (and StrictMode's double-invoke, and every HMR misstep)
+    // spends the free quota on errors nobody is going to read. Flip this to
+    // `true` for a moment if you ever need to prove the pipe locally.
+    enabled: import.meta.env.PROD,
     // Injected by vite.config.js from the commit SHA, and the same name the
     // source maps are uploaded under. If the two ever drift apart, every
     // stack trace in the dashboard stays minified and useless.
