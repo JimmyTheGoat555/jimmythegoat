@@ -1,3 +1,5 @@
+import * as Sentry from '@sentry/capacitor'
+import * as SentryReact from '@sentry/react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
@@ -8,6 +10,47 @@ import ErrorBoundary from './components/shared/ErrorBoundary.jsx'
 import RotateGate from './components/shared/RotateGate.jsx'
 import PublicInfoRoutes from './components/legal/PublicInfoRoutes.jsx'
 import { adoptSplash } from './lib/splash.js'
+import { isStaleBuildError } from './utils/staleBuild.js'
+
+// Crash and error reporting, started before anything below it can throw.
+//
+// Two SDKs, one call: @sentry/capacitor owns the native iOS layer and takes
+// the web SDK's own init as its second argument. Their versions are an EXACT
+// peer pin, not a range — capacitor 4.4.0 wants react 10.69.0 and nothing
+// else. Mismatch them and you get two Sentry clients with events going to
+// neither, and nothing anywhere to say so; `npm ls @sentry/core` printing one
+// deduped version is the check.
+//
+// No DSN means no reporting and no errors, which is what a bare `npm run dev`
+// and a clone without the secret should both do.
+Sentry.init(
+  {
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    // Injected by vite.config.js from the commit SHA, and the same name the
+    // source maps are uploaded under. If the two ever drift apart, every
+    // stack trace in the dashboard stays minified and useless.
+    release: import.meta.env.VITE_RELEASE,
+    environment: import.meta.env.MODE,
+    // Errors only to begin with. Tracing is a separate quota and a separate
+    // decision; turning it on later is this one number.
+    tracesSampleRate: 0,
+    // No IP address, no cookies, no request bodies. The only identifier
+    // attached is the Firebase uid, set deliberately in hooks/useAuth.js.
+    sendDefaultPii: false,
+    beforeSend(event) {
+      // A stale-build chunk error heals itself: ErrorBoundary reloads once
+      // and the new build is already sitting there. Left in, they would bury
+      // every real crash under them on every deploy day. The ones that come
+      // back AFTER that reload are a different thing — the new build is
+      // broken too, or the service worker is wedged — so ErrorBoundary tags
+      // those and they pass.
+      const thrown = event.exception?.values?.[0]
+      const stale = isStaleBuildError({ name: thrown?.type, message: thrown?.value })
+      return stale && event.tags?.survivedReload !== 'yes' ? null : event
+    },
+  },
+  SentryReact.init,
+)
 
 // Registers the service worker AND — because vite.config.js sets
 // registerType: 'autoUpdate' — reloads the page the moment a new version

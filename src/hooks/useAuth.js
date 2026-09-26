@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import * as Sentry from '@sentry/capacitor';
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -48,6 +49,12 @@ export function useAuth() {
       setUser(firebaseUser);
       setInitializing(false);
       if (!firebaseUser) setProfile(null);
+      // Which account a crash belongs to, so "one user, forty times" reads
+      // differently from "forty users, once" — without that, a crash count is
+      // a number you cannot act on. The uid alone: no email, no display name,
+      // matching main.jsx's sendDefaultPii: false. Cleared on sign-out so a
+      // crash on the sign-in screen is not filed under whoever was last here.
+      Sentry.setUser(firebaseUser ? { id: firebaseUser.uid } : null);
     });
   }, []);
 

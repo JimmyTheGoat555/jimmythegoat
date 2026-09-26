@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as Sentry from '@sentry/capacitor';
 import { Routes, Route, Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import WorkoutHome from './components/workout/WorkoutHome';
 import BottomNav from './components/layout/BottomNav';
@@ -922,6 +923,23 @@ export default function App() {
         navigate('/');
         return;
       }
+      // Not offline, and not a verdict the lifter can act on — those throw
+      // at the validation step above, before this try block starts. So this
+      // is the finish failing for a reason we do not have a name for yet. It
+      // costs somebody a whole session, and until now nothing recorded it.
+      //
+      // Counts, not contents: sendDefaultPii is off in main.jsx and a
+      // workout is the user's own data. The shape is enough to tell a
+      // 40-exercise payload-size failure from a one-set fluke.
+      Sentry.captureException(err, {
+        tags: { flow: 'finishWorkout' },
+        extra: {
+          exercises: workout.exercises.length,
+          sets: workout.exercises.reduce((n, e) => n + e.sets.length, 0),
+          durationMs: clientDurationMs,
+          optimistic,
+        },
+      });
       throw err; // real rejection (validation / cooldown / cap) — modal surfaces it
     }
 

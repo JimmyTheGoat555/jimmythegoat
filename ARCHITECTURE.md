@@ -22,7 +22,7 @@ grows; you earn coins, buy cosmetics, dress the mascot, and compete with friends
 ```bash
 npm run dev            # Vite dev server
 npm run build          # vite build → dist/
-npm test               # node --test over tools/*.test.mjs  (98 tests)
+npm test               # node --test over tools/*.test.mjs  (102 tests)
 npx oxlint src dev     # lint (config: .oxlintrc.json)
 npm run build:ios      # vite build + npx cap sync ios
 npm run open:ios       # open the Xcode workspace
@@ -602,7 +602,7 @@ Three things about it are load-bearing:
 `workoutSummaryScene` / `Data` / `Format` / `Timeline` · `canvas` · `motion` ·
 `shareWorkout` · `restAlarm` · `restNotification` · `restPresets` · `restMessages` ·
 `storeAlerts` · `formatIdleNumber` · `relativeTime` · `authErrors` · `onboarding` ·
-`appAdmin` · `idle` · `tourLayout`
+`appAdmin` · `idle` · `tourLayout` · `staleBuild`
 
 **data/** — `exercises` (544, the seed catalog) + `exerciseGuides` (480, description &
 form cues) · `jimmyWorkouts` (349, pre-built programs) · `badges` (479) · `mascots`
@@ -619,7 +619,7 @@ form cues) · `jimmyWorkouts` (349, pre-built programs) · `badges` (479) · `ma
 
 ---
 
-## 9. Tests — 98, in Node's own runner
+## 9. Tests — 102, in Node's own runner
 
 ```
 tools/setLoad.test.mjs          24   the weight contract, drop sets, cascade, numbering, the reconciler
@@ -632,10 +632,11 @@ tools/tourLayout.test.mjs        9   the first-workout tour's bubble: which side
 tools/badges.test.mjs            6   award logic
 tools/leaderboard.test.mjs       6   weekly ranking
 tools/jimmyWorkouts.test.mjs     6   the pre-built programs, and that none repeats an exercise
+tools/staleBuild.test.mjs        4   which errors mean "old page, new build" — shared by two callers
 ```
 
 They import the real client modules directly (`await import('../src/utils/...')`) — no
-DOM, no test framework, no mocking library. `npm test` runs all ten.
+DOM, no test framework, no mocking library. `npm test` runs all eleven.
 
 Three of them reach across into `functions/` through `createRequire` and run the real
 server code, because in each case the point IS what the server does:
@@ -687,6 +688,41 @@ builds on its own infrastructure.
 `main.jsx` registers the service worker with `registerType: 'autoUpdate'` and adds an
 hourly + on-visibility update check, because iOS keeps installed PWAs suspended for days
 and a deploy would otherwise never be picked up.
+
+### Crash reporting (Sentry)
+
+`@sentry/capacitor` wrapping `@sentry/react`, initialised at the top of `main.jsx`. The
+two package versions are an **exact peer pin** (capacitor 4.4.0 ↔ react 10.69.0), not a
+range: mismatch them and you get two clients with events reaching neither, silently.
+`npm ls @sentry/core` printing one deduped version is the check.
+
+Five touch points:
+
+| where | what |
+|---|---|
+| `main.jsx` | `Sentry.init` — DSN from `VITE_SENTRY_DSN`, `tracesSampleRate: 0`, `sendDefaultPii: false`, and the `beforeSend` filter |
+| `ErrorBoundary.jsx` | `captureException` for render crashes, tagged `survivedReload` |
+| `App.jsx` | the `logWorkout` catch — only real rejections, never offline or a blocked finish |
+| `useAuth.js` | `setUser({ id: uid })`, cleared on sign-out |
+| `vite.config.js` | release name + source-map upload |
+
+**The stale-build filter.** `utils/staleBuild.js` holds one matcher with two callers.
+ErrorBoundary reloads once on a match; `beforeSend` drops the same class, because those
+heal themselves and would otherwise bury every real crash on every deploy day. The
+escape hatch is the `survivedReload: 'yes'` tag — a chunk error that comes back AFTER
+its reload means the new build is broken too, and that one passes. Verified live: tags
+set via `captureException` do reach `beforeSend`, which is what makes the hatch work.
+
+**Source maps.** Generated *only* when `SENTRY_AUTH_TOKEN` is set, uploaded, then deleted
+from `dist`. A map nothing collects is the whole source on the CDN at a guessable URL, so
+the two are deliberately tied together — a clone or a local `npm run build` emits exactly
+what it did before any of this existed. `SENTRY_AUTH_TOKEN` is **not** `VITE_`-prefixed:
+Vite inlines every `VITE_` variable into the client bundle and this one is a real secret.
+The release name comes from the commit SHA and must match between the bundle and the
+upload, or every stack trace stays minified.
+
+**Privacy labels.** Because `setUser` attaches the uid, App Store Connect needs Crash
+Data declared as *linked to identity*.
 
 ---
 

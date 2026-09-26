@@ -1,5 +1,7 @@
 import { Component } from 'react';
+import * as Sentry from '@sentry/capacitor';
 import { dismissSplash } from '../../lib/splash';
+import { isStaleBuildError } from '../../utils/staleBuild';
 
 // A crash used to mean a blank white screen: no message, no way back, and
 // nothing in the UI to say whether the app was broken or just slow. This is
@@ -20,16 +22,6 @@ import { dismissSplash } from '../../lib/splash';
 // replaced. sessionStorage (not local) so the guard clears with the tab.
 const RELOAD_GUARD = 'jimmy:chunk-reload-attempted';
 
-function isStaleBuildError(error) {
-  const text = `${error?.name ?? ''} ${error?.message ?? ''}`;
-  // Wording differs per browser, and Vite's CSS preload failure is the
-  // same stale-build class as a missing JS chunk — all verified against the
-  // real strings Chrome, Firefox, Safari and Vite actually throw.
-  return /loading chunk|dynamically imported module|importing a module script failed|failed to fetch dynamically|unable to preload/i.test(
-    text,
-  );
-}
-
 export default class ErrorBoundary extends Component {
   state = { error: null };
 
@@ -37,7 +29,7 @@ export default class ErrorBoundary extends Component {
     return { error };
   }
 
-  componentDidCatch(error) {
+  componentDidCatch(error, info) {
     // A crash on launch must show this screen, not the splash forever.
     dismissSplash();
     if (isStaleBuildError(error) && !sessionStorage.getItem(RELOAD_GUARD)) {
@@ -45,9 +37,16 @@ export default class ErrorBoundary extends Component {
       window.location.reload();
       return;
     }
-    // Nothing collects these yet — wiring an error reporter in is a pending
-    // pre-launch item — so at least leave something in the console rather
-    // than swallowing the one description of what went wrong.
+    // Past that branch this is real, and this is the one description of it.
+    // A chunk error reaching here has already spent its single reload, which
+    // means the new build is broken too or the service worker is wedged —
+    // the tag is what carries it past main.jsx's beforeSend filter, which
+    // otherwise drops the whole stale-build class.
+    Sentry.captureException(error, {
+      tags: { survivedReload: isStaleBuildError(error) ? 'yes' : 'no' },
+      // Which component threw — a minified stack alone often can't say.
+      extra: { componentStack: info?.componentStack },
+    });
     console.error('Unhandled error in render:', error);
   }
 
