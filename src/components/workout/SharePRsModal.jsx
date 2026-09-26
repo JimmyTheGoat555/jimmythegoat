@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { formatRecordLoad } from '../../utils/personalRecords';
 
 // The tick inside a checked box. Inline SVG rather than a "✓" glyph: it
@@ -29,6 +29,11 @@ export default function SharePRsModal({ personalRecords = [], onConfirm, onSkip 
   const [selected, setSelected] = useState(() => new Set(personalRecords.map((pr) => pr.exerciseId)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // The latch behind `busy`. Same reasoning as WorkoutSummaryModal: `busy`
+  // is state, read from the closure the handler was made in, so two taps
+  // inside one render both see it false. Publishing twice would put the
+  // same records on the feed post twice.
+  const inFlight = useRef(false);
 
   const toggle = (exerciseId) => {
     setSelected((prev) => {
@@ -40,7 +45,7 @@ export default function SharePRsModal({ personalRecords = [], onConfirm, onSkip 
   };
 
   const confirm = async () => {
-    if (busy) return; // the network call below is not instant; one tap only
+    if (inFlight.current) return; // the network call below is not instant; one tap only
     const ids = personalRecords.map((pr) => pr.exerciseId).filter((id) => selected.has(id));
     // Nothing ticked means nothing to publish, and the post is already in
     // that state — so skip the round trip entirely rather than asking the
@@ -49,6 +54,7 @@ export default function SharePRsModal({ personalRecords = [], onConfirm, onSkip 
       onSkip();
       return;
     }
+    inFlight.current = true;
     setError(null);
     setBusy(true);
     try {
@@ -58,6 +64,7 @@ export default function SharePRsModal({ personalRecords = [], onConfirm, onSkip 
       // logged either way, it is only the shout-out that failed.
       setError(err?.message ?? 'Could not share — try again.');
       setBusy(false);
+      inFlight.current = false; // only the failure path unlatches
     }
   };
 

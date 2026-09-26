@@ -53,6 +53,12 @@ export function useFriendsGraph(uid, friendUids) {
         if (cancelled) return;
         setFriends(snaps.flatMap((snap) => snap.docs.map((d) => d.data())));
       })
+      // Offline, or a rules refusal. The list simply stays as it was —
+      // there is no error state on this hook and a friends row that fails
+      // to refresh is not worth one. What the catch is FOR is the
+      // unhandled rejection: without it this is the one promise in the app
+      // that reaches the window with nobody holding it.
+      .catch(() => {})
       .finally(() => {
         if (!cancelled) setLoadingFriends(false);
       });

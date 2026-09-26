@@ -225,20 +225,3 @@ export function artFor(art, stage = 1) {
   const pick = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v[stage] ?? v[1] : v);
   return { ...art, src: pick(art.src), aspect: pick(art.aspect), behind: pick(art.behind) };
 }
-
-// The same artwork, standalone — for shop cards and anywhere an accessory
-// needs showing off the goat. Renders exactly what gets equipped, so the
-// thing you buy is unmistakably the thing you wear.
-//
-// `object-contain` rather than a fixed size: the pieces are wildly
-// different shapes (the shades are 2.6:1, the hoodie 0.58:1) and a shop
-// card is a square, so letting each one fit itself into the box is the only
-// way they all land at a sensible visual weight.
-export function AccessoryIcon({ itemId, className = '', stage = 1 }) {
-  // The shop card shows stage 1 by default. It is a picture of the ITEM, not
-  // of your goat wearing it, so it should not change under you when you
-  // evolve — the tier you happen to be is already on screen elsewhere.
-  const art = artFor(ACCESSORY_ART[itemId], stage);
-  if (!art?.src) return null;
-  return <img src={art.src} alt="" aria-hidden="true" className={`object-contain ${className}`} draggable={false} />;
-}

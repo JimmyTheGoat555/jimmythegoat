@@ -244,7 +244,31 @@ export default function JimmyAvatar({
   // The equipped outfit set's render of this character at this tier, or
   // null for the plain sprite. Same inputs as the accessory layer below,
   // so an outfit on the account draws on every avatar the gear does.
-  const outfitSrc = outfitBroken ? null : outfitSpriteFor(mascot, tier?.stage, equippedAccessories);
+  //
+  // Resolved BEFORE the fallback flags are applied, because the two flags
+  // are about these exact files and have to be forgotten when the files
+  // change.
+  const outfitFile = outfitSpriteFor(mascot, tier?.stage, equippedAccessories);
+  const baseFile = mascotSpriteFor(mascot, tier?.stage);
+
+  // A load failure is a fact about ONE file, not about this component.
+  // Both flags latch on error and nothing cleared them, so a single miss —
+  // a cache miss offline, a sprite not yet precached — left this avatar
+  // showing the emoji for the rest of the session, including after
+  // evolving to a tier whose artwork is sitting right there. Anything that
+  // changes which file is being asked for clears the verdict on the last
+  // one. Compared against the previous render rather than done in an
+  // effect: React's own documented way to adjust state when a prop
+  // changes, and what useRestTimer already does for its overdue message.
+  const look = `${outfitFile ?? ''}|${baseFile ?? ''}`;
+  const [prevLook, setPrevLook] = useState(look);
+  if (look !== prevLook) {
+    setPrevLook(look);
+    if (spriteBroken) setSpriteBroken(false);
+    if (outfitBroken) setOutfitBroken(false);
+  }
+
+  const outfitSrc = outfitBroken ? null : outfitFile;
 
   const cropped = crop === 'head';
   const px = typeof size === 'number' ? size : SIZES[size] ?? null;
@@ -275,7 +299,7 @@ export default function JimmyAvatar({
           // tier.image is Jimmy's copy of the same lookup and is left
           // alone so the couple of call sites that legitimately want the
           // franchise goat (the sign-in screen's tier strip) keep working.
-          src={outfitSrc ?? mascotSpriteFor(mascot, tier?.stage)}
+          src={outfitSrc ?? baseFile}
           alt={alt ?? tier?.label ?? character.name}
           onError={() => (outfitSrc ? setOutfitBroken(true) : setSpriteBroken(true))}
           className="relative z-[5] h-full w-auto object-contain"

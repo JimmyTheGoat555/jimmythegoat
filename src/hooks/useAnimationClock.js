@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { easeOutExpo, phase, prefersReducedMotion } from '../utils/motion';
+import { prefersReducedMotion } from '../utils/motion';
 
 // A stopwatch that ticks once per painted frame.
 //
@@ -102,13 +102,4 @@ export function useAnimationClock({ running = true, endAt = Infinity, speed = 1,
   }, [done, endAt]);
 
   return { elapsed, done, seek };
-}
-
-// A number that counts up from 0 to `target` — the headline stat that
-// arrives rather than simply being there. Returns the value for THIS
-// frame; format it at the call site. Built on the clock above, so it
-// inherits reduced-motion and hidden-tab handling for free.
-export function useCountUp(target, { durationMs = 1000, delayMs = 0, easing = easeOutExpo } = {}) {
-  const { elapsed } = useAnimationClock({ endAt: delayMs + durationMs });
-  return (Number(target) || 0) * easing(phase(elapsed, delayMs, durationMs));
 }

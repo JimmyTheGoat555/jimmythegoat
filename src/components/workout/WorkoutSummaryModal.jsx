@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { workoutVolume, workoutSetCount } from '../../utils/workoutStats';
 
 // The confirm step, and ONLY the confirm step.
@@ -23,13 +23,29 @@ import { workoutVolume, workoutSetCount } from '../../utils/workoutStats';
 // also why the celebration cannot start until the call comes back —
 // celebrating a workout that was rejected would be a lie.
 //
-// `isSubmitting` is a hard double-submit gate: the button disables the
-// instant it is tapped, and handleFinish bails immediately if re-entered
-// before React renders the disabled state — a second logWorkout call would
-// race the transaction and could double-log.
+// Double-submit is gated TWICE, and the two gates are not the same gate.
+//
+// `isSubmitting` is the visible one: the button disables and goes busy the
+// instant it is tapped. `inFlight` is the real one. A state variable is
+// read out of the closure the handler was created in, so two taps that
+// land before React has re-rendered both see `isSubmitting === false` and
+// both call through — the failure FriendSuggestions.jsx hit and documented
+// ("three fast taps all read the same stale state"). A ref is shared
+// mutable state and latches on the first read, in the same tick.
+//
+// This is the call where that matters most. logWorkout's transaction
+// refuses the second one on the cooldown, so nothing double-logs and
+// nothing double-pays — but the finish is OPTIMISTIC, so by the time that
+// rejection lands the celebration is already playing, and App.jsx's catch
+// takes it straight back off the screen and prints the cooldown in red.
+// A workout being congratulated and then un-congratulated is exactly the
+// sequence the finish gate exists to prevent.
 export default function WorkoutSummaryModal({ workout, bodyWeightKg = 0, onDone, onBack }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  // Only the failure path unlatches: a workout that logged must not be
+  // re-sendable from the same button.
+  const inFlight = useRef(false);
 
   const sets = workoutSetCount(workout);
   // Approximate — the server recomputes it authoritatively (and re-scores
@@ -37,7 +53,8 @@ export default function WorkoutSummaryModal({ workout, bodyWeightKg = 0, onDone,
   const volume = workoutVolume(workout, bodyWeightKg);
 
   const handleFinish = async () => {
-    if (isSubmitting) return; // re-entrancy guard — see above
+    if (inFlight.current) return; // re-entrancy guard — see above
+    inFlight.current = true;
     setError(null);
     setIsSubmitting(true);
     try {
@@ -45,6 +62,7 @@ export default function WorkoutSummaryModal({ workout, bodyWeightKg = 0, onDone,
     } catch (err) {
       setError(err.message);
       setIsSubmitting(false);
+      inFlight.current = false;
     }
     // No `finally`: on success this modal is being torn down as the
     // celebration takes the screen, and clearing the flag would flash the
