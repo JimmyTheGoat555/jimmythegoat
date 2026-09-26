@@ -103,13 +103,13 @@ export const IS_TESTING = USE_TEST_ADS;
 // The server has a matching AD_REWARD_REQUIRES_SSV in
 // functions/storeCatalog.js — flip that in the same change.
 //
-// TEMP-TEST-AD: they currently DISAGREE. The client is on test ads and
-// claims through the callable; storeCatalog.js still says true, and
-// rewardAdView.js:40 / restBoost.js:119 answer a client claim with
-// failed-precondition, "Ad rewards are granted by AdMob verification
-// now." What decides the outcome is the value that is DEPLOYED, not the
-// one in the file: the deploy carrying true has been held, so if it has
-// not run, the live functions still accept the claim and this works.
+// TEMP-TEST-AD: they now AGREE on the test posture — this file is on
+// test ads and claims through the callable, and storeCatalog.js is false
+// and accepts it. That pairing was deployed on 2026-09-27; before it, the
+// live functions answered a client claim with failed-precondition, "Ad
+// rewards are granted by AdMob verification now." Remember that what
+// decides this is the value DEPLOYED, not the one in the file — changing
+// storeCatalog.js without a functions deploy changes nothing.
 export const SSV_ENABLED = !USE_TEST_ADS;
 
 export function currentPlatform() {
