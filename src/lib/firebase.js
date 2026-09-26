@@ -1,6 +1,7 @@
+import { Capacitor } from '@capacitor/core';
 import { initializeApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
-import { getAuth } from 'firebase/auth';
+import { browserLocalPersistence, getAuth, indexedDBLocalPersistence, initializeAuth } from 'firebase/auth';
 import {
   getFirestore,
   initializeFirestore,
@@ -60,7 +61,37 @@ if (app && appCheckSiteKey) {
   }
 }
 
-export const auth = app ? getAuth(app) : null;
+// getAuth() is the browser convenience: it wires in
+// `browserPopupRedirectResolver` whether or not anything uses it. That
+// resolver is not inert. During auth start-up Firebase asks it whether a
+// redirect sign-in is coming back, which loads apis.google.com/js/api.js
+// and builds a hidden iframe against https://<authDomain>/__/auth/iframe.
+//
+// In a browser that is fine. Inside the iOS shell the page origin is
+// `capacitor://localhost`, which is not an origin Google will hand that
+// iframe to, so the request is refused, `gapi.iframes.getContext` is never
+// defined, and the initialization promise behind onAuthStateChanged never
+// settles. Nothing then clears `initializing` in hooks/useAuth.js, App
+// renders null forever, and the launch screen stays up — the infinite
+// splash, seen only on device.
+//
+// We have no popup or redirect sign-in to support: this app is
+// email/password only. So on native we build auth WITHOUT a resolver and
+// the iframe is never reached for.
+//
+// The persistence list is not optional. getAuth() defaults to
+// indexedDB → localStorage → session; initializeAuth() defaults to
+// IN-MEMORY, which would sign every phone out on each cold launch. Same
+// first two, in the same order, so a session survives a restart exactly as
+// it does on the web.
+function createAuth(firebaseApp) {
+  if (!Capacitor.isNativePlatform()) return getAuth(firebaseApp);
+  return initializeAuth(firebaseApp, {
+    persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+  });
+}
+
+export const auth = app ? createAuth(app) : null;
 
 // Offline-first Firestore. Gyms are basements — cell signal drops between
 // sets, and without a local cache the history list, leaderboard, friends

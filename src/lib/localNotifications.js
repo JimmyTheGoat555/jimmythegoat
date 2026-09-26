@@ -28,9 +28,30 @@ export function isNative() {
 
 // Imported lazily so the plugin never lands in the web bundle, the same
 // arrangement lib/messaging.js uses for the push plugin.
+//
+// The `{ }` around the return value is load-bearing. Do not unwrap it.
+//
+// Returning the plugin BARE from an async function hands it to the promise
+// resolution machinery, which reads `.then` off the resolved value to see
+// whether it is a thenable it should adopt. A Capacitor plugin is a Proxy
+// that answers EVERY property with a native method call, so `.then` comes
+// back callable, the bridge dispatches a call to a native method named
+// `then`, and iOS answers:
+//
+//     "LocalNotifications.then()" is not implemented on ios
+//
+// Two failures out of that one line. The rejection belongs to no one, so it
+// surfaces as an unhandled rejection in the console; and because the
+// machinery is waiting for a `then` that never calls back, THIS promise
+// never settles — every `await plugin()` below waits forever and the
+// notification is silently never scheduled. One `{ }` is the fix: an
+// ordinary object has no `then`, so the value is adopted as-is.
+//
+// The web never saw any of it, because isNative() short-circuits in every
+// caller before plugin() is reached.
 async function plugin() {
   const { LocalNotifications } = await import('@capacitor/local-notifications');
-  return LocalNotifications;
+  return { LocalNotifications };
 }
 
 // EVERY OS CALL GOES THROUGH HERE, IN ORDER.
@@ -55,7 +76,7 @@ function serialize(fn) {
 export async function ensureLocalNotificationPermission() {
   if (!isNative()) return false;
   try {
-    const LocalNotifications = await plugin();
+    const { LocalNotifications } = await plugin();
     const current = await LocalNotifications.checkPermissions();
     if (current.display === 'granted') return true;
     if (current.display === 'denied') return false;
@@ -74,7 +95,7 @@ export async function ensureLocalNotificationPermission() {
 export function scheduleLocalNotification({ id, title, body, at, extra = undefined }) {
   if (!isNative()) return Promise.resolve();
   return serialize(async () => {
-    const LocalNotifications = await plugin();
+    const { LocalNotifications } = await plugin();
     await LocalNotifications.schedule({
       notifications: [{ id, title, body, schedule: { at }, foreground: false, extra }],
     });
@@ -84,7 +105,7 @@ export function scheduleLocalNotification({ id, title, body, at, extra = undefin
 export function cancelLocalNotification(id) {
   if (!isNative()) return Promise.resolve();
   return serialize(async () => {
-    const LocalNotifications = await plugin();
+    const { LocalNotifications } = await plugin();
     await LocalNotifications.cancel({ notifications: [{ id }] });
   });
 }
