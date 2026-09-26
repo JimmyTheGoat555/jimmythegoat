@@ -1,6 +1,6 @@
 import { AD_REWARD_COINS } from '../../data/storeItems';
 import { useRewardedAd } from '../../hooks/useRewardedAd';
-import { AD_PLACEMENTS } from '../../config/ads';
+import { AD_PLACEMENTS, webAdFallbackReason } from '../../config/ads';
 import AdPlayingOverlay from '../shared/AdPlayingOverlay';
 
 // "Need more Coins?" — the one place in this app where currency comes from
@@ -15,8 +15,20 @@ import AdPlayingOverlay from '../shared/AdPlayingOverlay';
 // ad flow back to back. Visibility only — functions/guards.js holds the
 // matching server-side exemption, and that is what actually pays out.
 export default function AdRewardCard({ lastAdRewardAt = null, isAdmin = false }) {
+  // In a browser, with verification on, there is nothing here to earn —
+  // see webAdFallbackReason. Held in a variable rather than read twice
+  // because the BUTTON has to agree with it: "Come back tomorrow" is a
+  // promise this build cannot keep on the web.
+  //
+  // Null for an admin, matching the `bypass` below, so the stand-in stays
+  // drivable from a desktop browser.
+  const webReason = isAdmin ? null : webAdFallbackReason();
   const { status, busy, isAdLoaded, isNative, awaitsServerReward, error, limitReached, lastReward, watchAd } =
-    useRewardedAd(lastAdRewardAt, { bypass: isAdmin, placement: AD_PLACEMENTS.coins });
+    useRewardedAd(lastAdRewardAt, {
+      bypass: isAdmin,
+      placement: AD_PLACEMENTS.coins,
+      unavailableReason: webReason,
+    });
   // Fetching an ad is a real state on native and a non-state on web (where
   // there is nothing to fetch and isAdLoaded is always true), so the
   // button only ever shows "Loading ad…" where it means something.
@@ -54,11 +66,13 @@ export default function AdRewardCard({ lastAdRewardAt = null, isAdmin = false })
               ? 'Watching Ad…'
               : status === 'rewarding'
                 ? 'Adding coins…'
-                : limitReached
-                  ? 'Come back tomorrow'
-                  : fetching
-                    ? 'Loading ad…'
-                    : `▶ Watch Ad (Get ${AD_REWARD_COINS} Coins)`}
+                : webReason
+                  ? 'iOS app only'
+                  : limitReached
+                    ? 'Come back tomorrow'
+                    : fetching
+                      ? 'Loading ad…'
+                      : `▶ Watch Ad (Get ${AD_REWARD_COINS} Coins)`}
           </button>
 
           {/* The balance in the HUD updates itself from the account

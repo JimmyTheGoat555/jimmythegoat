@@ -14,7 +14,7 @@ import { useWeightEntryModes } from "../../hooks/useWeightEntryModes";
 import { useRestBoost } from "../../hooks/useRestBoost";
 import { useWorkoutTour } from "../../hooks/useWorkoutTour";
 import { useRewardedAd } from "../../hooks/useRewardedAd";
-import { AD_PLACEMENTS, REST_BOOST_SSV_CUSTOM_DATA } from "../../config/ads";
+import { AD_PLACEMENTS, REST_BOOST_SSV_CUSTOM_DATA, webAdFallbackReason } from "../../config/ads";
 import { REST_BOOST_MAX_SETS } from "../../data/storeItems";
 import AdPlayingOverlay from "../shared/AdPlayingOverlay";
 import {
@@ -654,8 +654,14 @@ export default function ActiveWorkoutLogger({
     callable: "claimRestBoost",
     placement: AD_PLACEMENTS.restBoost,
     customData: REST_BOOST_SSV_CUSTOM_DATA,
+    // The web reason comes first: it is the more fundamental of the two,
+    // and it is the one that does not change tomorrow. An unavailable
+    // offer makes boostOffer.available false, so the rest timer simply
+    // does not show the 2× card in a browser rather than showing one that
+    // errors when tapped.
     unavailableReason:
-      restBoost.remainingToday <= 0 ? "Today's 2× boosts are used up." : null,
+      webAdFallbackReason() ??
+      (restBoost.remainingToday <= 0 ? "Today's 2× boosts are used up." : null),
     // Pinned to the rest's exercise in the same breath as it is folded
     // into the local list, so the timer goes straight from "watching" to
     // "active" — never through a frame of "armed" first.

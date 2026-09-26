@@ -114,6 +114,29 @@ export function isNativePlatform() {
   return globalThis.Capacitor?.isNativePlatform?.() === true;
 }
 
+// Why a rewarded ad cannot pay in a browser once SSV is on, or null when
+// it can.
+//
+// The web path is a STAND-IN — a timer, then the same server claim the
+// native path makes (useRewardedAd's watchAd). Once the server's
+// AD_REWARD_REQUIRES_SSV is deployed it refuses that claim, and it is
+// right to: there is no signed callback behind it and there never will
+// be, because SSV is a mechanism of the AdMob SDK and the SDK is native
+// only. So the honest thing to say on web is "not here", not "something
+// went wrong" — which is what the card would otherwise show, in red,
+// after making somebody sit through the fake ad first.
+//
+// Null on native, and null while SSV is off: there the stand-in still
+// pays, and it is how the whole flow gets exercised in a browser.
+//
+// Callers pass this as `unavailableReason`, which refuses the watch
+// BEFORE an ad plays and surfaces as `limitReached`. It is separate from
+// the `bypass` an admin gets, so the owner can still drive the stand-in.
+export function webAdFallbackReason() {
+  if (!SSV_ENABLED || isNativePlatform()) return null;
+  return 'Rewarded ads are only available in the iOS app.';
+}
+
 export function adUnitIdFor(placement, platform = currentPlatform()) {
   const table = (USE_TEST_ADS ? TEST_AD_UNITS : LIVE_AD_UNITS)[placement];
   // An unknown placement is a caller bug, and it is worth throwing on
