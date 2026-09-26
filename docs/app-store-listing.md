@@ -177,14 +177,23 @@ per set. Skip it for v1 — a bad one hurts more than none.
 
 ## 4. Still outstanding before you can submit
 
-These are not text, and none of them are done yet:
+The console/mechanical work now lives in **`docs/ios-launch-checklist.md`** —
+the APNs key, the Push Notifications capability, the deploy order and the
+full TestFlight validation pass. What remains *here*, on the listing side:
 
-- **Block & report — built, not deployed.** The ⋯ menu, the `blockedUsers` filtering and the `reports` collection are all in the app. They need `firebase deploy --only firestore:rules` (safe on its own; nothing to do with the held functions deploy) or every block and report fails with `permission-denied`.
-- `PrivacyInfo.xcprivacy` (required privacy manifest) and `SKAdNetworkItems` for AdMob
-- `DEVELOPMENT_TEAM` is unset; there is no `.entitlements` file, so `aps-environment` is missing and push will fail silently in production
-- APNs key uploaded to Firebase
-- Privacy nutrition labels — they must match `/privacy`, which now discloses AdMob
-- `ITSAppUsesNonExemptEncryption` in Info.plist
-- `UIRequiredDeviceCapabilities` still says `armv7`
-- Optional cleanup: the "Force Next Evolve" debug block in `SettingsPanel.jsx` is inside the admin-only section, so it is invisible to users and reviewers — delete it when convenient, not before submitting
-- **Test that `support@jimmythegoat.fit` actually receives mail.** It is a registrar-level forward, not a mailbox — it fails silently, and Apple's reviewer does write to it.
+- Privacy nutrition labels — they must match `/privacy`, which discloses
+  AdMob, and must now also declare **Crash Data → linked to identity**,
+  because `Sentry.setUser` sends the Firebase UID
+- Age rating declaring user-generated content **and** ads
+- 6.9" screenshots
+- A **demo account** for App Review, with a populated history
+- **Test that `support@jimmythegoat.fit` actually receives mail.** It is a
+  registrar-level forward, not a mailbox — it fails silently, and Apple's
+  reviewer does write to it.
+
+Cleared since this list was written (verified in the repo, do not redo):
+`DEVELOPMENT_TEAM`, `App.entitlements` with `aps-environment` wired into
+signing, `PrivacyInfo.xcprivacy`, `SKAdNetworkItems`,
+`ITSAppUsesNonExemptEncryption`, and `UIRequiredDeviceCapabilities`
+(now `arm64`, was `armv7`). Block & report still needs the rules deploy,
+which is Stage A of the iOS checklist.
