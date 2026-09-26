@@ -53,11 +53,11 @@
 export const TEST_AD_UNITS = {
   coins: {
     android: 'ca-app-pub-3940256099942544/5224354917',
-    ios: 'ca-app-pub-3940256099942544/1712497310',
+    ios: 'ca-app-pub-3940256099942544/1712485313',
   },
   restBoost: {
     android: 'ca-app-pub-3940256099942544/5224354917',
-    ios: 'ca-app-pub-3940256099942544/1712497310',
+    ios: 'ca-app-pub-3940256099942544/1712485313',
   },
 };
 
@@ -84,7 +84,11 @@ export const AD_PLACEMENTS = Object.freeze({ coins: 'coins', restBoost: 'restBoo
 
 // THE flag. One line to go live — assuming LIVE_AD_UNITS above is filled
 // in, which the guard in adUnitIdFor() will not let you forget.
-export const USE_TEST_ADS = false;
+//
+// TEMP-TEST-AD: currently TRUE for on-device testing. Set back to false
+// before any build that is meant to earn, and flip the server's
+// AD_REWARD_REQUIRES_SSV back with it. Grep TEMP-TEST-AD.
+export const USE_TEST_ADS = true;
 
 // AdMob wants test mode declared to the SDK as well as through the unit
 // id, so a test build never counts as an impression on a real account.
@@ -97,9 +101,15 @@ export const IS_TESTING = USE_TEST_ADS;
 // build where they disagree either pays twice or never pays.
 //
 // The server has a matching AD_REWARD_REQUIRES_SSV in
-// functions/storeCatalog.js — flip that in the same change. It went true
-// alongside USE_TEST_ADS = false above: the server now refuses a
-// client-claimed reward and waits for the signed callback.
+// functions/storeCatalog.js — flip that in the same change.
+//
+// TEMP-TEST-AD: they currently DISAGREE. The client is on test ads and
+// claims through the callable; storeCatalog.js still says true, and
+// rewardAdView.js:40 / restBoost.js:119 answer a client claim with
+// failed-precondition, "Ad rewards are granted by AdMob verification
+// now." What decides the outcome is the value that is DEPLOYED, not the
+// one in the file: the deploy carrying true has been held, so if it has
+// not run, the live functions still accept the claim and this works.
 export const SSV_ENABLED = !USE_TEST_ADS;
 
 export function currentPlatform() {

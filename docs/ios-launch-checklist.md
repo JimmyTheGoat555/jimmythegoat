@@ -137,6 +137,13 @@ npx firebase deploy --only functions,firestore:rules --project jimmy-the-goat
 - [ ] Rules deploy confirmed — block & report fail with `permission-denied` without it
 - [ ] Callback URL noted: `https://us-central1-jimmy-the-goat.cloudfunctions.net/admobRewardCallback`
       (`admobRewardCallback` is `onRequest` with no region set, so `us-central1`)
+
+      A v2 function is backed by Cloud Run, so the deploy prints a
+      *different* URL — `https://admobrewardcallback-y5zdjrv64q-uc.a.run.app`
+      — and so does the console. Don't let the mismatch worry you: both
+      were verified to answer 400 on 2026-09-27, so either works in AdMob.
+      The `cloudfunctions.net` one is the stable alias and survives a
+      redeploy; the Run hostname can change, so prefer the alias.
 - [ ] Smoke test returns **400**, not 403:
 
 ```bash

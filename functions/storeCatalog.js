@@ -148,7 +148,16 @@ const AD_REWARD_COINS = 50;
 // Flip this to true in the SAME change that sets USE_TEST_ADS = false in
 // src/config/ads.js. They are the two halves of going live and a build
 // with one without the other is either paying twice or not at all.
-const AD_REWARD_REQUIRES_SSV = true;
+//
+// TEMP-TEST-AD: currently FALSE for on-device testing, paired with
+// USE_TEST_ADS = true on the client. While it is false, rewardAdView and
+// claimRestBoost will grant a reward to any authenticated caller that
+// asks — the daily cap is the only thing standing between a crafted call
+// and free coins. This is the pre-SSV posture, not a new hole, but it is
+// live for every real user until it goes back. Restore to true and
+// redeploy in the same change that sets USE_TEST_ADS = false.
+// Grep TEMP-TEST-AD (it spans this file and src/config/ads.js).
+const AD_REWARD_REQUIRES_SSV = false;
 
 // ---- Rest-timer coin boost ----
 // The second thing an ad can buy, and it is deliberately NOT coins: a
